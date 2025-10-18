@@ -408,12 +408,12 @@ class SVGGui(QMainWindow):
             return
 
         # Scale back to original image coordinates
-        x = int(widget_x / scale_x)
-        y = int(widget_y / scale_y)
+        img_x = int(widget_x / scale_x)
+        img_y = int(widget_y / scale_y)
 
         # Check if a circle was clicked
         for i, (cx, cy, r) in enumerate(self.circles):
-            if (x - cx) ** 2 + (y - cy) ** 2 <= r**2:
+            if (img_x - cx) ** 2 + (img_y - cy) ** 2 <= r**2:
                 if i in self.selected_circles:
                     self.selected_circles.remove(i)
                 else:
@@ -424,12 +424,12 @@ class SVGGui(QMainWindow):
         # Check if an object was clicked
         if (
             self.object_contours
-            and 0 <= x < self.processed_image.shape[1]
-            and 0 <= y < self.processed_image.shape[0]
+            and 0 <= img_x < self.processed_image.shape[1]
+            and 0 <= img_y < self.processed_image.shape[0]
         ):
             for i, contour in enumerate(self.object_contours):
                 # Use cv2.pointPolygonTest to check if point is inside contour
-                result = cv2.pointPolygonTest(contour, (x, y), False)
+                result = cv2.pointPolygonTest(contour, (img_x, img_y), False)
                 if result >= 0:  # Point is inside or on the contour
                     if i in self.selected_objects:
                         self.selected_objects.remove(i)
