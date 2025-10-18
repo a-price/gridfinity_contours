@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QGroupBox,
 )
 from PyQt5.QtCore import Qt, QPoint, QRect
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QMouseEvent
 from skimage import morphology
 import scipy.ndimage
 
@@ -63,14 +63,6 @@ class SVGGui(QMainWindow):
         self.load_btn = QPushButton("Load Image")
         self.load_btn.clicked.connect(self.load_image)
 
-        self.detect_circles_btn = QPushButton("Detect Circles")
-        self.detect_circles_btn.clicked.connect(self.detect_circles)
-        self.detect_circles_btn.setEnabled(False)
-
-        self.select_objects_btn = QPushButton("Select Objects")
-        self.select_objects_btn.clicked.connect(self.select_objects)
-        self.select_objects_btn.setEnabled(False)
-
         self.show_binary_btn = QPushButton("Show Binary Image")
         self.show_binary_btn.clicked.connect(self.show_binary_image)
         self.show_binary_btn.setEnabled(False)
@@ -85,8 +77,6 @@ class SVGGui(QMainWindow):
 
         # Add controls to layout
         control_layout.addWidget(self.load_btn)
-        control_layout.addWidget(self.detect_circles_btn)
-        control_layout.addWidget(self.select_objects_btn)
         control_layout.addWidget(self.show_binary_btn)
         control_layout.addWidget(self.show_original_btn)
         control_layout.addWidget(self.export_btn)
@@ -238,17 +228,15 @@ class SVGGui(QMainWindow):
                 # Configure radius sliders based on image size
                 self._configure_radius_sliders_for_image()
                 self.update_display()
-                self.detect_circles_btn.setEnabled(True)
-                self.select_objects_btn.setEnabled(True)
                 self.show_binary_btn.setEnabled(True)
                 self.show_original_btn.setEnabled(True)
                 self.export_btn.setEnabled(True)
 
                 # Automatically run detect circles and select objects
-                self.detect_circles()
-                self.select_objects()
+                self.find_circles()
+                self.find_contours()
 
-    def detect_circles(self):
+    def find_circles(self):
         if self.original_image is None:
             return
 
@@ -308,7 +296,7 @@ class SVGGui(QMainWindow):
 
         self.update_display()
 
-    def select_objects(self):
+    def find_contours(self):
         """Segment objects against a black background using thresholding and morphology."""
         if self.original_image is None:
             return
@@ -382,7 +370,7 @@ class SVGGui(QMainWindow):
         self.processed_image = self.original_image.copy()
         self.update_display()
 
-    def image_clicked(self, event):
+    def image_clicked(self, event: QMouseEvent):
         if self.processed_image is None:
             return
 
