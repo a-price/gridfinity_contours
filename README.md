@@ -15,11 +15,11 @@ A Python application that converts images of objects on a black background to SV
 
 ## Installation
 
-1. Ensure you have Python 3.7 or higher installed
-2. Install the required packages:
-   ```
-   python -m pip install -r requirements.txt
-   ```
+1. Install pyenv and virtualenv on your workstation.
+2. Install python 3.11 via `pyenv install 3.11`.
+3. Create a virtual environment: `pyenv virtualenv 3.11 gridfinity_contours`
+4. Activate the virtual environment: `pyenv activate gridfinity_contours`
+5. Install the required packages: `pip install -r requirements.txt`
 
 ## Usage
 
