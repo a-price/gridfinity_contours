@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QGroupBox,
 )
+import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QPoint, QRect
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QMouseEvent
 from skimage import morphology
@@ -71,6 +72,10 @@ class SVGGui(QMainWindow):
         self.show_original_btn.clicked.connect(self.show_original_image)
         self.show_original_btn.setEnabled(False)
 
+        self.warp_image_btn = QPushButton("warp image")
+        self.warp_image_btn.clicked.connect(self.warp_image)
+        self.warp_image_btn.setEnabled(False)
+
         self.export_btn = QPushButton("Export")
         self.export_btn.clicked.connect(self.export_contours)
         self.export_btn.setEnabled(False)
@@ -79,6 +84,7 @@ class SVGGui(QMainWindow):
         control_layout.addWidget(self.load_btn)
         control_layout.addWidget(self.show_binary_btn)
         control_layout.addWidget(self.show_original_btn)
+        control_layout.addWidget(self.warp_image_btn)
         control_layout.addWidget(self.export_btn)
 
         # Add collapsible circle detection parameters
@@ -230,6 +236,7 @@ class SVGGui(QMainWindow):
                 self.update_display()
                 self.show_binary_btn.setEnabled(True)
                 self.show_original_btn.setEnabled(True)
+                self.warp_image_btn.setEnabled(True)
                 self.export_btn.setEnabled(True)
 
                 # Automatically run detect circles and select objects
@@ -704,11 +711,63 @@ class SVGGui(QMainWindow):
             return
 
         # Create export dialog
+        # dialog = ContourExportDialog(
+        #     self.selected_objects, self.simplified_contours, self
+        # )
+
         dialog = ContourExportDialog(
-            self.selected_objects, self.simplified_contours, self
+            self.selected_objects, self.new_contours, self
         )
+        
         dialog.exec_()
 
+    def warp_image(self):
+        used_circles = list(self.selected_circles)
+        circles = np.array(self.circles)
+        circles = circles[used_circles,:]
+        
+        a = used_circles.pop(np.argmin(circles[:,0]))
+        c = used_circles.pop(np.argmin(circles[used_circles,1]))
+        b = used_circles
+    
+        input_points = np.zeros((3,2))
+        input_points[0,:] = circles[a,0:2]
+        input_points[1,:] = circles[b,0:2]
+        input_points[2,:] = circles[c,0:2]
+        
+        output_points = np.array([[self.leg_distance_input.value(), 0], [0,0], [0,self.leg_distance_input.value()]])
+
+        #needs to be 32 bit float, otherwie has operating system dependecies
+        input_points = np.float32(input_points)
+        output_points = np.float32(output_points)
+
+        affine = cv2.getAffineTransform(input_points,output_points)
+        
+        self.warped_image = np.transpose(np.zeros(self.processed_image.shape),[1,0,2])
+        self.warped_image[:,:,0] = cv2.warpAffine(self.processed_image[:,:,0], affine, self.processed_image.shape[:2])
+        self.warped_image[:,:,1] = cv2.warpAffine(self.processed_image[:,:,1], affine, self.processed_image.shape[:2])
+        self.warped_image[:,:,2] = cv2.warpAffine(self.processed_image[:,:,2], affine, self.processed_image.shape[:2])
+                
+        plt.figure()
+        plt.imshow(np.sum(self.warped_image[:400,:400],axis=2),cmap="Greys")
+        plt.show()
+
+        # cv2.imshow("color_image", cv2.resize(self.warped_image,(1000,1000)))
+        # cv2.waitKey(0)
+
+        self.new_contours = {}
+        for i in self.selected_objects:
+            #add a third dmention to the points for the affine transform
+            contour = np.squeeze(self.simplified_contours[i])
+            contour = np.concatenate([contour, np.ones([contour.shape[0],1])], axis=1)
+            self.new_contours[i] = (affine @ contour.T).T
+      
+            plt.figure()
+            plt.title("tranformed contour")
+            plt.plot(self.new_contours[i][:,0], self.new_contours[i][:,1],"-")
+            plt.xlabel("mm")
+            plt.ylabel("mm")
+            plt.show()
 
 class ContourExportDialog(QDialog):
     def __init__(self, selected_objects, simplified_contours, parent=None):
@@ -747,6 +806,14 @@ class ContourExportDialog(QDialog):
         self.text_edit.setPlainText(contour_text)
         layout.addWidget(self.text_edit)
 
+        #add figure()
+        plt.figure()
+        plt.title("tranformed contour")
+        plt.plot(transformed_points[:,0], transformed_points[:,1],"-")
+        plt.xlabel("mm")
+        plt.ylabel("mm")
+        plt.show()
+
         # Add close button
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
@@ -755,7 +822,8 @@ class ContourExportDialog(QDialog):
     def transform_to_origin(self, contour):
         """Transform contour so that one corner of the PCA-aligned bounding box is at origin."""
         # Get all points from contour
-        points = contour.reshape(-1, 2).astype(np.float32)
+        # points = contour.reshape(-1, 2).astype(np.float32)        
+        points = contour.astype(np.float32)
 
         # Compute PCA to get principal components
         mean, eigenvectors, _ = cv2.PCACompute2(points, np.array([]))
