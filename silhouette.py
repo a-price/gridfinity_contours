@@ -46,6 +46,8 @@ class SVGGui(QMainWindow):
         self.selected_objects = set()
         self.simplified_contours = {}
 
+        self.click_point = []
+
         self.init_ui()
 
     def init_ui(self):
@@ -411,9 +413,18 @@ class SVGGui(QMainWindow):
         img_x = int(widget_x / scale_x)
         img_y = int(widget_y / scale_y)
 
+        if self.processed_image is not None:
+            height, width, channel = self.processed_image.shape
+            assert(0 <= img_x)
+            assert(img_x < width)
+            assert(0 <= img_y)
+            assert(img_y < height)
+
+        self.click_point = [img_x, img_y]
+
         # Check if a circle was clicked
         for i, (cx, cy, r) in enumerate(self.circles):
-            if (img_x - cx) ** 2 + (img_y - cy) ** 2 <= r**2:
+            if (img_x - int(cx)) ** 2 + (img_y - int(cy)) ** 2 <= r**2:
                 if i in self.selected_circles:
                     self.selected_circles.remove(i)
                 else:
@@ -447,6 +458,10 @@ class SVGGui(QMainWindow):
 
         # Create overlay for transparent effects
         overlay = display_image.copy()
+
+        # If we have a clicked point, draw it.
+        if self.click_point:
+            cv2.circle(overlay, (self.click_point[0], self.click_point[1]), 50, (0, 0, 255), -1)
 
         # Draw detected circles
         i_selected = 0
@@ -539,7 +554,7 @@ class SVGGui(QMainWindow):
                             for corner in corners_pca
                         ]
                     )
-                    box = np.int0(box)
+                    box = np.int32(box)
 
                     # Draw PCA-aligned bounding box
                     cv2.drawContours(
@@ -548,7 +563,7 @@ class SVGGui(QMainWindow):
 
                     # Draw center point
                     cv2.circle(
-                        display_image, tuple(np.int0(center)), 5, (255, 0, 255), -1
+                        display_image, tuple(np.int32(center)), 5, (255, 0, 255), -1
                     )
 
         # Blend overlay with main image for transparency effect (30% opacity)
