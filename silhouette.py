@@ -60,7 +60,7 @@ class SVGGui(QMainWindow):
         # Left panel for controls
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
-        control_layout.setAlignment(Qt.AlignTop)
+        control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Add buttons
         self.load_btn = QPushButton("Load Image")
@@ -178,7 +178,7 @@ class SVGGui(QMainWindow):
 
         # Image display area
         self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("background-color: #2b2b2b;")
         self.image_label.mousePressEvent = self.image_clicked
 
@@ -189,7 +189,7 @@ class SVGGui(QMainWindow):
     def create_slider(self, label_text, min_val, max_val, default_val):
         layout = QVBoxLayout()
         label = QLabel(f"{label_text} {default_val}")
-        slider = QSlider(Qt.Horizontal)
+        slider = QSlider(Qt.Orientation.Horizontal)
         slider.setMinimum(min_val)
         slider.setMaximum(max_val)
         slider.setValue(default_val)
@@ -224,7 +224,7 @@ class SVGGui(QMainWindow):
             self.leg_distance_label.setVisible(False)
             self.leg_distance_input.setVisible(False)
 
-    def load_image(self, file_path: str = None):
+    def load_image(self, file_path: str | None = None):
         if not file_path:
             file_path, _ = QFileDialog.getOpenFileName(
                 self, "Open Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp)"
@@ -379,7 +379,9 @@ class SVGGui(QMainWindow):
         self.processed_image = self.original_image.copy()
         self.update_display()
 
-    def image_clicked(self, event: QMouseEvent):
+    def image_clicked(self, ev: QMouseEvent | None):
+        if ev is None:
+            return
         if self.processed_image is None:
             return
 
@@ -404,8 +406,8 @@ class SVGGui(QMainWindow):
         offset_y = (widget_height - pixmap_height) // 2
 
         # Convert widget coordinates to image coordinates
-        widget_x = event.pos().x() - offset_x
-        widget_y = event.pos().y() - offset_y
+        widget_x = ev.pos().x() - offset_x
+        widget_y = ev.pos().y() - offset_y
 
         # Check if click is within the image bounds
         if (
@@ -422,10 +424,10 @@ class SVGGui(QMainWindow):
 
         if self.processed_image is not None:
             height, width, channel = self.processed_image.shape
-            assert(0 <= img_x)
-            assert(img_x < width)
-            assert(0 <= img_y)
-            assert(img_y < height)
+            assert 0 <= img_x
+            assert img_x < width
+            assert 0 <= img_y
+            assert img_y < height
 
         self.click_point = [img_x, img_y]
 
@@ -468,7 +470,9 @@ class SVGGui(QMainWindow):
 
         # If we have a clicked point, draw it.
         if self.click_point:
-            cv2.circle(overlay, (self.click_point[0], self.click_point[1]), 50, (0, 0, 255), -1)
+            cv2.circle(
+                overlay, (self.click_point[0], self.click_point[1]), 50, (0, 0, 255), -1
+            )
 
         # Draw detected circles
         i_selected = 0
@@ -588,7 +592,9 @@ class SVGGui(QMainWindow):
         ).rgbSwapped()
         self.image_label.setPixmap(
             QPixmap.fromImage(q_image).scaled(
-                self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                self.image_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.SmoothTransformation,
             )
         )
 
@@ -730,41 +736,53 @@ class SVGGui(QMainWindow):
         #     self.selected_objects, self.simplified_contours, self
         # )
 
-        dialog = ContourExportDialog(
-            self.selected_objects, self.new_contours, self
-        )
-        
+        dialog = ContourExportDialog(self.selected_objects, self.new_contours, self)
+
         dialog.exec_()
 
     def warp_image(self):
         used_circles = list(self.selected_circles)
         circles = np.array(self.circles)
-        circles = circles[used_circles,:]
-        
-        a = used_circles.pop(np.argmin(circles[:,0]))
-        c = used_circles.pop(np.argmin(circles[used_circles,1]))
-        b = used_circles
-    
-        input_points = np.zeros((3,2))
-        input_points[0,:] = circles[a,0:2]
-        input_points[1,:] = circles[b,0:2]
-        input_points[2,:] = circles[c,0:2]
-        
-        output_points = np.array([[self.leg_distance_input.value(), 0], [0,0], [0,self.leg_distance_input.value()]])
+        circles = circles[used_circles, :]
 
-        #needs to be 32 bit float, otherwie has operating system dependecies
+        a = used_circles.pop(np.argmin(circles[:, 0]))
+        c = used_circles.pop(np.argmin(circles[used_circles, 1]))
+        b = used_circles
+
+        input_points = np.zeros((3, 2))
+        input_points[0, :] = circles[a, 0:2]
+        input_points[1, :] = circles[b, 0:2]
+        input_points[2, :] = circles[c, 0:2]
+
+        output_points = np.array(
+            [
+                [self.leg_distance_input.value(), 0],
+                [0, 0],
+                [0, self.leg_distance_input.value()],
+            ]
+        )
+
+        # needs to be 32 bit float, otherwie has operating system dependecies
         input_points = np.float32(input_points)
         output_points = np.float32(output_points)
 
-        affine = cv2.getAffineTransform(input_points,output_points)
-        
-        self.warped_image = np.transpose(np.zeros(self.processed_image.shape),[1,0,2])
-        self.warped_image[:,:,0] = cv2.warpAffine(self.processed_image[:,:,0], affine, self.processed_image.shape[:2])
-        self.warped_image[:,:,1] = cv2.warpAffine(self.processed_image[:,:,1], affine, self.processed_image.shape[:2])
-        self.warped_image[:,:,2] = cv2.warpAffine(self.processed_image[:,:,2], affine, self.processed_image.shape[:2])
-                
+        affine = cv2.getAffineTransform(input_points, output_points)
+
+        self.warped_image = np.transpose(
+            np.zeros(self.processed_image.shape), [1, 0, 2]
+        )
+        self.warped_image[:, :, 0] = cv2.warpAffine(
+            self.processed_image[:, :, 0], affine, self.processed_image.shape[:2]
+        )
+        self.warped_image[:, :, 1] = cv2.warpAffine(
+            self.processed_image[:, :, 1], affine, self.processed_image.shape[:2]
+        )
+        self.warped_image[:, :, 2] = cv2.warpAffine(
+            self.processed_image[:, :, 2], affine, self.processed_image.shape[:2]
+        )
+
         plt.figure()
-        plt.imshow(np.sum(self.warped_image[:400,:400],axis=2),cmap="Greys")
+        plt.imshow(np.sum(self.warped_image[:400, :400], axis=2), cmap="Greys")
         plt.show()
 
         # cv2.imshow("color_image", cv2.resize(self.warped_image,(1000,1000)))
@@ -772,17 +790,18 @@ class SVGGui(QMainWindow):
 
         self.new_contours = {}
         for i in self.selected_objects:
-            #add a third dmention to the points for the affine transform
+            # add a third dmention to the points for the affine transform
             contour = np.squeeze(self.simplified_contours[i])
-            contour = np.concatenate([contour, np.ones([contour.shape[0],1])], axis=1)
+            contour = np.concatenate([contour, np.ones([contour.shape[0], 1])], axis=1)
             self.new_contours[i] = (affine @ contour.T).T
-      
+
             plt.figure()
             plt.title("tranformed contour")
-            plt.plot(self.new_contours[i][:,0], self.new_contours[i][:,1],"-")
+            plt.plot(self.new_contours[i][:, 0], self.new_contours[i][:, 1], "-")
             plt.xlabel("mm")
             plt.ylabel("mm")
             plt.show()
+
 
 class ContourExportDialog(QDialog):
     def __init__(self, selected_objects, simplified_contours, parent=None):
@@ -821,10 +840,10 @@ class ContourExportDialog(QDialog):
         self.text_edit.setPlainText(contour_text)
         layout.addWidget(self.text_edit)
 
-        #add figure()
+        # add figure()
         plt.figure()
         plt.title("tranformed contour")
-        plt.plot(transformed_points[:,0], transformed_points[:,1],"-")
+        plt.plot(transformed_points[:, 0], transformed_points[:, 1], "-")
         plt.xlabel("mm")
         plt.ylabel("mm")
         plt.show()
@@ -837,7 +856,7 @@ class ContourExportDialog(QDialog):
     def transform_to_origin(self, contour):
         """Transform contour so that one corner of the PCA-aligned bounding box is at origin."""
         # Get all points from contour
-        # points = contour.reshape(-1, 2).astype(np.float32)        
+        # points = contour.reshape(-1, 2).astype(np.float32)
         points = contour.astype(np.float32)
 
         # Compute PCA to get principal components
