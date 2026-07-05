@@ -17,17 +17,20 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QCheckBox,
-    QGroupBox,
 )
 from numpy.typing import NDArray
 import matplotlib.pyplot as plt
-from PyQt5.QtCore import Qt, QPoint, QRect
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QMouseEvent
+from PyQt5.QtCore import Qt, QLibraryInfo
+from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 from skimage import morphology
 import scipy.ndimage
 from transformers import Sam2Processor, Sam2Model
 import torch
-from PIL import Image
+
+# Fix PyQt5 / OpenCV collision
+os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
+    QLibraryInfo.PluginsPath
+)
 
 # Pipeline stages have the following properties:
 #  * User Configuration parameters
@@ -48,7 +51,7 @@ class Segmenter:
     def __init__(self) -> None:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = Sam2Model.from_pretrained("facebook/sam2-hiera-tiny").to(
-            self.device
+            self.device  # pyright: ignore[reportArgumentType]
         )
         self.processor = Sam2Processor.from_pretrained("facebook/sam2-hiera-tiny")
 
@@ -78,9 +81,9 @@ class Segmenter:
 
 
 class ClickRecorder:
-    def __init__(self, image_widget: QLabel, image_size: tuple) -> None:
+    def __init__(self, image_widget: QLabel, image_shape: tuple) -> None:
         self.image_widget = image_widget
-        self.image_size = image_size
+        self.image_shape = image_shape
         self.image_points = []
         self.image_labels = []
 
@@ -101,8 +104,8 @@ class ClickRecorder:
 
         # Calculate the actual position of the scaled image within the widget
         # The image is centered and scaled to fit while maintaining aspect ratio
-        scale_x = pixmap_width / self.image_size[1]
-        scale_y = pixmap_height / self.image_size[0]
+        scale_x = pixmap_width / self.image_shape[1]
+        scale_y = pixmap_height / self.image_shape[0]
 
         # Calculate offset to center the image in the widget
         offset_x = (widget_width - pixmap_width) // 2
@@ -126,9 +129,9 @@ class ClickRecorder:
         img_y = int(widget_y / scale_y)
 
         assert 0 <= img_x
-        assert img_x < self.image_size[1]
+        assert img_x < self.image_shape[1]
         assert 0 <= img_y
-        assert img_y < self.image_size[0]
+        assert img_y < self.image_shape[0]
 
         self.image_points.append([img_x, img_y])
         label = 1 if ev.button == Qt.MouseButton.LeftButton else 0
@@ -136,6 +139,20 @@ class ClickRecorder:
 
     def DebugLayer(self) -> cv2.Mat:
         raise NotImplementedError
+
+
+class Morphology:
+    def __init__(self) -> None:
+        self.area = 1000
+
+    def Update(self, area: int) -> None:
+        self.area = area
+
+    def Apply(self, mask_image: cv2.typing.MatLike) -> cv2.typing.MatLike:
+        mask_image = morphology.binary_closing(mask_image)
+        mask_image = morphology.remove_small_holes(mask_image, area_threshold=self.area)
+        mask_image = morphology.remove_small_objects(mask_image, min_size=self.area)
+        return mask_image
 
 
 class SVGGui(QMainWindow):
@@ -163,6 +180,7 @@ class SVGGui(QMainWindow):
 
         self.segmenter = Segmenter()
         self.click_recorder = None
+        self.morphology = Morphology()
 
         self.init_ui()
 
@@ -357,7 +375,7 @@ class SVGGui(QMainWindow):
                 self.export_btn.setEnabled(True)
 
                 self.click_recorder = ClickRecorder(
-                    self.image_label, self.original_image.size
+                    self.image_label, self.original_image.shape
                 )
 
                 # Automatically run detect circles and select objects
@@ -503,6 +521,9 @@ class SVGGui(QMainWindow):
             return
         if self.processed_image is None:
             return
+
+        if self.click_recorder:
+            self.click_recorder.OnClick(ev)
 
         # Get the current pixmap and its dimensions
         pixmap = self.image_label.pixmap()
