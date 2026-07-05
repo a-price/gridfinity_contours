@@ -19,11 +19,123 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QGroupBox,
 )
+from numpy.typing import NDArray
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QPoint, QRect
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QMouseEvent
 from skimage import morphology
 import scipy.ndimage
+from transformers import Sam2Processor, Sam2Model
+import torch
+from PIL import Image
+
+# Pipeline stages have the following properties:
+#  * User Configuration parameters
+#  * Input(s)
+#  * Outputs(s)
+#  * Debugging
+
+# The pipeline has the following stages
+#  * Load Image
+#  * Segment Object Contour
+#  * Extract Calibration
+#  * Rectify and Report Contour
+
+# class Loader:
+
+
+class Segmenter:
+    def __init__(self) -> None:
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = Sam2Model.from_pretrained("facebook/sam2-hiera-tiny").to(
+            self.device
+        )
+        self.processor = Sam2Processor.from_pretrained("facebook/sam2-hiera-tiny")
+
+    # Returns a set of mask hypotheses with tensor indices:
+    # [image, object, point, coordinates=2]
+    def Segment(
+        self,
+        image,
+        input_points: list[list[list[list[float]]]] | None,
+        input_labels: list[list[list[int]]] | None,
+    ) -> NDArray:
+        inputs = self.processor(
+            images=image,
+            input_points=input_points,
+            input_labels=input_labels,
+            return_tensors="pt",
+        ).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+
+        masks = self.processor.post_process_masks(
+            outputs.pred_masks.cpu(), inputs["original_sizes"]
+        )[0]
+
+        return masks.detach().cpu().numpy()
+
+
+class ClickRecorder:
+    def __init__(self, image_widget: QLabel, image_size: tuple) -> None:
+        self.image_widget = image_widget
+        self.image_size = image_size
+        self.image_points = []
+        self.image_labels = []
+
+    def OnClick(self, ev: QMouseEvent | None):
+        if ev is None:
+            return
+
+        # Get the current pixmap and its dimensions
+        pixmap = self.image_widget.pixmap()
+        if pixmap is None:
+            return
+
+        # Get widget and image dimensions
+        widget_width = self.image_widget.width()
+        widget_height = self.image_widget.height()
+        pixmap_width = pixmap.width()
+        pixmap_height = pixmap.height()
+
+        # Calculate the actual position of the scaled image within the widget
+        # The image is centered and scaled to fit while maintaining aspect ratio
+        scale_x = pixmap_width / self.image_size[1]
+        scale_y = pixmap_height / self.image_size[0]
+
+        # Calculate offset to center the image in the widget
+        offset_x = (widget_width - pixmap_width) // 2
+        offset_y = (widget_height - pixmap_height) // 2
+
+        # Convert widget coordinates to image coordinates
+        widget_x = ev.pos().x() - offset_x
+        widget_y = ev.pos().y() - offset_y
+
+        # Check if click is within the image bounds
+        if (
+            widget_x < 0
+            or widget_y < 0
+            or widget_x >= pixmap_width
+            or widget_y >= pixmap_height
+        ):
+            return
+
+        # Scale back to original image coordinates
+        img_x = int(widget_x / scale_x)
+        img_y = int(widget_y / scale_y)
+
+        assert 0 <= img_x
+        assert img_x < self.image_size[1]
+        assert 0 <= img_y
+        assert img_y < self.image_size[0]
+
+        self.image_points.append([img_x, img_y])
+        label = 1 if ev.button == Qt.MouseButton.LeftButton else 0
+        self.image_labels.append(label)
+
+    def DebugLayer(self) -> cv2.Mat:
+        raise NotImplementedError
 
 
 class SVGGui(QMainWindow):
@@ -48,6 +160,9 @@ class SVGGui(QMainWindow):
         self.simplified_contours = {}
 
         self.click_point = []
+
+        self.segmenter = Segmenter()
+        self.click_recorder = None
 
         self.init_ui()
 
@@ -240,6 +355,10 @@ class SVGGui(QMainWindow):
                 self.show_original_btn.setEnabled(True)
                 self.warp_image_btn.setEnabled(True)
                 self.export_btn.setEnabled(True)
+
+                self.click_recorder = ClickRecorder(
+                    self.image_label, self.original_image.size
+                )
 
                 # Automatically run detect circles and select objects
                 self.find_circles()
