@@ -27,6 +27,7 @@ import scipy.ndimage
 from segmenter import Segmenter
 from click_recorder import ClickRecorder
 from morphology import Morphology
+from calibration import HoughCircleCalibration
 
 # Fix PyQt5 / OpenCV collision
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
@@ -56,8 +57,6 @@ class SVGGui(QMainWindow):
         # Initialize variables
         self.original_image = None
         self.processed_image = None
-        self.circles = []
-        self.selected_circles = set()
         self.polygon_points = []
         self.drawing = False
         self.current_polygon = []
@@ -73,6 +72,7 @@ class SVGGui(QMainWindow):
         self.segmenter = Segmenter()
         self.click_recorder = None
         self.morphology = Morphology()
+        self.calibration = HoughCircleCalibration()
 
         self.init_ui()
 
@@ -279,58 +279,15 @@ class SVGGui(QMainWindow):
             return
 
         # Get parameters from sliders
-        min_dist = self.min_dist_slider["slider"].value()
-        param1 = self.param1_slider["slider"].value()
-        param2 = self.param2_slider["slider"].value()
-        min_radius = self.min_radius_slider["slider"].value()
-        max_radius = self.max_radius_slider["slider"].value()
-        threshold_value = self.threshold_slider["slider"].value()
-        max_circles = self.max_circles_slider["slider"].value()
+        self.calibration.min_dist = self.min_dist_slider["slider"].value()
+        self.calibration.param1 = self.param1_slider["slider"].value()
+        self.calibration.param2 = self.param2_slider["slider"].value()
+        self.calibration.min_radius = self.min_radius_slider["slider"].value()
+        self.calibration.max_radius = self.max_radius_slider["slider"].value()
+        self.calibration.threshold_value = self.threshold_slider["slider"].value()
+        self.calibration.max_circles = self.max_circles_slider["slider"].value()
 
-        # Convert to grayscale
-        gray = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY)
-
-        # Apply Gaussian blur to reduce noise before thresholding
-        gray = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        # Convert to binary image (black/white)
-        _, binary = cv2.threshold(gray, threshold_value, 255, cv2.THRESH_BINARY)
-
-        # Apply morphological operations to clean up the binary image
-        kernel = np.ones((3, 3), np.uint8)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-
-        # Apply median blur to the binary image for better circle detection
-        binary = cv2.medianBlur(binary, 5)
-
-        # Detect circles using Hough transform on the binary image
-        circles = cv2.HoughCircles(
-            binary,
-            cv2.HOUGH_GRADIENT,
-            dp=1,
-            minDist=min_dist,
-            param1=param1,
-            param2=param2,
-            minRadius=min_radius,
-            maxRadius=max_radius,
-        )
-
-        # Reset previous circles and selection
-        self.circles = []
-        self.selected_circles = set()
-
-        # Process detected circles and limit to max_circles
-        if circles is not None:
-            circles = np.uint16(np.around(circles))
-            # Limit to the specified maximum number of circles
-            circles_to_add = circles[0, :max_circles]
-            for i in circles_to_add:
-                self.circles.append((i[0], i[1], i[2]))
-
-        # Select the first 3 circles by default
-        for i in range(min(3, len(self.circles))):
-            self.selected_circles.add(i)
+        self.calibration.Detect(self.original_image)
 
         self.update_display()
 
@@ -464,14 +421,9 @@ class SVGGui(QMainWindow):
         self.click_point = [img_x, img_y]
 
         # Check if a circle was clicked
-        for i, (cx, cy, r) in enumerate(self.circles):
-            if (img_x - int(cx)) ** 2 + (img_y - int(cy)) ** 2 <= r**2:
-                if i in self.selected_circles:
-                    self.selected_circles.remove(i)
-                else:
-                    self.selected_circles.add(i)
-                self.update_display()
-                return
+        if self.calibration.ToggleSelection(img_x, img_y):
+            self.update_display()
+            return
 
         # Check if an object was clicked
         if (
@@ -508,12 +460,12 @@ class SVGGui(QMainWindow):
 
         # Draw detected circles
         i_selected = 0
-        for i, (x, y, r) in enumerate(self.circles):
-            color = (255, 0, 0) if i in self.selected_circles else (0, 0, 255)
+        for i, (x, y, r) in enumerate(self.calibration.circles):
+            color = (255, 0, 0) if i in self.calibration.selected_circles else (0, 0, 255)
             cv2.circle(display_image, (x, y), r, color, 2)
             cv2.circle(display_image, (x, y), 2, (0, 255, 0), 3)
 
-            if i in self.selected_circles:
+            if i in self.calibration.selected_circles:
                 # Add transparent blue fill
                 cv2.circle(overlay, (x, y), r, (255, 0, 0), -1)  # Filled circle
 
@@ -773,32 +725,8 @@ class SVGGui(QMainWindow):
         dialog.exec_()
 
     def warp_image(self):
-        used_circles = list(self.selected_circles)
-        circles = np.array(self.circles)
-        circles = circles[used_circles, :]
-
-        a = used_circles.pop(np.argmin(circles[:, 0]))
-        c = used_circles.pop(np.argmin(circles[used_circles, 1]))
-        b = used_circles
-
-        input_points = np.zeros((3, 2))
-        input_points[0, :] = circles[a, 0:2]
-        input_points[1, :] = circles[b, 0:2]
-        input_points[2, :] = circles[c, 0:2]
-
-        output_points = np.array(
-            [
-                [self.leg_distance_input.value(), 0],
-                [0, 0],
-                [0, self.leg_distance_input.value()],
-            ]
-        )
-
-        # needs to be 32 bit float, otherwie has operating system dependecies
-        input_points = np.float32(input_points)
-        output_points = np.float32(output_points)
-
-        affine = cv2.getAffineTransform(input_points, output_points)
+        self.calibration.leg_distance_mm = self.leg_distance_input.value()
+        affine = self.calibration.GetTransform()
 
         self.warped_image = np.transpose(
             np.zeros(self.processed_image.shape), [1, 0, 2]
