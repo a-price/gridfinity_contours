@@ -21,13 +21,13 @@ from PyQt5.QtWidgets import (
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
-from skimage import morphology
 import scipy.ndimage
 
 from segmenter import Segmenter
 from click_recorder import ClickRecorder
 from morphology import Morphology
 from calibration import HoughCircleCalibration
+from contour_extraction import ExtractContour, FindContours, PCABox
 
 # Fix PyQt5 / OpenCV collision
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
@@ -302,10 +302,8 @@ class SVGGui(QMainWindow):
         # Threshold: objects brighter than background (same as makersaturday.py)
         mask_image = gray > 50
 
-        # Morphological cleanup (same as makersaturday.py)
-        mask_image = morphology.binary_closing(mask_image)
-        mask_image = morphology.remove_small_holes(mask_image, area_threshold=1000)
-        mask_image = morphology.remove_small_objects(mask_image, min_size=1000)
+        # Morphological cleanup
+        mask_image = self.morphology.Apply(mask_image)
 
         # Label connected components
         labels, _ = scipy.ndimage.label(mask_image)
@@ -315,13 +313,7 @@ class SVGGui(QMainWindow):
         self.object_labels = labels
 
         # Extract contours for visualization
-        self.object_contours = []
-        # Use OpenCV findContours on uint8 mask
-        mask_u8 = mask_image.astype(np.uint8) * 255
-        contours, _ = cv2.findContours(
-            mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        self.object_contours = contours
+        self.object_contours = FindContours(mask_image)
 
         self.update_display()
 
@@ -505,9 +497,8 @@ class SVGGui(QMainWindow):
                         overlay, [contour], -1, (0, 255, 0), -1
                     )  # Filled contour
 
-                    # Polyline simplification using Douglas-Peucker algorithm
-                    epsilon = 0.001 * cv2.arcLength(contour, True)  # 2% of perimeter
-                    simplified_contour = cv2.approxPolyDP(contour, epsilon, True)
+                    # Simplify the contour and compute its PCA-aligned box
+                    simplified_contour, pca_box = ExtractContour(contour)
 
                     # Store simplified contour for export
                     self.simplified_contours[i] = simplified_contour
@@ -517,48 +508,18 @@ class SVGGui(QMainWindow):
                         display_image, [simplified_contour], -1, (255, 255, 0), 3
                     )
 
-                    # Find center and compute PCA-based bounding box
-                    # Get all points from simplified contour
-                    points = simplified_contour.reshape(-1, 2).astype(np.float32)
-
-                    # Compute PCA
-                    mean, eigenvectors, _ = cv2.PCACompute2(points, np.array([]))
-                    center = mean[0]
-
-                    # Get the principal components (eigenvectors)
-                    pc1 = eigenvectors[0]  # First principal component
-                    pc2 = eigenvectors[1]  # Second principal component
-
-                    # Project points onto principal components to find extents
-                    projected1 = np.dot(points - center, pc1)
-                    projected2 = np.dot(points - center, pc2)
-
-                    # Find min/max along each principal component
-                    min1, max1 = np.min(projected1), np.max(projected1)
-                    min2, max2 = np.min(projected2), np.max(projected2)
-
-                    # Create bounding box corners in PCA space
-                    corners_pca = np.array(
-                        [[min1, min2], [max1, min2], [max1, max2], [min1, max2]]
-                    )
-
-                    # Transform back to image coordinates
-                    box = np.array(
-                        [
-                            center + corner[0] * pc1 + corner[1] * pc2
-                            for corner in corners_pca
-                        ]
-                    )
-                    box = np.int32(box)
-
                     # Draw PCA-aligned bounding box
                     cv2.drawContours(
-                        display_image, [box], -1, (255, 0, 255), 2
+                        display_image, [pca_box.corners], -1, (255, 0, 255), 2
                     )  # Magenta bounding box
 
                     # Draw center point
                     cv2.circle(
-                        display_image, tuple(np.int32(center)), 5, (255, 0, 255), -1
+                        display_image,
+                        tuple(np.int32(pca_box.center)),
+                        5,
+                        (255, 0, 255),
+                        -1,
                     )
 
         # Blend overlay with main image for transparency effect (30% opacity)
@@ -815,41 +776,8 @@ class ContourExportDialog(QDialog):
 
     def transform_to_origin(self, contour):
         """Transform contour so that one corner of the PCA-aligned bounding box is at origin."""
-        # Get all points from contour
-        # points = contour.reshape(-1, 2).astype(np.float32)
-        points = contour.astype(np.float32)
-
-        # Compute PCA to get principal components
-        mean, eigenvectors, _ = cv2.PCACompute2(points, np.array([]))
-        center = mean[0]
-
-        # Get the principal components (eigenvectors)
-        pc1 = eigenvectors[0]  # First principal component
-        pc2 = eigenvectors[1]  # Second principal component
-
-        # Project points onto principal components to find extents
-        projected1 = np.dot(points - center, pc1)
-        projected2 = np.dot(points - center, pc2)
-
-        # Find min/max along each principal component
-        min1, max1 = np.min(projected1), np.max(projected1)
-        min2, max2 = np.min(projected2), np.max(projected2)
-
-        # Transform all contour points to PCA coordinate system
-        # Then translate so that the minimum corner is at origin
-        transformed_points = []
-        for point in points:
-            # Project to PCA space
-            pca_coords = np.array(
-                [np.dot(point - center, pc1), np.dot(point - center, pc2)]
-            )
-
-            # Translate so min corner is at origin (subtract minimums)
-            origin_coords = pca_coords - np.array([min1, min2])
-
-            transformed_points.append(origin_coords)
-
-        return np.array(transformed_points)
+        points = contour.reshape(-1, 2).astype(np.float32)
+        return PCABox(points).ToLocal(points)
 
 
 def main():
