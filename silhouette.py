@@ -1,5 +1,6 @@
 import sys
 import os
+import math
 import cv2
 import numpy as np
 from PyQt5.QtWidgets import (
@@ -133,9 +134,21 @@ class ClickRecorder:
         assert 0 <= img_y
         assert img_y < self.image_shape[0]
 
-        self.image_points.append([img_x, img_y])
-        label = 1 if ev.button == Qt.MouseButton.LeftButton else 0
-        self.image_labels.append(label)
+        if ev.button() == Qt.MouseButton.MiddleButton:
+            erase_radius = 5
+            # Erase points within 5 pixels of the click, keeping points/labels in sync
+            kept = [
+                (point, label)
+                for point, label in zip(self.image_points, self.image_labels)
+                if math.hypot(point[0] - img_x, point[1] - img_y) >= erase_radius
+            ]
+            self.image_points = [point for point, _ in kept]
+            self.image_labels = [label for _, label in kept]
+            return
+        else:
+            self.image_points.append([img_x, img_y])
+            label = 1 if ev.button() == Qt.MouseButton.LeftButton else 0
+            self.image_labels.append(label)
 
     def DebugLayer(self) -> cv2.Mat:
         raise NotImplementedError
