@@ -6,10 +6,14 @@ from transformers import Sam2Model, Sam2Processor
 class Segmenter:
     def __init__(self) -> None:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = Sam2Model.from_pretrained("facebook/sam2-hiera-tiny").to(
+        self.model = Sam2Model.from_pretrained(
+            "facebook/sam2-hiera-tiny", local_files_only=True
+        ).to(
             self.device  # pyright: ignore[reportArgumentType]
         )
-        self.processor = Sam2Processor.from_pretrained("facebook/sam2-hiera-tiny")
+        self.processor = Sam2Processor.from_pretrained(
+            "facebook/sam2-hiera-tiny", local_files_only=True
+        )
 
     # Returns a set of mask hypotheses with tensor indices:
     # [image, object, point, coordinates=2]

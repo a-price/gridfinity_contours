@@ -16,12 +16,12 @@ def test_hough_circle_calibration_detects_and_selects_first_three():
     image = _draw_circle_image(circles)
 
     calibration = HoughCircleCalibration()
-    calibration.min_dist = 50
-    calibration.threshold_value = 100
-    calibration.min_radius = 10
-    calibration.max_radius = 40
-    calibration.param1 = 50
-    calibration.param2 = 15
+    calibration.parameters.min_dist = 50
+    calibration.parameters.threshold_value = 100
+    calibration.parameters.min_radius = 10
+    calibration.parameters.max_radius = 40
+    calibration.parameters.param1 = 50
+    calibration.parameters.param2 = 15
     calibration.Detect(image)
 
     assert len(calibration.circles) == 3
@@ -38,7 +38,7 @@ def test_hough_circle_calibration_transform_is_index_order_independent():
     distractor = (800.0, 800.0)
 
     calibration = HoughCircleCalibration()
-    calibration.leg_distance_mm = 80.0
+    calibration.parameters.leg_distance_mm = 80.0
     calibration.circles = [
         (*b_point, 20),
         (*distractor, 20),

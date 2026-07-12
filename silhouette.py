@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QLabel,
     QWidget,
-    QSlider,
     QTextEdit,
     QDialog,
     QComboBox,
@@ -24,10 +23,13 @@ from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 import scipy.ndimage
 
 from segmenter import Segmenter
-from click_recorder import ClickRecorder
+from segmenter_stage import SegmenterStage
 from morphology import Morphology
+from morphology_stage import MorphologyStage
 from calibration import HoughCircleCalibration
+from calibration_stage import HoughCircleCalibrationStage
 from contour_extraction import ExtractContour, FindContours, PCABox
+from pipeline import Pipeline
 
 # Fix PyQt5 / OpenCV collision
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
@@ -70,9 +72,26 @@ class SVGGui(QMainWindow):
         self.click_point = []
 
         self.segmenter = Segmenter()
-        self.click_recorder = None
+        self.segmenter_stage = SegmenterStage(self.segmenter)
         self.morphology = Morphology()
+        self.morphology_stage = MorphologyStage(self.morphology)
         self.calibration = HoughCircleCalibration()
+        self.calibration_stage = HoughCircleCalibrationStage(self.calibration)
+
+        self.pipeline = Pipeline()
+        self.pipeline.Register("calibration", self.find_circles, downstream=["display"])
+        self.pipeline.Register("contours", self.find_contours, downstream=["display"])
+        self.pipeline.Register(
+            "morphology",
+            lambda: self.morphology_stage.Run(self.segmenter_stage.mask),
+            downstream=["contours"],
+        )
+        self.pipeline.Register(
+            "segmentation",
+            lambda: self.segmenter_stage.Run(self.original_image),
+            downstream=["morphology"],
+        )
+        self.pipeline.Register("display", self.update_display)
 
         self.init_ui()
 
@@ -120,46 +139,24 @@ class SVGGui(QMainWindow):
         self.circle_params_toggle.clicked.connect(self.toggle_circle_params)
         control_layout.addWidget(self.circle_params_toggle)
 
-        # Create container widget for circle parameters
-        self.circle_params_widget = QWidget()
-        circle_params_layout = QVBoxLayout(self.circle_params_widget)
-        circle_params_layout.setContentsMargins(20, 0, 0, 0)  # Indent the parameters
-
-        # Max circles slider
-        self.max_circles_slider = self.create_slider("Top N Circles:", 1, 20, 5)
-        circle_params_layout.addLayout(self.max_circles_slider["layout"])
-
-        # Min distance slider
-        self.min_dist_slider = self.create_slider("Min Distance:", 10, 200, 50)
-        circle_params_layout.addLayout(self.min_dist_slider["layout"])
-
-        # Param1 slider
-        self.param1_slider = self.create_slider(
-            "Param1 (edge detection):", 10, 200, 100
+        # Circle parameters widget: built by the calibration stage itself,
+        # wired so a settled edit reruns calibration (and the display
+        # refresh downstream of it) through the pipeline.
+        self.circle_params_widget = self.calibration_stage.CreateWidget(
+            on_change=lambda: self.pipeline.RunFrom("calibration")
         )
-        circle_params_layout.addLayout(self.param1_slider["layout"])
-
-        # Param2 slider
-        self.param2_slider = self.create_slider("Param2 (threshold):", 1, 100, 30)
-        circle_params_layout.addLayout(self.param2_slider["layout"])
-
-        # Min radius slider
-        self.min_radius_slider = self.create_slider("Min Radius:", 1, 100, 10)
-        circle_params_layout.addLayout(self.min_radius_slider["layout"])
-
-        # Max radius slider
-        self.max_radius_slider = self.create_slider("Max Radius:", 10, 200, 100)
-        circle_params_layout.addLayout(self.max_radius_slider["layout"])
-
-        # Binary threshold slider
-        self.threshold_slider = self.create_slider("Binary Threshold:", 1, 255, 127)
-        circle_params_layout.addLayout(self.threshold_slider["layout"])
-
-        # Add the parameters widget to the main control layout
         control_layout.addWidget(self.circle_params_widget)
 
         # Hide parameters by default (collapsed)
         self.circle_params_widget.setVisible(False)
+
+        # Morphology cleanup parameters: settled edits rerun morphology
+        # (and contours/display downstream of it) through the pipeline.
+        control_layout.addWidget(QLabel("\nSegmentation Cleanup:"))
+        self.morphology_widget = self.morphology_stage.CreateWidget(
+            on_change=lambda: self.pipeline.RunFrom("morphology")
+        )
+        control_layout.addWidget(self.morphology_widget)
 
         # Add Transform Parameters section
         control_layout.addWidget(QLabel("\nTransform Parameters:"))
@@ -211,24 +208,6 @@ class SVGGui(QMainWindow):
         layout.addWidget(control_panel, stretch=1)
         layout.addWidget(self.image_label, stretch=3)
 
-    def create_slider(self, label_text, min_val, max_val, default_val):
-        layout = QVBoxLayout()
-        label = QLabel(f"{label_text} {default_val}")
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setMinimum(min_val)
-        slider.setMaximum(max_val)
-        slider.setValue(default_val)
-
-        def update_label(value):
-            label.setText(f"{label_text} {value}")
-
-        slider.valueChanged.connect(update_label)
-
-        layout.addWidget(label)
-        layout.addWidget(slider)
-
-        return {"layout": layout, "slider": slider, "label": label}
-
     def toggle_circle_params(self):
         """Toggle visibility of circle detection parameters."""
         is_visible = self.circle_params_widget.isVisible()
@@ -259,51 +238,40 @@ class SVGGui(QMainWindow):
             if self.original_image is not None:
                 self.processed_image = self.original_image.copy()
                 # Configure radius sliders based on image size
-                self._configure_radius_sliders_for_image()
-                self.update_display()
+                self.calibration_stage.ConfigureForImageShape(self.original_image.shape)
                 self.show_binary_btn.setEnabled(True)
                 self.show_original_btn.setEnabled(True)
                 self.warp_image_btn.setEnabled(True)
                 self.export_btn.setEnabled(True)
 
-                self.click_recorder = ClickRecorder(
-                    self.image_label, self.original_image.shape
+                self.segmenter_stage.AttachToImageWidget(
+                    self.image_label,
+                    self.original_image.shape,
+                    on_change=lambda: self.pipeline.RunFrom("segmentation"),
                 )
 
-                # Automatically run detect circles and select objects
-                self.find_circles()
-                self.find_contours()
+                # Automatically detect the circle fiducials; object contours
+                # only become available once the user clicks segmentation
+                # points, cascading through segmentation -> morphology ->
+                # contours -> display.
+                self.pipeline.RunFrom("calibration")
 
     def find_circles(self):
         if self.original_image is None:
             return
-
-        # Get parameters from sliders
-        self.calibration.min_dist = self.min_dist_slider["slider"].value()
-        self.calibration.param1 = self.param1_slider["slider"].value()
-        self.calibration.param2 = self.param2_slider["slider"].value()
-        self.calibration.min_radius = self.min_radius_slider["slider"].value()
-        self.calibration.max_radius = self.max_radius_slider["slider"].value()
-        self.calibration.threshold_value = self.threshold_slider["slider"].value()
-        self.calibration.max_circles = self.max_circles_slider["slider"].value()
-
-        self.calibration.Detect(self.original_image)
-
-        self.update_display()
+        self.calibration_stage.Run(self.original_image)
 
     def find_contours(self):
-        """Segment objects against a black background using thresholding and morphology."""
-        if self.original_image is None:
+        """Extract object contours from the morphology stage's cleaned-up
+        segmentation mask (empty until the user has clicked points on an
+        object).
+        """
+        mask_image = self.morphology_stage.mask
+        if mask_image is None:
+            self.object_mask = None
+            self.object_labels = None
+            self.object_contours = []
             return
-
-        # Convert to grayscale
-        gray = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY)
-
-        # Threshold: objects brighter than background (same as makersaturday.py)
-        mask_image = gray > 50
-
-        # Morphological cleanup
-        mask_image = self.morphology.Apply(mask_image)
 
         # Label connected components
         labels, _ = scipy.ndimage.label(mask_image)
@@ -315,15 +283,13 @@ class SVGGui(QMainWindow):
         # Extract contours for visualization
         self.object_contours = FindContours(mask_image)
 
-        self.update_display()
-
     def show_binary_image(self):
         """Display the binary version of the image for debugging purposes."""
         if self.original_image is None:
             return
 
-        # Get threshold value from slider
-        threshold_value = self.threshold_slider["slider"].value()
+        # Get threshold value from the calibration stage's parameters
+        threshold_value = self.calibration.parameters.threshold_value
 
         # Convert to grayscale
         gray = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2GRAY)
@@ -363,8 +329,7 @@ class SVGGui(QMainWindow):
         if self.processed_image is None:
             return
 
-        if self.click_recorder:
-            self.click_recorder.OnClick(ev)
+        self.segmenter_stage.OnClick(ev)
 
         # Get the current pixmap and its dimensions
         pixmap = self.image_label.pixmap()
@@ -543,25 +508,6 @@ class SVGGui(QMainWindow):
             )
         )
 
-    def _configure_radius_sliders_for_image(self) -> None:
-        """Set upper limit of min/max radius sliders to 100% of the minimum image dimension.
-        Default max radius to 20% and min radius to 10% of that minimum dimension.
-        """
-        if self.processed_image is None:
-            return
-        h, w = self.processed_image.shape[:2]
-        min_dim = max(1, min(h, w))
-        # Set slider maximums
-        self.min_radius_slider["slider"].setMaximum(min_dim)
-        self.max_radius_slider["slider"].setMaximum(min_dim)
-        # Compute defaults
-        default_max = max(1, int(0.20 * min_dim))
-        default_min = max(1, int(0.02 * min_dim))
-        if default_min > default_max:
-            default_min = default_max
-        # Set values (this will also update labels via valueChanged)
-        self.max_radius_slider["slider"].setValue(default_max)
-        self.min_radius_slider["slider"].setValue(default_min)
 
     def _nice_tick_step(self, length_px: int) -> int:
         """Return a 'nice' tick step (in pixels) for the given length in pixels.
@@ -686,7 +632,7 @@ class SVGGui(QMainWindow):
         dialog.exec_()
 
     def warp_image(self):
-        self.calibration.leg_distance_mm = self.leg_distance_input.value()
+        self.calibration.parameters.leg_distance_mm = self.leg_distance_input.value()
         affine = self.calibration.GetTransform()
 
         self.warped_image = np.transpose(

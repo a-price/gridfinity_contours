@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
@@ -22,6 +24,20 @@ class Calibration:
         raise NotImplementedError
 
 
+@dataclass
+class HoughCircleParameters:
+    """User-configurable inputs for HoughCircleCalibration."""
+
+    min_dist: int = 50
+    param1: int = 100
+    param2: int = 30
+    min_radius: int = 10
+    max_radius: int = 100
+    threshold_value: int = 127
+    max_circles: int = 5
+    leg_distance_mm: float = 80.0
+
+
 class HoughCircleCalibration(Calibration):
     """Calibrates against 3 selected circular fiducials arranged in an L
     shape: a right-angle corner circle, with the other two each
@@ -29,22 +45,15 @@ class HoughCircleCalibration(Calibration):
     """
 
     def __init__(self) -> None:
-        self.min_dist = 50
-        self.param1 = 100
-        self.param2 = 30
-        self.min_radius = 10
-        self.max_radius = 100
-        self.threshold_value = 127
-        self.max_circles = 5
-        self.leg_distance_mm = 80.0
-
+        self.parameters = HoughCircleParameters()
         self.circles: list[tuple[int, int, int]] = []
         self.selected_circles: set[int] = set()
 
     def Detect(self, image: cv2.typing.MatLike) -> None:
+        p = self.parameters
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        _, binary = cv2.threshold(gray, self.threshold_value, 255, cv2.THRESH_BINARY)
+        _, binary = cv2.threshold(gray, p.threshold_value, 255, cv2.THRESH_BINARY)
 
         kernel = np.ones((3, 3), np.uint8)
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
@@ -55,21 +64,36 @@ class HoughCircleCalibration(Calibration):
             binary,
             cv2.HOUGH_GRADIENT,
             dp=1,
-            minDist=self.min_dist,
-            param1=self.param1,
-            param2=self.param2,
-            minRadius=self.min_radius,
-            maxRadius=self.max_radius,
+            minDist=p.min_dist,
+            param1=p.param1,
+            param2=p.param2,
+            minRadius=p.min_radius,
+            maxRadius=p.max_radius,
         )
 
         self.circles = []
         if circles is not None:
             circles = np.uint16(np.around(circles))
-            for x, y, r in circles[0, : self.max_circles]:
+            for x, y, r in circles[0, : p.max_circles]:
                 self.circles.append((int(x), int(y), int(r)))
 
         # Select the first 3 circles by default
         self.selected_circles = set(range(min(3, len(self.circles))))
+
+    def ConfigureForImageShape(self, shape: tuple) -> None:
+        """Set the min/max radius parameter defaults relative to the loaded
+        image's smaller dimension: max radius defaults to 20%, min radius to
+        2%.
+        """
+        h, w = shape[:2]
+        min_dim = max(1, min(h, w))
+        default_max = max(1, int(0.20 * min_dim))
+        default_min = max(1, int(0.02 * min_dim))
+        if default_min > default_max:
+            default_min = default_max
+
+        self.parameters.max_radius = default_max
+        self.parameters.min_radius = default_min
 
     def ToggleSelection(self, x: int, y: int) -> bool:
         """Toggle selection of the circle under image coordinates (x, y).
@@ -102,7 +126,7 @@ class HoughCircleCalibration(Calibration):
         b = next(i for i in remaining if i != c)
 
         image_points = centers[[a, b, c]]
-        leg = self.leg_distance_mm
+        leg = self.parameters.leg_distance_mm
         target_points = np.float32([[leg, 0], [0, 0], [0, leg]])
         return cv2.getAffineTransform(image_points, target_points)
 
