@@ -40,7 +40,11 @@ class MorphologyStage(Stage):
             on_change()
 
         area_slider = CreateSlider(
-            "Cleanup Min Area (px):", 1, 20000, self.morphology.parameters.area, apply_area
+            "Cleanup Min Area (px):",
+            1,
+            20000,
+            self.morphology.parameters.area,
+            apply_area,
         )
         layout.addLayout(area_slider["layout"])
 

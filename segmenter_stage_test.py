@@ -30,9 +30,7 @@ def spoon_image():
 
 
 def _click(x: int, y: int, button):
-    return QMouseEvent(
-        QEvent.MouseButtonPress, QPointF(x, y), button, button, Qt.NoModifier
-    )
+    return QMouseEvent(QEvent.MouseButtonPress, QPointF(x, y), button, button, Qt.NoModifier)
 
 
 def _make_widget(shape) -> QLabel:
@@ -115,7 +113,7 @@ def test_run_calls_segmenter_with_points_and_labels_from_click_recorder(qapp, sp
 
     assert stage.mask is not None
     assert stage.mask.shape == spoon_image.shape[:2]
-    (points, labels), = fake.calls
+    ((points, labels),) = fake.calls
     assert points == [[[list(SPOON_POINT_A), list(BACKGROUND_POINT)]]]
     assert labels == [[[1, 0]]]
 

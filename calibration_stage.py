@@ -2,7 +2,11 @@ from typing import Callable
 
 from PyQt5.QtWidgets import QLabel, QWidget
 
-from calibration import ArucoCalibration, HoughCircleCalibration, IdentityCalibration
+from calibration import (
+    ArucoCalibration,
+    HoughCircleCalibration,
+    IdentityCalibration,
+)
 from pipeline import CreateGroupBox, CreateSlider, CreateSpinBox, Stage
 
 

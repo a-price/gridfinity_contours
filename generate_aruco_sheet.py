@@ -27,9 +27,7 @@ from calibration import (
 )
 
 # Fix PyQt5 / OpenCV collision
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
-    QLibraryInfo.PluginsPath
-)
+os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
 
 
 PAGE_WIDTH_MM = PaperCalibration.WIDTH_MM
@@ -57,18 +55,14 @@ def GenerateSheet(output_path: str) -> None:
     positions = MarkerPositions()
     half = MARKER_SIZE_MM / 2
 
-    fig = plt.figure(
-        figsize=(PAGE_WIDTH_MM / MM_PER_INCH, PAGE_HEIGHT_MM / MM_PER_INCH)
-    )
+    fig = plt.figure(figsize=(PAGE_WIDTH_MM / MM_PER_INCH, PAGE_HEIGHT_MM / MM_PER_INCH))
     ax = fig.add_axes((0, 0, 1, 1))  # fill the whole page, no margins
     ax.set_xlim(0, PAGE_WIDTH_MM)
     ax.set_ylim(PAGE_HEIGHT_MM, 0)  # origin top-left, y increases downward
     ax.axis("off")
 
     for marker_id, (cx, cy) in positions.items():
-        marker_image = cv2.aruco.generateImageMarker(
-            dictionary, marker_id, MARKER_PIXELS
-        )
+        marker_image = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER_PIXELS)
         ax.imshow(
             marker_image,
             cmap="gray",
@@ -78,7 +72,12 @@ def GenerateSheet(output_path: str) -> None:
             interpolation="nearest",
         )
         ax.text(
-            cx, cy - half - 2, f"ID {marker_id}", ha="center", va="bottom", fontsize=8
+            cx,
+            cy - half - 2,
+            f"ID {marker_id}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
         )
 
     ax.text(

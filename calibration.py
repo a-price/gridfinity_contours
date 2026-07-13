@@ -167,8 +167,7 @@ class HoughCircleCalibration(Calibration):
     def GetTransform(self) -> cv2.typing.MatLike:
         if len(self.selected_circles) != 3:
             raise ValueError(
-                "HoughCircleCalibration needs exactly 3 selected circles, "
-                f"has {len(self.selected_circles)}"
+                "HoughCircleCalibration needs exactly 3 selected circles, " f"has {len(self.selected_circles)}"
             )
 
         centers = np.float32(self.circles)[:, :2]
@@ -203,9 +202,7 @@ class PaperCalibration(Calibration):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         _, binary = cv2.threshold(gray, self.threshold_value, 255, cv2.THRESH_BINARY)
 
-        contours, _ = cv2.findContours(
-            binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         self.corners = None
         if not contours:
             return
@@ -227,7 +224,12 @@ class PaperCalibration(Calibration):
         bottom_right = points[np.argmax(total)]
         top_right = points[np.argmin(diff)]
         bottom_left = points[np.argmax(diff)]
-        return [tuple(top_left), tuple(top_right), tuple(bottom_right), tuple(bottom_left)]
+        return [
+            tuple(top_left),
+            tuple(top_right),
+            tuple(bottom_right),
+            tuple(bottom_left),
+        ]
 
     def GetTransform(self) -> cv2.typing.MatLike:
         if self.corners is None:
@@ -240,7 +242,12 @@ class PaperCalibration(Calibration):
         top_left, top_right, bottom_right, bottom_left = self.corners
         image_points = np.float32([top_left, top_right, bottom_right, bottom_left])
         target_points = np.float32(
-            [[0, 0], [self.WIDTH_MM, 0], [self.WIDTH_MM, self.HEIGHT_MM], [0, self.HEIGHT_MM]]
+            [
+                [0, 0],
+                [self.WIDTH_MM, 0],
+                [self.WIDTH_MM, self.HEIGHT_MM],
+                [0, self.HEIGHT_MM],
+            ]
         )
         return cv2.getPerspectiveTransform(image_points, target_points).astype(np.float32)
 
@@ -282,9 +289,7 @@ class ArucoParameters:
     """
 
     marker_size_mm: float = ARUCO_MARKER_SIZE_MM
-    marker_positions_mm: dict[int, tuple[float, float]] = field(
-        default_factory=DefaultArucoMarkerPositions
-    )
+    marker_positions_mm: dict[int, tuple[float, float]] = field(default_factory=DefaultArucoMarkerPositions)
 
 
 class ArucoCalibration(Calibration):
@@ -334,10 +339,7 @@ class ArucoCalibration(Calibration):
         if not self.detected_corners:
             return debug
 
-        corners_list = [
-            corners.reshape(1, 4, 2).astype(np.float32)
-            for corners in self.detected_corners.values()
-        ]
+        corners_list = [corners.reshape(1, 4, 2).astype(np.float32) for corners in self.detected_corners.values()]
         ids_array = np.array(list(self.detected_corners.keys())).reshape(-1, 1)
         cv2.aruco.drawDetectedMarkers(debug, corners_list, ids_array)
         return debug
@@ -366,9 +368,7 @@ class ArucoCalibration(Calibration):
         the calibration sheet's real-world (mm) plane.
         """
         marker_positions = self.parameters.marker_positions_mm
-        matched_ids = [
-            marker_id for marker_id in self.detected_corners if marker_id in marker_positions
-        ]
+        matched_ids = [marker_id for marker_id in self.detected_corners if marker_id in marker_positions]
         if not matched_ids:
             raise ValueError(
                 "ArucoCalibration needs at least one detected marker with a "

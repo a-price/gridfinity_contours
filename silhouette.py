@@ -29,9 +29,7 @@ from rectify import Rectify
 from pipeline import Pipeline
 
 # Fix PyQt5 / OpenCV collision
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
-    QLibraryInfo.PluginsPath
-)
+os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
 
 # Pipeline stages have the following properties:
 #  * User Configuration parameters
@@ -77,7 +75,10 @@ class SVGGui(QMainWindow):
         self.rectify = Rectify()
 
         self.pipeline = Pipeline()
-        self.pipeline.Register("calibration", lambda: self.calibration_stage.Run(self.original_image))
+        self.pipeline.Register(
+            "calibration",
+            lambda: self.calibration_stage.Run(self.original_image),
+        )
         self.pipeline.Register("contours", self.find_contours, downstream=["selection"])
         self.pipeline.Register(
             "selection",
@@ -133,18 +134,14 @@ class SVGGui(QMainWindow):
         # What a click on the image view does - see the _MODE_* constants.
         control_layout.addWidget(QLabel("Click Mode:"))
         self.interaction_mode_combo = QComboBox()
-        self.interaction_mode_combo.addItems(
-            [_MODE_SEGMENT, _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL]
-        )
+        self.interaction_mode_combo.addItems([_MODE_SEGMENT, _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL])
         control_layout.addWidget(self.interaction_mode_combo)
 
         # Each pipeline stage's CreateWidget returns its own titled
         # QGroupBox, so the control panel visually mirrors the stage graph
         # without SVGGui needing to know each stage's display title.
         control_layout.addWidget(
-            self.segmenter_stage.CreateWidget(
-                on_change=lambda: self.pipeline.RunFrom("segmentation")
-            )
+            self.segmenter_stage.CreateWidget(on_change=lambda: self.pipeline.RunFrom("segmentation"))
         )
 
         # Calibration stage widget: a status label showing how many ArUco
@@ -156,18 +153,14 @@ class SVGGui(QMainWindow):
         # Morphology cleanup parameters: settled edits rerun morphology
         # (and contours/display downstream of it) through the pipeline.
         control_layout.addWidget(
-            self.morphology_stage.CreateWidget(
-                on_change=lambda: self.pipeline.RunFrom("morphology")
-            )
+            self.morphology_stage.CreateWidget(on_change=lambda: self.pipeline.RunFrom("morphology"))
         )
 
         # Contour selection parameters: settled edits rerun selection (and
         # display downstream of it) through the pipeline. Selecting an
         # object itself happens by clicking it in the image view.
         control_layout.addWidget(
-            self.contour_selection_stage.CreateWidget(
-                on_change=lambda: self.pipeline.RunFrom("selection")
-            )
+            self.contour_selection_stage.CreateWidget(on_change=lambda: self.pipeline.RunFrom("selection"))
         )
 
         # Add stretch to push everything to the top
@@ -185,9 +178,7 @@ class SVGGui(QMainWindow):
 
     def load_image(self, file_path: str | None = None):
         if not file_path:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, "Open Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp)"
-            )
+            file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp)")
         if file_path:
             self.original_image = cv2.imread(file_path, cv2.IMREAD_COLOR)
             if self.original_image is not None:
@@ -271,9 +262,21 @@ class SVGGui(QMainWindow):
             thickness = max(3, marker_len // 5)
             for (x, y), label in zip(click_recorder.image_points, click_recorder.image_labels):
                 color = (0, 255, 0) if label == 1 else (0, 0, 255)
-                cv2.line(display_image, (x - marker_len, y), (x + marker_len, y), color, thickness)
+                cv2.line(
+                    display_image,
+                    (x - marker_len, y),
+                    (x + marker_len, y),
+                    color,
+                    thickness,
+                )
                 if label == 1:
-                    cv2.line(display_image, (x, y - marker_len), (x, y + marker_len), color, thickness)
+                    cv2.line(
+                        display_image,
+                        (x, y - marker_len),
+                        (x, y + marker_len),
+                        color,
+                        thickness,
+                    )
 
         # Draw object boundaries if available
         selected_objects = self.contour_selection_stage.contour_selection.selected
@@ -285,9 +288,7 @@ class SVGGui(QMainWindow):
 
                 # Add transparent green fill for selected objects
                 if i in selected_objects:
-                    cv2.drawContours(
-                        overlay, [contour], -1, (0, 255, 0), -1
-                    )  # Filled contour
+                    cv2.drawContours(overlay, [contour], -1, (0, 255, 0), -1)  # Filled contour
 
                     simplified_contour = self.contour_selection_stage.contour_selection.simplified.get(i)
                     pca_box = self.contour_selection_stage.contour_selection.boxes.get(i)
@@ -296,13 +297,15 @@ class SVGGui(QMainWindow):
 
                     # Draw simplified contour in bright blue over the original
                     cv2.drawContours(
-                        display_image, [simplified_contour], -1, (255, 255, 0), 3
+                        display_image,
+                        [simplified_contour],
+                        -1,
+                        (255, 255, 0),
+                        3,
                     )
 
                     # Draw PCA-aligned bounding box
-                    cv2.drawContours(
-                        display_image, [pca_box.corners], -1, (255, 0, 255), 2
-                    )  # Magenta bounding box
+                    cv2.drawContours(display_image, [pca_box.corners], -1, (255, 0, 255), 2)  # Magenta bounding box
 
                     # Draw center point
                     cv2.circle(
@@ -321,7 +324,11 @@ class SVGGui(QMainWindow):
         height, width, channel = display_image.shape
         bytes_per_line = 3 * width
         q_image = QImage(
-            display_image.data, width, height, bytes_per_line, QImage.Format_RGB888
+            display_image.data,
+            width,
+            height,
+            bytes_per_line,
+            QImage.Format_RGB888,
         ).rgbSwapped()
         self.image_label.setPixmap(
             QPixmap.fromImage(q_image).scaled(

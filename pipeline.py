@@ -17,7 +17,14 @@ it.
 from typing import Callable, Sequence
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QDoubleSpinBox, QGroupBox, QLabel, QSlider, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QDoubleSpinBox,
+    QGroupBox,
+    QLabel,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class Stage:
@@ -48,7 +55,10 @@ class Pipeline:
         self._downstream: dict[str, list[str]] = {}
 
     def Register(
-        self, name: str, runner: Callable[[], None], downstream: Sequence[str] = ()
+        self,
+        name: str,
+        runner: Callable[[], None],
+        downstream: Sequence[str] = (),
     ) -> None:
         self._runners[name] = runner
         self._downstream[name] = list(downstream)

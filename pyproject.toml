@@ -7,7 +7,7 @@ markers = [
 norecursedirs = ["gridfinity-rebuilt-openscad", ".venv", "__pycache__"]
 
 [tool.black]
-line-length = 80
+line-length = 120
 target-version = ["py312"]
 
 [tool.pyright]

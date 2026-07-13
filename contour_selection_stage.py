@@ -30,9 +30,7 @@ class ContourSelectionStage(Stage):
             on_change()
 
         default = round(self.contour_selection.parameters.epsilon_fraction * _EPSILON_SLIDER_SCALE)
-        slider = CreateSlider(
-            "Contour Simplification (finer → coarser):", 1, 50, default, apply
-        )
+        slider = CreateSlider("Contour Simplification (finer → coarser):", 1, 50, default, apply)
         layout.addLayout(slider["layout"])
 
         return widget

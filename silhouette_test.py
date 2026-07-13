@@ -49,7 +49,14 @@ def spoon_image():
     return image
 
 
-def _click(recorder: ClickRecorder, scale_x: float, scale_y: float, x: int, y: int, button):
+def _click(
+    recorder: ClickRecorder,
+    scale_x: float,
+    scale_y: float,
+    x: int,
+    y: int,
+    button,
+):
     ev = QMouseEvent(
         QEvent.MouseButtonPress,
         QPointF(x * scale_x, y * scale_y),
@@ -64,9 +71,7 @@ def _assert_point_close(actual, target, tol=5):
     # Widget coordinates are quantized to an integer pixmap size, so the
     # image-space round trip loses a few pixels of precision even for a
     # real click - same as what a user would see in the app itself.
-    assert math.hypot(actual[0] - target[0], actual[1] - target[1]) <= tol, (
-        f"{actual} not within {tol}px of {target}"
-    )
+    assert math.hypot(actual[0] - target[0], actual[1] - target[1]) <= tol, f"{actual} not within {tol}px of {target}"
 
 
 def test_click_recorder_records_and_erases_points(qapp, spoon_image):
@@ -85,7 +90,13 @@ def test_click_recorder_records_and_erases_points(qapp, spoon_image):
     # Positive clicks on the spoon, negative clicks on background/ruler.
     _click(recorder, scale_x, scale_y, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
     _click(recorder, scale_x, scale_y, *SPOON_POINT_B, Qt.MouseButton.LeftButton)
-    _click(recorder, scale_x, scale_y, *BACKGROUND_POINT, Qt.MouseButton.RightButton)
+    _click(
+        recorder,
+        scale_x,
+        scale_y,
+        *BACKGROUND_POINT,
+        Qt.MouseButton.RightButton,
+    )
     _click(recorder, scale_x, scale_y, *RULER_POINT, Qt.MouseButton.RightButton)
 
     assert len(recorder.image_points) == 4
@@ -100,9 +111,7 @@ def test_click_recorder_records_and_erases_points(qapp, spoon_image):
     _click(recorder, scale_x, scale_y, *RULER_POINT, Qt.MouseButton.MiddleButton)
 
     assert len(recorder.image_points) == 3
-    for actual, target in zip(
-        recorder.image_points, [SPOON_POINT_A, SPOON_POINT_B, BACKGROUND_POINT]
-    ):
+    for actual, target in zip(recorder.image_points, [SPOON_POINT_A, SPOON_POINT_B, BACKGROUND_POINT]):
         _assert_point_close(actual, target)
     assert recorder.image_labels == [1, 1, 0]
 
@@ -222,9 +231,7 @@ def test_full_app_click_flow(gui, monkeypatch):
     # segmentation clicks above) to select its contour - a bounding-box
     # center isn't reliable for a concave shape like a spoon.
     target_index = next(
-        i
-        for i, contour in enumerate(gui.object_contours)
-        if cv2.pointPolygonTest(contour, SPOON_POINT_A, False) >= 0
+        i for i, contour in enumerate(gui.object_contours) if cv2.pointPolygonTest(contour, SPOON_POINT_A, False) >= 0
     )
     _click_gui(gui, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
 

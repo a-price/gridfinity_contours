@@ -33,9 +33,7 @@ class PCABox:
                 [self.min1, self.max2],
             ]
         )
-        corners = np.array(
-            [self.center + c[0] * self.pc1 + c[1] * self.pc2 for c in corners_local]
-        )
+        corners = np.array([self.center + c[0] * self.pc1 + c[1] * self.pc2 for c in corners_local])
         return np.int32(corners)
 
     def ToLocal(self, points: np.ndarray) -> np.ndarray:
@@ -59,17 +57,13 @@ def FindContours(mask_image: cv2.typing.MatLike) -> list[cv2.typing.MatLike]:
     return list(contours)
 
 
-def SimplifyContour(
-    contour: cv2.typing.MatLike, epsilon_fraction: float = 0.001
-) -> cv2.typing.MatLike:
+def SimplifyContour(contour: cv2.typing.MatLike, epsilon_fraction: float = 0.001) -> cv2.typing.MatLike:
     """Simplify a contour with the Douglas-Peucker algorithm."""
     epsilon = epsilon_fraction * cv2.arcLength(contour, True)
     return cv2.approxPolyDP(contour, epsilon, True)
 
 
-def ExtractContour(
-    contour: cv2.typing.MatLike, epsilon_fraction: float = 0.001
-) -> tuple[cv2.typing.MatLike, PCABox]:
+def ExtractContour(contour: cv2.typing.MatLike, epsilon_fraction: float = 0.001) -> tuple[cv2.typing.MatLike, PCABox]:
     """Simplify a raw contour and compute its PCA-aligned bounding box.
 
     Returns (simplified_contour, pca_box).

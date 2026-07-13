@@ -35,12 +35,13 @@ class SegmenterStage(Stage):
         self._on_change: Callable[[], None] | None = None
 
     def AttachToImageWidget(
-        self, image_widget: QLabel, image_shape: tuple, on_change: Callable[[], None]
+        self,
+        image_widget: QLabel,
+        image_shape: tuple,
+        on_change: Callable[[], None],
     ) -> None:
         """Start tracking clicks on `image_widget` as segmentation points."""
-        self.click_recorder = ClickRecorder(
-            image_widget, image_shape, self.click_recorder_parameters
-        )
+        self.click_recorder = ClickRecorder(image_widget, image_shape, self.click_recorder_parameters)
         self._on_change = on_change
 
     def OnClick(self, ev: QMouseEvent | None) -> None:
@@ -58,9 +59,7 @@ class SegmenterStage(Stage):
         input_points = [[self.click_recorder.image_points]]
         input_labels = [[self.click_recorder.image_labels]]
         masks = self.segmenter.Segment(image, input_points, input_labels)
-        hypothesis_index = min(
-            self.segmenter.parameters.mask_hypothesis_index, masks.shape[1] - 1
-        )
+        hypothesis_index = min(self.segmenter.parameters.mask_hypothesis_index, masks.shape[1] - 1)
         self.mask = masks[0, hypothesis_index].astype(bool)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:

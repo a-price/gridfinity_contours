@@ -6,9 +6,7 @@ from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QLabel
 
 
-def WidgetToImageCoords(
-    widget: QLabel, image_shape: tuple, ev: QMouseEvent
-) -> tuple[int, int] | None:
+def WidgetToImageCoords(widget: QLabel, image_shape: tuple, ev: QMouseEvent) -> tuple[int, int] | None:
     """Convert a mouse event's widget-relative position to image pixel
     coordinates, accounting for the displayed pixmap's letterboxing within
     the widget (it's centered and scaled to fit while preserving aspect
@@ -35,12 +33,7 @@ def WidgetToImageCoords(
     widget_x = ev.pos().x() - offset_x
     widget_y = ev.pos().y() - offset_y
 
-    if (
-        widget_x < 0
-        or widget_y < 0
-        or widget_x >= pixmap_width
-        or widget_y >= pixmap_height
-    ):
+    if widget_x < 0 or widget_y < 0 or widget_x >= pixmap_width or widget_y >= pixmap_height:
         return None
 
     img_x = int(widget_x / scale_x)

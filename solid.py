@@ -97,6 +97,9 @@ points = (
     / 30.0
 )
 
-box = [[min(points[:, 0]), max(points[:, 0])], [min(points[:, 1]), max(points[:, 1])]]
+box = [
+    [min(points[:, 0]), max(points[:, 0])],
+    [min(points[:, 1]), max(points[:, 1])],
+]
 with open("test.scad", "w") as f:
     f.write(generate_gridfinity_scad(box, points))

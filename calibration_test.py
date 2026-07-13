@@ -1,10 +1,16 @@
 import cv2
 import numpy as np
 
-from calibration import HoughCircleCalibration, IdentityCalibration, PaperCalibration
+from calibration import (
+    HoughCircleCalibration,
+    IdentityCalibration,
+    PaperCalibration,
+)
 
 
-def _draw_circle_image(circles: list[tuple[int, int, int]]) -> cv2.typing.MatLike:
+def _draw_circle_image(
+    circles: list[tuple[int, int, int]],
+) -> cv2.typing.MatLike:
     image = np.zeros((900, 900, 3), dtype=np.uint8)
     for x, y, r in circles:
         cv2.circle(image, (x, y), r, (255, 255, 255), -1)
@@ -69,7 +75,11 @@ def test_hough_circle_calibration_transform_is_index_order_independent():
         (*a_point, 20),
         (*c_point, 20),
     ]
-    calibration.selected_circles = {2, 0, 3}  # a, b, c - unsorted, non-contiguous
+    calibration.selected_circles = {
+        2,
+        0,
+        3,
+    }  # a, b, c - unsorted, non-contiguous
 
     transform = calibration.GetTransform()
 
@@ -143,7 +153,10 @@ def test_paper_calibration_transform_corrects_real_perspective_distortion():
 
     transform = calibration.GetTransform()
 
-    world_center = (PaperCalibration.WIDTH_MM / 2, PaperCalibration.HEIGHT_MM / 2)
+    world_center = (
+        PaperCalibration.WIDTH_MM / 2,
+        PaperCalibration.HEIGHT_MM / 2,
+    )
     image_center = _apply(true_homography, world_center)
 
     assert np.allclose(_apply(transform, image_center), world_center, atol=1e-1)
