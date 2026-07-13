@@ -1,7 +1,5 @@
-# import solid2 as solid
 from typing import Sequence
 import math
-import os
 import numpy as np
 
 
