@@ -3,7 +3,7 @@ from typing import Callable
 from PyQt5.QtWidgets import QVBoxLayout, QWidget
 
 from calibration import HoughCircleCalibration
-from pipeline import CreateSlider, Stage
+from pipeline import CreateSlider, CreateSpinBox, Stage
 
 
 class HoughCircleCalibrationStage(Stage):
@@ -48,6 +48,21 @@ class HoughCircleCalibrationStage(Stage):
         add_slider("min_radius", "Min Radius:", 1, 100)
         add_slider("max_radius", "Max Radius:", 10, 200)
         add_slider("threshold_value", "Binary Threshold:", 1, 255)
+
+        def apply_leg_distance(value):
+            self.calibration.parameters.leg_distance_mm = value
+            on_change()
+
+        leg_distance = CreateSpinBox(
+            "Leg Distance:",
+            0.1,
+            1000.0,
+            self.calibration.parameters.leg_distance_mm,
+            apply_leg_distance,
+            suffix=" mm",
+        )
+        layout.addLayout(leg_distance["layout"])
+        self._leg_distance_spin_box = leg_distance["spin_box"]
 
         return widget
 

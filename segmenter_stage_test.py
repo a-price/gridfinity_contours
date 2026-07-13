@@ -6,7 +6,6 @@ import cv2
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
-from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QLabel
 
 from segmenter_stage import SegmenterStage
@@ -75,19 +74,20 @@ def test_attach_and_click_records_points_on_the_underlying_recorder(qapp, spoon_
     assert stage.click_recorder.image_labels == [1, 0]
 
 
-def test_burst_of_clicks_debounces_to_a_single_on_change(qapp, spoon_image):
+def test_each_click_triggers_on_change_immediately(qapp, spoon_image):
+    # Unlike a slider drag, each click is already a discrete, complete
+    # action, so it should trigger on_change right away - no settling delay.
     widget = _make_widget(spoon_image.shape)
     stage = SegmenterStage(FakeSegmenter())
     changes = []
     stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: changes.append(1))
 
     stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+    assert changes == [1]
+
     stage.OnClick(_click(*BACKGROUND_POINT, Qt.MouseButton.RightButton))
     stage.OnClick(_click(1500, 1150, Qt.MouseButton.LeftButton))
-
-    assert changes == [], "on_change should not fire before the debounce window elapses"
-    QTest.qWait(400)
-    assert changes == [1], "a burst of 3 clicks should collapse into a single on_change call"
+    assert changes == [1, 1, 1]
 
 
 def test_run_with_no_points_leaves_mask_none(spoon_image):

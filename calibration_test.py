@@ -28,6 +28,22 @@ def test_hough_circle_calibration_detects_and_selects_first_three():
     assert calibration.selected_circles == {0, 1, 2}
 
 
+def test_hough_circle_calibration_debug_layer_matches_detection_input():
+    circles = [(150, 150, 20), (150, 600, 20), (600, 600, 20)]
+    image = _draw_circle_image(circles)
+
+    calibration = HoughCircleCalibration()
+    calibration.parameters.threshold_value = 100
+
+    debug_image = calibration.DebugLayer(image)
+
+    assert debug_image.shape == image.shape
+    # The debug layer is the binary image detection runs against: circle
+    # interiors should read as bright, the background as dark.
+    assert debug_image[150, 150].tolist() == [255, 255, 255]
+    assert debug_image[0, 0].tolist() == [0, 0, 0]
+
+
 def test_hough_circle_calibration_transform_is_index_order_independent():
     # b is the right-angle corner, a is the leftmost point (offset along the
     # +x leg from b), c is offset along the +y leg from b (smaller pixel y =

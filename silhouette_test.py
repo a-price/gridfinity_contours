@@ -9,15 +9,20 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import matplotlib
+
+matplotlib.use("Agg")  # headless: plt.show() must not block or open a window
+
 import cv2
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QApplication, QDialog, QLabel
 
 from click_recorder import ClickRecorder
 from morphology import Morphology
 from segmenter import Segmenter
+from silhouette import SVGGui
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "IMG_SPOON.JPG")
 
@@ -128,3 +133,106 @@ def test_segment_and_clean_up_spoon_mask(spoon_image, segmenter):
     cleaned = Morphology().Apply(best_mask)
     assert cleaned.shape == best_mask.shape
     assert cleaned.any()
+
+
+@pytest.fixture(scope="session")
+def gui(qapp):
+    window = SVGGui()
+    window.load_image(IMAGE_PATH)
+    return window
+
+
+def _click_gui(window: SVGGui, x: int, y: int, button) -> None:
+    """Simulate a real user click on the main image view at image
+    coordinates (x, y), going through SVGGui.image_clicked exactly like a
+    mouse press on the displayed pixmap would.
+    """
+    pixmap = window.image_label.pixmap()
+    assert pixmap is not None, "an image must be loaded before clicking"
+    assert window.original_image is not None
+    scale_x = pixmap.width() / window.original_image.shape[1]
+    scale_y = pixmap.height() / window.original_image.shape[0]
+    # The pixmap is letterboxed within image_label (aspect ratio preserved),
+    # so a real click's widget-relative position includes that margin -
+    # image_clicked subtracts it back out.
+    offset_x = (window.image_label.width() - pixmap.width()) // 2
+    offset_y = (window.image_label.height() - pixmap.height()) // 2
+    ev = QMouseEvent(
+        QEvent.MouseButtonPress,
+        QPointF(x * scale_x + offset_x, y * scale_y + offset_y),
+        button,
+        button,
+        Qt.NoModifier,
+    )
+    window.image_clicked(ev)
+
+
+@pytest.mark.slow
+def test_full_app_click_flow(gui, monkeypatch):
+    """Drives the whole app the way a user would: click to segment, click to
+    select the object and a circle fiducial, warp, then export - replacing
+    what used to be a series of one-off manual verification scripts.
+    """
+    # Don't block on the modal export dialog's own event loop.
+    monkeypatch.setattr(QDialog, "exec_", lambda self: None)
+
+    # A cleaner morphology threshold than the 1000px default, so the
+    # segmented spoon collapses to a single contour instead of dozens of
+    # small noise specks - makes the object-selection step below reliable.
+    gui.morphology_stage.morphology.parameters.area = 20000
+
+    assert gui.object_contours == [], "no contours until the user clicks segmentation points"
+
+    # Two positive clicks on the spoon, one negative on the background. Each
+    # click is a discrete action, so it triggers segmentation immediately -
+    # no settling delay to wait out.
+    _click_gui(gui, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
+    _click_gui(gui, *SPOON_POINT_B, Qt.MouseButton.LeftButton)
+    _click_gui(gui, *BACKGROUND_POINT, Qt.MouseButton.RightButton)
+
+    assert len(gui.segmenter_stage.click_recorder.image_points) == 3
+    assert gui.segmenter_stage.mask is not None, "segmentation should run after each click"
+    assert gui.morphology_stage.mask is not None
+    assert gui.object_contours, "contours should be extracted from the segmented mask"
+
+    # Switch to select mode: further clicks toggle circles/objects instead
+    # of adding more segmentation points.
+    gui.select_mode_checkbox.setChecked(True)
+
+    # Click a point known to be on the segmented spoon (one of the
+    # segmentation clicks above) to select its contour - a bounding-box
+    # center isn't reliable for a concave shape like a spoon.
+    target_index = next(
+        i
+        for i, contour in enumerate(gui.object_contours)
+        if cv2.pointPolygonTest(contour, SPOON_POINT_A, False) >= 0
+    )
+    _click_gui(gui, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
+
+    contour_selection = gui.contour_selection_stage.contour_selection
+    assert contour_selection.selected == {target_index}
+    assert target_index in contour_selection.simplified
+    assert target_index in contour_selection.boxes
+
+    # Circle selection: the first 3 detected circles are selected by
+    # default; clicking one toggles it off, clicking again toggles it back.
+    calibration = gui.calibration_stage.calibration
+    initially_selected = set(calibration.selected_circles)
+    assert len(initially_selected) == 3
+
+    cx, cy, _ = calibration.circles[0]
+    _click_gui(gui, cx, cy, Qt.MouseButton.LeftButton)
+    assert len(calibration.selected_circles) == 2
+
+    _click_gui(gui, cx, cy, Qt.MouseButton.LeftButton)
+    assert calibration.selected_circles == initially_selected
+
+    # Warp: apply the calibration's affine transform to the image and the
+    # selected object's simplified contour.
+    gui.pipeline.RunFrom("warp")
+    assert gui.rectify.warped_image is not None
+    assert target_index in gui.rectify.contours
+
+    # Export: should build (and, thanks to the monkeypatch, not block on)
+    # the dialog without raising.
+    gui.pipeline.RunFrom("export")

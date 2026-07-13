@@ -49,7 +49,10 @@ class HoughCircleCalibration(Calibration):
         self.circles: list[tuple[int, int, int]] = []
         self.selected_circles: set[int] = set()
 
-    def Detect(self, image: cv2.typing.MatLike) -> None:
+    def _Preprocess(self, image: cv2.typing.MatLike) -> cv2.typing.MatLike:
+        """Grayscale -> blur -> threshold -> morphological cleanup -> median
+        blur: the binary image Hough circle detection runs against.
+        """
         p = self.parameters
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -59,6 +62,11 @@ class HoughCircleCalibration(Calibration):
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
         binary = cv2.medianBlur(binary, 5)
+        return binary
+
+    def Detect(self, image: cv2.typing.MatLike) -> None:
+        p = self.parameters
+        binary = self._Preprocess(image)
 
         circles = cv2.HoughCircles(
             binary,
@@ -79,6 +87,12 @@ class HoughCircleCalibration(Calibration):
 
         # Select the first 3 circles by default
         self.selected_circles = set(range(min(3, len(self.circles))))
+
+    def DebugLayer(self, image: cv2.typing.MatLike) -> cv2.typing.MatLike:
+        """The binary image circle detection actually runs against, as a
+        3-channel BGR image ready for display.
+        """
+        return cv2.cvtColor(self._Preprocess(image), cv2.COLOR_GRAY2BGR)
 
     def ConfigureForImageShape(self, shape: tuple) -> None:
         """Set the min/max radius parameter defaults relative to the loaded
