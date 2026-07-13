@@ -32,3 +32,4 @@ def test_defaults_match_aruco_calibration_parameters():
     # A freshly printed sheet should work with ArucoCalibration's defaults
     # with no configuration - if either side's constants drift, this fails.
     assert MARKER_SIZE_MM == ArucoParameters().marker_size_mm
+    assert MarkerPositions() == ArucoParameters().marker_positions_mm

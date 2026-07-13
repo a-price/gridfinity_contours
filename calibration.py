@@ -245,16 +245,46 @@ class PaperCalibration(Calibration):
         return cv2.getPerspectiveTransform(image_points, target_points).astype(np.float32)
 
 
+# Defaults for the calibration sheet generate_aruco_sheet.py prints: one
+# marker near each corner of a PaperCalibration-sized page. ArucoParameters
+# defaults to this same layout, so a freshly printed sheet works with
+# ArucoCalibration out of the box.
+ARUCO_MARKER_SIZE_MM = 20.0
+ARUCO_SHEET_MARGIN_MM = 15.0  # marker-edge-to-page-edge clearance
+
+
+def DefaultArucoMarkerPositions(
+    marker_size_mm: float = ARUCO_MARKER_SIZE_MM,
+    page_width_mm: float = PaperCalibration.WIDTH_MM,
+    page_height_mm: float = PaperCalibration.HEIGHT_MM,
+    margin_mm: float = ARUCO_SHEET_MARGIN_MM,
+) -> dict[int, tuple[float, float]]:
+    """Marker IDs 0-3, one near each corner (top-left origin, y down),
+    inset far enough from the page edge to survive typical printer
+    margins. Matches the layout generate_aruco_sheet.py prints.
+    """
+    inset = margin_mm + marker_size_mm / 2
+    return {
+        0: (inset, inset),
+        1: (page_width_mm - inset, inset),
+        2: (page_width_mm - inset, page_height_mm - inset),
+        3: (inset, page_height_mm - inset),
+    }
+
+
 @dataclass
 class ArucoParameters:
     """User-configurable inputs for ArucoCalibration: the physical size of
     each printed marker, and the known real-world (mm) position of each
     marker's center on the calibration sheet, keyed by ArUco marker ID.
-    Populate `marker_positions_mm` to match the actual printed layout.
+    Defaults to the layout generate_aruco_sheet.py prints; override
+    `marker_positions_mm` to match a different printed layout.
     """
 
-    marker_size_mm: float = 20.0
-    marker_positions_mm: dict[int, tuple[float, float]] = field(default_factory=dict)
+    marker_size_mm: float = ARUCO_MARKER_SIZE_MM
+    marker_positions_mm: dict[int, tuple[float, float]] = field(
+        default_factory=DefaultArucoMarkerPositions
+    )
 
 
 class ArucoCalibration(Calibration):

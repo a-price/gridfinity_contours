@@ -22,7 +22,7 @@ from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 from click_recorder import WidgetToImageCoords
 from segmenter_stage import SegmenterStage
 from morphology_stage import MorphologyStage
-from calibration_stage import IdentityCalibrationStage
+from calibration_stage import ArucoCalibrationStage
 from contour_extraction import FindContours, PCABox
 from contour_selection_stage import ContourSelectionStage
 from rectify import Rectify
@@ -45,9 +45,11 @@ os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
 #  * Calibrate
 #  * Select and Export Contour
 #
-# Calibration currently uses IdentityCalibration, a stub that treats pixels
-# as millimeters 1:1 - a placeholder until a real fiducial-based calibration
-# (HoughCircleCalibration, PaperCalibration in calibration.py) is wired in.
+# Calibration uses ArucoCalibration by default: print
+# generate_aruco_sheet.py's PDF, place it in frame, and its markers get
+# detected automatically - no manual fiducial selection needed. If no
+# markers are detected (e.g. no sheet in frame), export_contours() falls
+# back to pixel-space output rather than failing.
 
 # What a click on the image view does - one mode is active at a time, since
 # a click alone can't otherwise disambiguate "add a segmentation point" from
@@ -70,7 +72,7 @@ class SVGGui(QMainWindow):
 
         self.segmenter_stage = SegmenterStage()
         self.morphology_stage = MorphologyStage()
-        self.calibration_stage = IdentityCalibrationStage()
+        self.calibration_stage = ArucoCalibrationStage()
         self.contour_selection_stage = ContourSelectionStage()
         self.rectify = Rectify()
 
@@ -145,8 +147,10 @@ class SVGGui(QMainWindow):
             )
         )
 
-        # Calibration stage widget: currently just an explanatory label,
-        # since IdentityCalibration has no parameters to tune.
+        # Calibration stage widget: a status label showing how many ArUco
+        # markers were detected/matched - no parameters to tune from the
+        # control panel (the marker layout lives in
+        # ArucoCalibration.parameters.marker_positions_mm).
         control_layout.addWidget(self.calibration_stage.CreateWidget(on_change=lambda: None))
 
         # Morphology cleanup parameters: settled edits rerun morphology
@@ -329,15 +333,19 @@ class SVGGui(QMainWindow):
 
     def export_contours(self):
         """Export simplified contour points, converted to real-world units
-        by the calibration stage's transform (currently IdentityCalibration:
-        1px = 1mm, pending a real fiducial-based calibration) in a new
-        window.
+        by the calibration stage's transform, in a new window.
         """
         contour_selection = self.contour_selection_stage.contour_selection
         if not contour_selection.selected or not contour_selection.simplified:
             return
 
-        transform = self.calibration_stage.calibration.GetTransform()
+        try:
+            transform = self.calibration_stage.calibration.GetTransform()
+        except ValueError:
+            # No calibration sheet detected (or not enough of it) - fall
+            # back to pixel space rather than blocking export entirely.
+            transform = np.eye(3, dtype=np.float32)
+
         self.rectify.Run(transform, contour_selection.simplified)
 
         dialog = ContourExportDialog(contour_selection.selected, self.rectify.contours, self)

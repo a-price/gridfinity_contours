@@ -19,7 +19,12 @@ import matplotlib.pyplot as plt
 from PyQt5.QtCore import QLibraryInfo
 
 
-from calibration import PaperCalibration
+from calibration import (
+    ARUCO_MARKER_SIZE_MM,
+    ARUCO_SHEET_MARGIN_MM,
+    DefaultArucoMarkerPositions,
+    PaperCalibration,
+)
 
 # Fix PyQt5 / OpenCV collision
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
@@ -31,13 +36,12 @@ PAGE_WIDTH_MM = PaperCalibration.WIDTH_MM
 PAGE_HEIGHT_MM = PaperCalibration.HEIGHT_MM
 MM_PER_INCH = 25.4
 
-# Match ArucoParameters' defaults so a freshly printed sheet works with
-# ArucoCalibration out of the box.
+# Sourced from calibration.py so this sheet and ArucoParameters' defaults
+# can never drift apart.
 ARUCO_DICTIONARY = cv2.aruco.DICT_4X4_50
-MARKER_SIZE_MM = 20.0
+MARKER_SIZE_MM = ARUCO_MARKER_SIZE_MM
+MARGIN_MM = ARUCO_SHEET_MARGIN_MM
 MARKER_PIXELS = 800  # raster resolution per marker, for a crisp print
-
-MARGIN_MM = 15.0  # marker-edge-to-page-edge clearance
 
 
 def MarkerPositions() -> dict[int, tuple[float, float]]:
@@ -45,13 +49,7 @@ def MarkerPositions() -> dict[int, tuple[float, float]]:
     same convention as PaperCalibration/ArucoCalibration), inset far enough
     from the page edge to survive typical printer margins.
     """
-    inset = MARGIN_MM + MARKER_SIZE_MM / 2
-    return {
-        0: (inset, inset),
-        1: (PAGE_WIDTH_MM - inset, inset),
-        2: (PAGE_WIDTH_MM - inset, PAGE_HEIGHT_MM - inset),
-        3: (inset, PAGE_HEIGHT_MM - inset),
-    }
+    return DefaultArucoMarkerPositions(MARKER_SIZE_MM, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, MARGIN_MM)
 
 
 def GenerateSheet(output_path: str) -> None:

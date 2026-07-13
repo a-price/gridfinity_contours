@@ -243,9 +243,11 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert contour_selection.selected == {target_index}
     gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
 
-    # Export: runs the contour through the calibration stage's affine
-    # transform (currently IdentityCalibration, so numerically a no-op) and
-    # builds the dialog without raising, thanks to the monkeypatch.
+    # Export: the spoon photo has no ArUco markers, so GetTransform() raises
+    # and export_contours() falls back to an identity transform rather than
+    # failing - contours come out in pixel space, and the dialog still
+    # builds without raising, thanks to the monkeypatch.
+    assert gui.calibration_stage.calibration.detected_corners == {}
     gui.pipeline.RunFrom("export")
     assert target_index in gui.rectify.contours
     assert np.allclose(
