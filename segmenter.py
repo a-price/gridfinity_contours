@@ -27,8 +27,8 @@ class Segmenter:
             "facebook/sam2-hiera-tiny", local_files_only=True
         )
 
-    # Returns a set of mask hypotheses with tensor indices:
-    # [image, object, point, coordinates=2]
+    # Returns mask hypotheses as an array with indices:
+    # [object, mask_hypothesis, height, width]
     def Segment(
         self,
         image,

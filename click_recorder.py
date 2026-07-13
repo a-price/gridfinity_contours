@@ -1,7 +1,6 @@
 import math
 from dataclasses import dataclass
 
-import cv2
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QLabel
@@ -95,6 +94,3 @@ class ClickRecorder:
             self.image_points.append([img_x, img_y])
             label = 1 if ev.button() == Qt.MouseButton.LeftButton else 0
             self.image_labels.append(label)
-
-    def DebugLayer(self) -> cv2.Mat:
-        raise NotImplementedError

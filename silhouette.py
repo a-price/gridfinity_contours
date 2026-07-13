@@ -18,7 +18,6 @@ from PyQt5.QtWidgets import (
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
-import scipy.ndimage
 
 from click_recorder import WidgetToImageCoords
 from segmenter_stage import SegmenterStage
@@ -61,9 +60,6 @@ class SVGGui(QMainWindow):
         # Initialize variables
         self.original_image = None
         self.processed_image = None
-        # Object selection state
-        self.object_mask = None
-        self.object_labels = None
         self.object_contours = []
 
         self.segmenter_stage = SegmenterStage()
@@ -207,21 +203,7 @@ class SVGGui(QMainWindow):
         object).
         """
         mask_image = self.morphology_stage.mask
-        if mask_image is None:
-            self.object_mask = None
-            self.object_labels = None
-            self.object_contours = []
-            return
-
-        # Label connected components
-        labels, _ = scipy.ndimage.label(mask_image)
-
-        # Store results
-        self.object_mask = mask_image
-        self.object_labels = labels
-
-        # Extract contours for visualization
-        self.object_contours = FindContours(mask_image)
+        self.object_contours = [] if mask_image is None else FindContours(mask_image)
 
     def show_original_image(self):
         """Show the original image."""
@@ -237,21 +219,19 @@ class SVGGui(QMainWindow):
         if self.processed_image is None:
             return
 
-        coords = WidgetToImageCoords(self.image_label, self.processed_image.shape, ev)
-        if coords is None:
-            return
-        img_x, img_y = coords
-
         if not self.select_mode_checkbox.isChecked():
             self.segmenter_stage.OnClick(ev)
             return
 
         # Select mode: toggle an object contour under the click. Doesn't add
         # a segmentation point.
-        if self.object_contours:
-            if self.contour_selection_stage.contour_selection.ToggleSelection(img_x, img_y, self.object_contours):
-                self.pipeline.RunFrom("selection")
-                return
+        coords = WidgetToImageCoords(self.image_label, self.processed_image.shape, ev)
+        if coords is None:
+            return
+        img_x, img_y = coords
+
+        if self.contour_selection_stage.contour_selection.ToggleSelection(img_x, img_y, self.object_contours):
+            self.pipeline.RunFrom("selection")
 
     def update_display(self):
         if self.processed_image is None:
@@ -317,9 +297,6 @@ class SVGGui(QMainWindow):
         alpha = 0.3
         display_image = cv2.addWeighted(display_image, 1 - alpha, overlay, alpha, 0)
 
-        # Draw dimension rulers along the image borders
-        self._draw_rulers(display_image)
-
         # Convert to QImage and display
         height, width, channel = display_image.shape
         bytes_per_line = 3 * width
@@ -334,115 +311,6 @@ class SVGGui(QMainWindow):
             )
         )
 
-
-    def _nice_tick_step(self, length_px: int) -> int:
-        """Return a 'nice' tick step (in pixels) for the given length in pixels.
-        Aims for around 8-12 major ticks across the length.
-        """
-        if length_px <= 0:
-            return 50
-        rough = max(20, length_px // 10)
-        # Round rough to 1, 2, or 5 times a power of 10
-        magnitude = 10 ** int(np.floor(np.log10(rough)))
-        residual = rough / magnitude
-        if residual < 1.5:
-            nice = 1 * magnitude
-        elif residual < 3.5:
-            nice = 2 * magnitude
-        elif residual < 7.5:
-            nice = 5 * magnitude
-        else:
-            nice = 10 * magnitude
-        return int(nice)
-
-    def _draw_rulers(self, img: np.ndarray) -> None:
-        """Draw simple rulers with tick marks and pixel labels along image borders.
-        Draws top and left rulers with labels, and mirrored ticks on bottom and right without labels.
-        """
-        h, w = img.shape[:2]
-        color_major = (220, 220, 220)  # light gray for visibility on dark backgrounds
-        color_minor = (160, 160, 160)
-        text_color = (255, 255, 255)
-        thickness_major = 2
-        thickness_minor = 1
-        # tick sizes
-        tick_major_len = max(10, min(h, w) // 40)
-        tick_minor_len = tick_major_len // 2
-
-        step = self._nice_tick_step(max(w, h))
-        minor_div = 5
-        minor_step = max(1, step // minor_div)
-
-        # Top and bottom rulers (x axis)
-        for x in range(0, w, minor_step):
-            is_major = (x % step) == 0
-            t_len = tick_major_len if is_major else tick_minor_len
-            col = color_major if is_major else color_minor
-            # top
-            cv2.line(
-                img,
-                (x, 0),
-                (x, t_len),
-                col,
-                thickness_major if is_major else thickness_minor,
-            )
-            # bottom
-            cv2.line(
-                img,
-                (x, h - t_len),
-                (x, h),
-                col,
-                thickness_major if is_major else thickness_minor,
-            )
-            if is_major:
-                label = str(x)
-                # place label slightly below the top ticks
-                cv2.putText(
-                    img,
-                    label,
-                    (x + 3, t_len + 14),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    4.0,
-                    text_color,
-                    3,
-                    cv2.LINE_AA,
-                )
-
-        # Left and right rulers (y axis)
-        for y in range(0, h, minor_step):
-            is_major = (y % step) == 0
-            t_len = tick_major_len if is_major else tick_minor_len
-            col = color_major if is_major else color_minor
-            # left
-            cv2.line(
-                img,
-                (0, y),
-                (t_len, y),
-                col,
-                thickness_major if is_major else thickness_minor,
-            )
-            # right
-            cv2.line(
-                img,
-                (w - t_len, y),
-                (w, y),
-                col,
-                thickness_major if is_major else thickness_minor,
-            )
-            if is_major:
-                label = str(y)
-                # place label to the right of the left ticks
-                cv2.putText(
-                    img,
-                    label,
-                    (t_len + 4, y - 4 if y > 10 else y + 12),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    4.0,
-                    text_color,
-                    3,
-                    cv2.LINE_AA,
-                )
-
     def export_contours(self):
         """Export simplified contour points, converted to real-world units
         by the calibration stage's affine transform (currently
@@ -454,7 +322,7 @@ class SVGGui(QMainWindow):
             return
 
         affine = self.calibration_stage.calibration.GetTransform()
-        self.rectify.Run(self.processed_image, affine, contour_selection.simplified)
+        self.rectify.Run(affine, contour_selection.simplified)
 
         dialog = ContourExportDialog(contour_selection.selected, self.rectify.contours, self)
         dialog.exec_()
@@ -473,7 +341,8 @@ class ContourExportDialog(QDialog):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
 
-        # Format contour data
+        # Format contour data, and plot each selected object's transformed
+        # contour in its own figure.
         contour_text = ""
         for obj_id in selected_objects:
             if obj_id in simplified_contours:
@@ -494,16 +363,15 @@ class ContourExportDialog(QDialog):
 
                 contour_text += "]\n\n"
 
+                plt.figure()
+                plt.title(f"Object {obj_id}: transformed contour")
+                plt.plot(transformed_points[:, 0], transformed_points[:, 1], "-")
+                plt.xlabel("mm")
+                plt.ylabel("mm")
+                plt.show()
+
         self.text_edit.setPlainText(contour_text)
         layout.addWidget(self.text_edit)
-
-        # add figure()
-        plt.figure()
-        plt.title("tranformed contour")
-        plt.plot(transformed_points[:, 0], transformed_points[:, 1], "-")
-        plt.xlabel("mm")
-        plt.ylabel("mm")
-        plt.show()
 
         # Add close button
         close_btn = QPushButton("Close")

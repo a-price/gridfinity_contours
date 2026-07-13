@@ -12,7 +12,8 @@ class ContourSelectionStage(Stage):
     """Qt wiring for ContourSelection: a debounced slider for the
     simplification threshold. Selection itself happens by clicking directly
     on the shared image view (see SVGGui.image_clicked), the same way
-    circle selection does for HoughCircleCalibration.
+    HoughCircleCalibration.ToggleSelection works for circle fiducials, when
+    that calibration stage is wired in.
     """
 
     def __init__(self, contour_selection: ContourSelection | None = None) -> None:
