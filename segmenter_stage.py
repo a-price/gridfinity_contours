@@ -1,5 +1,6 @@
 from typing import Callable
 
+import numpy as np
 from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QLabel, QWidget
 
@@ -30,7 +31,7 @@ class SegmenterStage(Stage):
         self.segmenter = segmenter or Segmenter()
         self.click_recorder_parameters = ClickRecorderParameters()
         self.click_recorder: ClickRecorder | None = None
-        self.mask = None
+        self.mask: np.ndarray | None = None
         self._on_change: Callable[[], None] | None = None
 
     def AttachToImageWidget(
@@ -63,8 +64,7 @@ class SegmenterStage(Stage):
         self.mask = masks[0, hypothesis_index].astype(bool)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = CreateGroupBox("Segmentation")
-        layout = widget.layout()
+        widget, layout = CreateGroupBox("Segmentation")
 
         def apply_erase_radius(value):
             # Only affects future middle-clicks, not the current mask - no

@@ -50,8 +50,8 @@ def test_hough_circle_calibration_transform_is_index_order_independent():
     # "up"). Deliberately insert out of a/b/c order and select a
     # non-contiguous, unsorted subset of indices, to exercise the same code
     # path that used to break when selected indices weren't exactly {0, 1, 2}.
-    b_point, a_point, c_point = (300.0, 500.0), (100.0, 500.0), (300.0, 200.0)
-    distractor = (800.0, 800.0)
+    b_point, a_point, c_point = (300, 500), (100, 500), (300, 200)
+    distractor = (800, 800)
 
     calibration = HoughCircleCalibration()
     calibration.parameters.leg_distance_mm = 80.0

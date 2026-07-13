@@ -18,8 +18,8 @@ class IdentityCalibrationStage(Stage):
         self.calibration.Detect(image)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = CreateGroupBox("Calibration")
-        widget.layout().addWidget(QLabel("Calibration: identity stub (1px = 1mm)"))
+        widget, layout = CreateGroupBox("Calibration")
+        layout.addWidget(QLabel("Calibration: identity stub (1px = 1mm)"))
         return widget
 
 
@@ -39,8 +39,7 @@ class HoughCircleCalibrationStage(Stage):
         self.calibration.Detect(image)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = CreateGroupBox("Calibration")
-        layout = widget.layout()
+        widget, layout = CreateGroupBox("Calibration")
 
         def add_slider(field_name: str, label_text: str, min_val: int, max_val: int):
             def apply(value):

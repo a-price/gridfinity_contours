@@ -20,8 +20,7 @@ class MorphologyStage(Stage):
         self.mask = None if mask_image is None else self.morphology.Apply(mask_image)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = CreateGroupBox("Mask Cleanup")
-        layout = widget.layout()
+        widget, layout = CreateGroupBox("Mask Cleanup")
 
         def apply_closing_radius(value):
             self.morphology.parameters.closing_radius = value

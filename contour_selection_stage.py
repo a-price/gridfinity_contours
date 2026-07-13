@@ -23,8 +23,7 @@ class ContourSelectionStage(Stage):
         self.contour_selection.Run(contours)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = CreateGroupBox("Contour Selection")
-        layout = widget.layout()
+        widget, layout = CreateGroupBox("Contour Selection")
 
         def apply(value):
             self.contour_selection.parameters.epsilon_fraction = value / _EPSILON_SLIDER_SCALE

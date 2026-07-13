@@ -72,6 +72,7 @@ def test_attach_and_click_records_points_on_the_underlying_recorder(qapp, spoon_
     stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
     stage.OnClick(_click(*BACKGROUND_POINT, Qt.MouseButton.RightButton))
 
+    assert stage.click_recorder is not None
     assert stage.click_recorder.image_points == [
         list(SPOON_POINT_A),
         list(BACKGROUND_POINT),
@@ -131,6 +132,7 @@ def test_run_uses_configured_mask_hypothesis_index(qapp, spoon_image):
 
     # FakeSegmenter only fills hypothesis 0 with True - picking hypothesis 1
     # should come back empty, proving the index was actually used.
+    assert stage.mask is not None
     assert not stage.mask.any()
 
 

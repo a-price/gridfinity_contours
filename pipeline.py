@@ -14,7 +14,7 @@ stage's parameters change, reruns that stage and everything downstream of
 it.
 """
 
-from typing import Callable
+from typing import Callable, Sequence
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDoubleSpinBox, QGroupBox, QLabel, QSlider, QVBoxLayout, QWidget
@@ -28,15 +28,16 @@ class Stage:
         raise NotImplementedError
 
 
-def CreateGroupBox(title: str) -> QGroupBox:
+def CreateGroupBox(title: str) -> tuple[QGroupBox, QVBoxLayout]:
     """A titled QGroupBox with an empty QVBoxLayout, ready for a stage's
     CreateWidget to add its controls into - keeps every stage's widget
     grouped and labeled the same way, without SVGGui having to know each
-    stage's display title.
+    stage's display title. Returns both, since QWidget.layout() gives back
+    an Optional, insufficiently-specific QLayout.
     """
     group = QGroupBox(title)
-    QVBoxLayout(group)
-    return group
+    layout = QVBoxLayout(group)
+    return group, layout
 
 
 class Pipeline:
@@ -47,7 +48,7 @@ class Pipeline:
         self._downstream: dict[str, list[str]] = {}
 
     def Register(
-        self, name: str, runner: Callable[[], None], downstream: list[str] = ()
+        self, name: str, runner: Callable[[], None], downstream: Sequence[str] = ()
     ) -> None:
         self._runners[name] = runner
         self._downstream[name] = list(downstream)
