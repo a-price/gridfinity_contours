@@ -329,16 +329,16 @@ class SVGGui(QMainWindow):
 
     def export_contours(self):
         """Export simplified contour points, converted to real-world units
-        by the calibration stage's affine transform (currently
-        IdentityCalibration: 1px = 1mm, pending a real fiducial-based
-        calibration) in a new window.
+        by the calibration stage's transform (currently IdentityCalibration:
+        1px = 1mm, pending a real fiducial-based calibration) in a new
+        window.
         """
         contour_selection = self.contour_selection_stage.contour_selection
         if not contour_selection.selected or not contour_selection.simplified:
             return
 
-        affine = self.calibration_stage.calibration.GetTransform()
-        self.rectify.Run(affine, contour_selection.simplified)
+        transform = self.calibration_stage.calibration.GetTransform()
+        self.rectify.Run(transform, contour_selection.simplified)
 
         dialog = ContourExportDialog(contour_selection.selected, self.rectify.contours, self)
         dialog.exec_()
