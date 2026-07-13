@@ -30,7 +30,7 @@ def spoon_image():
 
 
 def _click(x: int, y: int, button):
-    return QMouseEvent(QEvent.MouseButtonPress, QPointF(x, y), button, button, Qt.NoModifier)
+    return QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(x, y), button, button, Qt.KeyboardModifier.NoModifier)
 
 
 def _make_widget(shape) -> QLabel:

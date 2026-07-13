@@ -34,7 +34,7 @@ class PCABox:
             ]
         )
         corners = np.array([self.center + c[0] * self.pc1 + c[1] * self.pc2 for c in corners_local])
-        return np.int32(corners)
+        return corners.astype(np.int32)
 
     def ToLocal(self, points: np.ndarray) -> np.ndarray:
         """Project `points` into the box's local frame: PCA-aligned axes,
@@ -45,7 +45,7 @@ class PCABox:
         return np.stack([projected1 - self.min1, projected2 - self.min2], axis=-1)
 
 
-def FindContours(mask_image: cv2.typing.MatLike) -> list[cv2.typing.MatLike]:
+def FindContours(mask_image: np.ndarray) -> list[cv2.typing.MatLike]:
     """Find external object contours in a cleaned-up mask (e.g. the output
     of Morphology.Apply).
     """

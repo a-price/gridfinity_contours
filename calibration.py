@@ -123,7 +123,7 @@ class HoughCircleCalibration(Calibration):
 
         self.circles = []
         if circles is not None:
-            circles = np.uint16(np.around(circles))
+            circles = np.array(np.around(circles), dtype=np.uint16)
             for x, y, r in circles[0, : p.max_circles]:
                 self.circles.append((int(x), int(y), int(r)))
 
@@ -170,7 +170,7 @@ class HoughCircleCalibration(Calibration):
                 "HoughCircleCalibration needs exactly 3 selected circles, " f"has {len(self.selected_circles)}"
             )
 
-        centers = np.float32(self.circles)[:, :2]
+        centers = np.array(self.circles, dtype=np.float32)[:, :2]
         used = list(self.selected_circles)
 
         # a: leftmost of the 3; c: topmost (smallest y) of the other two;
@@ -182,7 +182,7 @@ class HoughCircleCalibration(Calibration):
 
         image_points = centers[[a, b, c]]
         leg = self.parameters.leg_distance_mm
-        target_points = np.float32([[leg, 0], [0, 0], [0, leg]])
+        target_points = np.array([[leg, 0], [0, 0], [0, leg]], dtype=np.float32)
         return _AffineToHomogeneous(cv2.getAffineTransform(image_points, target_points))
 
 
@@ -240,14 +240,15 @@ class PaperCalibration(Calibration):
         # perspective foreshortening a real (non-fronto-parallel) photo of
         # the sheet will have.
         top_left, top_right, bottom_right, bottom_left = self.corners
-        image_points = np.float32([top_left, top_right, bottom_right, bottom_left])
-        target_points = np.float32(
+        image_points = np.array([top_left, top_right, bottom_right, bottom_left], dtype=np.float32)
+        target_points = np.array(
             [
                 [0, 0],
                 [self.WIDTH_MM, 0],
                 [self.WIDTH_MM, self.HEIGHT_MM],
                 [0, self.HEIGHT_MM],
-            ]
+            ],
+            dtype=np.float32,
         )
         return cv2.getPerspectiveTransform(image_points, target_points).astype(np.float32)
 

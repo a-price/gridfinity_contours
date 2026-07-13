@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QLabel, QWidget
 
 from click_recorder import ClickRecorder, ClickRecorderParameters
 from pipeline import CreateGroupBox, CreateSlider, Stage
-from segmenter import Segmenter
+from segmenter import Segmenter, SegmenterLike
 
 # SAM2's processor typically ranks 3 mask hypotheses per click set (0 =
 # highest predicted IoU); the slider range is fixed to that rather than
@@ -27,8 +27,8 @@ class SegmenterStage(Stage):
     widget via CreateWidget.
     """
 
-    def __init__(self, segmenter: Segmenter | None = None) -> None:
-        self.segmenter = segmenter or Segmenter()
+    def __init__(self, segmenter: SegmenterLike | None = None) -> None:
+        self.segmenter: SegmenterLike = segmenter or Segmenter()
         self.click_recorder_parameters = ClickRecorderParameters()
         self.click_recorder: ClickRecorder | None = None
         self.mask: np.ndarray | None = None

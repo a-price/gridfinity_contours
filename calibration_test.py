@@ -137,15 +137,16 @@ def test_paper_calibration_transform_corrects_real_perspective_distortion():
     # to the bottom edge). A 3-point affine fit can only satisfy 3 of these
     # 4 corners exactly and is off by ~40mm at the page center for this
     # mapping; a true 4-point perspective fit should be exact everywhere.
-    world_corners = np.float32(
+    world_corners = np.array(
         [
             [0, 0],
             [PaperCalibration.WIDTH_MM, 0],
             [PaperCalibration.WIDTH_MM, PaperCalibration.HEIGHT_MM],
             [0, PaperCalibration.HEIGHT_MM],
-        ]
+        ],
+        dtype=np.float32,
     )
-    image_corners = np.float32([[300, 200], [650, 220], [700, 700], [150, 680]])
+    image_corners = np.array([[300, 200], [650, 220], [700, 700], [150, 680]], dtype=np.float32)
     true_homography = cv2.getPerspectiveTransform(world_corners, image_corners)
 
     calibration = PaperCalibration()

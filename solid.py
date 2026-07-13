@@ -100,4 +100,4 @@ box = [
     [min(points[:, 1]), max(points[:, 1])],
 ]
 with open("test.scad", "w") as f:
-    f.write(generate_gridfinity_scad(box, points))
+    f.write(generate_gridfinity_scad(box, points.tolist()))

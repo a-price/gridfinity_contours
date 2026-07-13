@@ -58,11 +58,11 @@ def _click(
     button,
 ):
     ev = QMouseEvent(
-        QEvent.MouseButtonPress,
+        QEvent.Type.MouseButtonPress,
         QPointF(x * scale_x, y * scale_y),
         button,
         button,
-        Qt.NoModifier,
+        Qt.KeyboardModifier.NoModifier,
     )
     recorder.OnClick(ev)
 
@@ -186,11 +186,11 @@ def _click_gui(window: SVGGui, x: int, y: int, button) -> None:
     offset_x = (window.image_label.width() - pixmap.width()) // 2
     offset_y = (window.image_label.height() - pixmap.height()) // 2
     ev = QMouseEvent(
-        QEvent.MouseButtonPress,
+        QEvent.Type.MouseButtonPress,
         QPointF(x * scale_x + offset_x, y * scale_y + offset_y),
         button,
         button,
-        Qt.NoModifier,
+        Qt.KeyboardModifier.NoModifier,
     )
     window.image_clicked(ev)
 

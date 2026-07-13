@@ -310,7 +310,7 @@ class SVGGui(QMainWindow):
                     # Draw center point
                     cv2.circle(
                         display_image,
-                        tuple(np.int32(pca_box.center)),
+                        tuple(pca_box.center.astype(np.int32)),
                         5,
                         (255, 0, 255),
                         -1,
@@ -324,7 +324,7 @@ class SVGGui(QMainWindow):
         height, width, channel = display_image.shape
         bytes_per_line = 3 * width
         q_image = QImage(
-            display_image.data,
+            display_image.tobytes(),
             width,
             height,
             bytes_per_line,
@@ -334,7 +334,7 @@ class SVGGui(QMainWindow):
             QPixmap.fromImage(q_image).scaled(
                 self.image_label.size(),
                 Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.SmoothTransformation,
+                Qt.TransformationMode.SmoothTransformation,
             )
         )
 

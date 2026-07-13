@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Protocol
 
 import torch
 from numpy.typing import NDArray
@@ -12,6 +13,23 @@ class SegmenterParameters:
     """
 
     mask_hypothesis_index: int = 0
+
+
+class SegmenterLike(Protocol):
+    """Structural protocol for what SegmenterStage actually needs from a
+    segmenter - lets a lightweight test double stand in for a real
+    Segmenter (which loads the actual SAM2 model on construction) without
+    needing to subclass it.
+    """
+
+    parameters: SegmenterParameters
+
+    def Segment(
+        self,
+        image,
+        input_points: list[list[list[list[float]]]] | None,
+        input_labels: list[list[list[int]]] | None,
+    ) -> NDArray: ...
 
 
 class Segmenter:

@@ -13,7 +13,7 @@ color_change_gcode = [
 ]
 
 path = sys.argv[1]
-switch_height = sys.argv.get(2) if len(sys.argv) > 2 else 7
+switch_height = float(sys.argv[2]) if len(sys.argv) > 2 else 7.0
 
 with open(path, "r+") as gcode_file:
     prev_line = ""
