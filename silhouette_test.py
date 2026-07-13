@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import QApplication, QDialog, QLabel
 from click_recorder import ClickRecorder, ClickRecorderParameters
 from morphology import Morphology
 from segmenter import Segmenter
-from silhouette import SVGGui
+from silhouette import _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL, SVGGui
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "IMG_SPOON.JPG")
 
@@ -214,9 +214,9 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert gui.morphology_stage.mask is not None
     assert gui.object_contours, "contours should be extracted from the segmented mask"
 
-    # Switch to select mode: further clicks toggle objects instead of
-    # adding more segmentation points.
-    gui.select_mode_checkbox.setChecked(True)
+    # Switch to contour-select mode: further clicks toggle objects instead
+    # of adding more segmentation points.
+    gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
 
     # Click a point known to be on the segmented spoon (one of the
     # segmentation clicks above) to select its contour - a bounding-box
@@ -232,6 +232,16 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert contour_selection.selected == {target_index}
     assert target_index in contour_selection.simplified
     assert target_index in contour_selection.boxes
+
+    # Fiducial-select mode: the active calibration is still the
+    # IdentityCalibration stub, which has no fiducials to select - a click
+    # in this mode should be a safe no-op, not crash and not touch the
+    # segmentation points or contour selection made above.
+    gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_FIDUCIAL)
+    _click_gui(gui, *BACKGROUND_POINT, Qt.MouseButton.LeftButton)
+    assert len(gui.segmenter_stage.click_recorder.image_points) == 3
+    assert contour_selection.selected == {target_index}
+    gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
 
     # Export: runs the contour through the calibration stage's affine
     # transform (currently IdentityCalibration, so numerically a no-op) and

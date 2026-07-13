@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QWidget,
     QTextEdit,
     QDialog,
-    QCheckBox,
+    QComboBox,
 )
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QLibraryInfo
@@ -49,6 +49,12 @@ os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
 # as millimeters 1:1 - a placeholder until a real fiducial-based calibration
 # (HoughCircleCalibration, PaperCalibration in calibration.py) is wired in.
 
+# What a click on the image view does - one mode is active at a time, since
+# a click alone can't otherwise disambiguate "add a segmentation point" from
+# "select something that's already there".
+_MODE_SEGMENT = "Add Segmentation Points (left = interior, right = exterior)"
+_MODE_SELECT_CONTOUR = "Select a Contour"
+_MODE_SELECT_FIDUCIAL = "Select a Fiducial"
 
 
 class SVGGui(QMainWindow):
@@ -122,12 +128,13 @@ class SVGGui(QMainWindow):
         control_layout.addWidget(self.show_original_btn)
         control_layout.addWidget(self.export_btn)
 
-        # Clicking the image either adds a segmentation point (default) or,
-        # in select mode, toggles the object under the click - the two can't
-        # be disambiguated from the click alone once a mask already covers
-        # part of the image.
-        self.select_mode_checkbox = QCheckBox("Select Mode (click to choose an object)")
-        control_layout.addWidget(self.select_mode_checkbox)
+        # What a click on the image view does - see the _MODE_* constants.
+        control_layout.addWidget(QLabel("Click Mode:"))
+        self.interaction_mode_combo = QComboBox()
+        self.interaction_mode_combo.addItems(
+            [_MODE_SEGMENT, _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL]
+        )
+        control_layout.addWidget(self.interaction_mode_combo)
 
         # Each pipeline stage's CreateWidget returns its own titled
         # QGroupBox, so the control panel visually mirrors the stage graph
@@ -219,19 +226,28 @@ class SVGGui(QMainWindow):
         if self.processed_image is None:
             return
 
-        if not self.select_mode_checkbox.isChecked():
+        mode = self.interaction_mode_combo.currentText()
+
+        if mode == _MODE_SEGMENT:
             self.segmenter_stage.OnClick(ev)
             return
 
-        # Select mode: toggle an object contour under the click. Doesn't add
-        # a segmentation point.
+        # The other modes toggle something under the click; neither adds a
+        # segmentation point.
         coords = WidgetToImageCoords(self.image_label, self.processed_image.shape, ev)
         if coords is None:
             return
         img_x, img_y = coords
 
-        if self.contour_selection_stage.contour_selection.ToggleSelection(img_x, img_y, self.object_contours):
-            self.pipeline.RunFrom("selection")
+        if mode == _MODE_SELECT_CONTOUR:
+            if self.contour_selection_stage.contour_selection.ToggleSelection(img_x, img_y, self.object_contours):
+                self.pipeline.RunFrom("selection")
+            return
+
+        if mode == _MODE_SELECT_FIDUCIAL:
+            if self.calibration_stage.calibration.ToggleSelection(img_x, img_y):
+                self.pipeline.RunFrom("display")
+            return
 
     def update_display(self):
         if self.processed_image is None:

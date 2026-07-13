@@ -134,6 +134,14 @@ def test_identity_calibration_is_a_1px_to_1mm_noop():
     assert np.allclose(transform((12.5, 30.0)), [12.5, 30.0])
 
 
+def test_calibration_base_toggle_selection_is_a_safe_noop():
+    # IdentityCalibration and PaperCalibration don't override ToggleSelection
+    # (their fiducials aren't manually selectable) - a click should never
+    # crash, just report nothing was hit.
+    assert IdentityCalibration().ToggleSelection(10, 10) is False
+    assert PaperCalibration().ToggleSelection(10, 10) is False
+
+
 def test_paper_calibration_no_quadrilateral_found():
     image = np.zeros((200, 200, 3), dtype=np.uint8)  # blank, nothing bright
 

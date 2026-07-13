@@ -23,6 +23,15 @@ class Calibration:
     def DebugLayer(self, image: cv2.typing.MatLike) -> cv2.typing.MatLike:
         raise NotImplementedError
 
+    def ToggleSelection(self, x: int, y: int) -> bool:
+        """Toggle selection of the fiducial under image coordinates (x, y).
+        Returns True if one was hit. Default: no selectable fiducials (e.g.
+        auto-detected ones like PaperCalibration's corners, or a stub like
+        IdentityCalibration) - subclasses that support manual selection
+        (HoughCircleCalibration) override this.
+        """
+        return False
+
 
 class IdentityCalibration(Calibration):
     """Stub calibration with no fiducial to detect: treats image pixels as
