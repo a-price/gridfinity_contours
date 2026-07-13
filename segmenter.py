@@ -1,10 +1,22 @@
+from dataclasses import dataclass
+
 import torch
 from numpy.typing import NDArray
 from transformers import Sam2Model, Sam2Processor
 
 
+@dataclass
+class SegmenterParameters:
+    """User-configurable inputs for Segmenter: which of SAM2's ranked mask
+    hypotheses (0 = highest predicted IoU) to use for a given click set.
+    """
+
+    mask_hypothesis_index: int = 0
+
+
 class Segmenter:
     def __init__(self) -> None:
+        self.parameters = SegmenterParameters()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = Sam2Model.from_pretrained(
             "facebook/sam2-hiera-tiny", local_files_only=True

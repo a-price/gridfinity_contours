@@ -20,7 +20,7 @@ from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QApplication, QDialog, QLabel
 
-from click_recorder import ClickRecorder
+from click_recorder import ClickRecorder, ClickRecorderParameters
 from morphology import Morphology
 from segmenter import Segmenter
 from silhouette import SVGGui
@@ -105,6 +105,24 @@ def test_click_recorder_records_and_erases_points(qapp, spoon_image):
     ):
         _assert_point_close(actual, target)
     assert recorder.image_labels == [1, 1, 0]
+
+
+def test_click_recorder_respects_configured_erase_radius(qapp, spoon_image):
+    height, width = spoon_image.shape[:2]
+    widget = QLabel()
+    pixmap = QPixmap(width, height)  # 1:1 scale keeps click math trivial
+    widget.setPixmap(pixmap)
+    widget.resize(pixmap.size())
+
+    recorder = ClickRecorder(widget, spoon_image.shape, ClickRecorderParameters(erase_radius=20.0))
+    _click(recorder, 1.0, 1.0, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
+
+    # 15px away is within the configured 20px erase radius, but outside the
+    # default 5px radius - proves the parameter is actually being used.
+    far_point = (SPOON_POINT_A[0] + 15, SPOON_POINT_A[1])
+    _click(recorder, 1.0, 1.0, *far_point, Qt.MouseButton.MiddleButton)
+
+    assert recorder.image_points == []
 
 
 @pytest.fixture(scope="session")

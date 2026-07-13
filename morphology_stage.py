@@ -7,9 +7,9 @@ from pipeline import CreateSlider, Stage
 
 
 class MorphologyStage(Stage):
-    """Qt wiring for Morphology: a single debounced slider controlling the
-    minimum surviving area, and the cleaned-up mask it produces from
-    whatever mask is fed into it (e.g. a segmentation stage's output).
+    """Qt wiring for Morphology: debounced sliders controlling the closing
+    radius and minimum surviving area, and the cleaned-up mask it produces
+    from whatever mask is fed into it (e.g. a segmentation stage's output).
     """
 
     def __init__(self, morphology: Morphology | None = None) -> None:
@@ -24,13 +24,26 @@ class MorphologyStage(Stage):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        def apply(value):
+        def apply_closing_radius(value):
+            self.morphology.parameters.closing_radius = value
+            on_change()
+
+        closing_slider = CreateSlider(
+            "Closing Radius (px):",
+            0,
+            50,
+            self.morphology.parameters.closing_radius,
+            apply_closing_radius,
+        )
+        layout.addLayout(closing_slider["layout"])
+
+        def apply_area(value):
             self.morphology.parameters.area = value
             on_change()
 
-        slider = CreateSlider(
-            "Cleanup Min Area (px):", 1, 20000, self.morphology.parameters.area, apply
+        area_slider = CreateSlider(
+            "Cleanup Min Area (px):", 1, 20000, self.morphology.parameters.area, apply_area
         )
-        layout.addLayout(slider["layout"])
+        layout.addLayout(area_slider["layout"])
 
         return widget

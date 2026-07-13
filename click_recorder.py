@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 import cv2
 from PyQt5.QtCore import Qt
@@ -48,10 +49,25 @@ def WidgetToImageCoords(
     return img_x, img_y
 
 
+@dataclass
+class ClickRecorderParameters:
+    """User-configurable inputs for ClickRecorder: how close (in image
+    pixels) a middle-click must land to an existing point to erase it.
+    """
+
+    erase_radius: float = 5.0
+
+
 class ClickRecorder:
-    def __init__(self, image_widget: QLabel, image_shape: tuple) -> None:
+    def __init__(
+        self,
+        image_widget: QLabel,
+        image_shape: tuple,
+        parameters: ClickRecorderParameters | None = None,
+    ) -> None:
         self.image_widget = image_widget
         self.image_shape = image_shape
+        self.parameters = parameters or ClickRecorderParameters()
         self.image_points = []
         self.image_labels = []
 
@@ -65,8 +81,8 @@ class ClickRecorder:
         img_x, img_y = coords
 
         if ev.button() == Qt.MouseButton.MiddleButton:
-            erase_radius = 5
-            # Erase points within 5 pixels of the click, keeping points/labels in sync
+            erase_radius = self.parameters.erase_radius
+            # Erase points within erase_radius of the click, keeping points/labels in sync
             kept = [
                 (point, label)
                 for point, label in zip(self.image_points, self.image_labels)

@@ -8,6 +8,7 @@ from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QApplication, QLabel
 
+from segmenter import SegmenterParameters
 from segmenter_stage import SegmenterStage
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "IMG_SPOON.JPG")
@@ -45,9 +46,11 @@ def _make_widget(shape) -> QLabel:
 
 class FakeSegmenter:
     """Stands in for the real (slow) Segmenter to test the stage's wiring
-    without a model."""
+    without a model. Returns 3 mask hypotheses, each filled with a distinct
+    value, so tests can tell which one the stage picked."""
 
     def __init__(self) -> None:
+        self.parameters = SegmenterParameters()
         self.calls: list[tuple] = []
 
     def Segment(self, image, input_points, input_labels):
@@ -55,7 +58,9 @@ class FakeSegmenter:
         height, width = image.shape[:2]
         import numpy as np
 
-        return np.ones((1, 1, height, width), dtype=bool)
+        masks = np.zeros((1, 3, height, width), dtype=bool)
+        masks[0, 0] = True
+        return masks
 
 
 def test_attach_and_click_records_points_on_the_underlying_recorder(qapp, spoon_image):
@@ -112,6 +117,34 @@ def test_run_calls_segmenter_with_points_and_labels_from_click_recorder(qapp, sp
     (points, labels), = fake.calls
     assert points == [[[list(SPOON_POINT_A), list(BACKGROUND_POINT)]]]
     assert labels == [[[1, 0]]]
+
+
+def test_run_uses_configured_mask_hypothesis_index(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    fake = FakeSegmenter()
+    stage = SegmenterStage(fake)
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+
+    fake.parameters.mask_hypothesis_index = 1
+    stage.Run(spoon_image)
+
+    # FakeSegmenter only fills hypothesis 0 with True - picking hypothesis 1
+    # should come back empty, proving the index was actually used.
+    assert not stage.mask.any()
+
+
+def test_run_clamps_mask_hypothesis_index_to_available_range(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    fake = FakeSegmenter()
+    stage = SegmenterStage(fake)
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+
+    fake.parameters.mask_hypothesis_index = 99  # beyond FakeSegmenter's 3 hypotheses
+    stage.Run(spoon_image)  # should not raise an IndexError
+
+    assert stage.mask is not None
 
 
 @pytest.mark.slow
