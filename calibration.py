@@ -24,6 +24,23 @@ class Calibration:
         raise NotImplementedError
 
 
+class IdentityCalibration(Calibration):
+    """Stub calibration with no fiducial to detect: treats image pixels as
+    millimeters 1:1. Placeholder so the rest of the pipeline (export) can
+    work in real-world units before a real fiducial-based calibration
+    (HoughCircleCalibration, PaperCalibration) is wired back into the UI.
+    """
+
+    def Detect(self, image: cv2.typing.MatLike) -> None:
+        pass
+
+    def GetTransform(self) -> cv2.typing.MatLike:
+        return np.float32([[1, 0, 0], [0, 1, 0]])
+
+    def DebugLayer(self, image: cv2.typing.MatLike) -> cv2.typing.MatLike:
+        return image
+
+
 @dataclass
 class HoughCircleParameters:
     """User-configurable inputs for HoughCircleCalibration."""

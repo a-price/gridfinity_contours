@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")  # headless: plt.show() must not block or open a window
 
 import cv2
+import numpy as np
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
@@ -170,8 +171,8 @@ def _click_gui(window: SVGGui, x: int, y: int, button) -> None:
 @pytest.mark.slow
 def test_full_app_click_flow(gui, monkeypatch):
     """Drives the whole app the way a user would: click to segment, click to
-    select the object and a circle fiducial, warp, then export - replacing
-    what used to be a series of one-off manual verification scripts.
+    select the object, then export - replacing what used to be a series of
+    one-off manual verification scripts.
     """
     # Don't block on the modal export dialog's own event loop.
     monkeypatch.setattr(QDialog, "exec_", lambda self: None)
@@ -195,8 +196,8 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert gui.morphology_stage.mask is not None
     assert gui.object_contours, "contours should be extracted from the segmented mask"
 
-    # Switch to select mode: further clicks toggle circles/objects instead
-    # of adding more segmentation points.
+    # Switch to select mode: further clicks toggle objects instead of
+    # adding more segmentation points.
     gui.select_mode_checkbox.setChecked(True)
 
     # Click a point known to be on the segmented spoon (one of the
@@ -214,25 +215,12 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert target_index in contour_selection.simplified
     assert target_index in contour_selection.boxes
 
-    # Circle selection: the first 3 detected circles are selected by
-    # default; clicking one toggles it off, clicking again toggles it back.
-    calibration = gui.calibration_stage.calibration
-    initially_selected = set(calibration.selected_circles)
-    assert len(initially_selected) == 3
-
-    cx, cy, _ = calibration.circles[0]
-    _click_gui(gui, cx, cy, Qt.MouseButton.LeftButton)
-    assert len(calibration.selected_circles) == 2
-
-    _click_gui(gui, cx, cy, Qt.MouseButton.LeftButton)
-    assert calibration.selected_circles == initially_selected
-
-    # Warp: apply the calibration's affine transform to the image and the
-    # selected object's simplified contour.
-    gui.pipeline.RunFrom("warp")
-    assert gui.rectify.warped_image is not None
-    assert target_index in gui.rectify.contours
-
-    # Export: should build (and, thanks to the monkeypatch, not block on)
-    # the dialog without raising.
+    # Export: runs the contour through the calibration stage's affine
+    # transform (currently IdentityCalibration, so numerically a no-op) and
+    # builds the dialog without raising, thanks to the monkeypatch.
     gui.pipeline.RunFrom("export")
+    assert target_index in gui.rectify.contours
+    assert np.allclose(
+        gui.rectify.contours[target_index],
+        np.squeeze(contour_selection.simplified[target_index]),
+    )

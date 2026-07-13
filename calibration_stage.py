@@ -1,9 +1,28 @@
 from typing import Callable
 
-from PyQt5.QtWidgets import QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from calibration import HoughCircleCalibration
+from calibration import HoughCircleCalibration, IdentityCalibration
 from pipeline import CreateSlider, CreateSpinBox, Stage
+
+
+class IdentityCalibrationStage(Stage):
+    """Qt wiring for IdentityCalibration - a stub with no parameters to
+    tune, so its widget is just an explanatory label.
+    """
+
+    def __init__(self, calibration: IdentityCalibration | None = None) -> None:
+        self.calibration = calibration or IdentityCalibration()
+
+    def Run(self, image) -> None:
+        self.calibration.Detect(image)
+
+    def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QLabel("Calibration: identity stub (1px = 1mm)"))
+        return widget
 
 
 class HoughCircleCalibrationStage(Stage):

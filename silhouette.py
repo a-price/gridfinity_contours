@@ -20,9 +20,10 @@ from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 import scipy.ndimage
 
+from click_recorder import WidgetToImageCoords
 from segmenter_stage import SegmenterStage
 from morphology_stage import MorphologyStage
-from calibration_stage import HoughCircleCalibrationStage
+from calibration_stage import IdentityCalibrationStage
 from contour_extraction import FindContours, PCABox
 from contour_selection_stage import ContourSelectionStage
 from rectify import Rectify
@@ -42,8 +43,12 @@ os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
 # The pipeline has the following stages
 #  * Load Image
 #  * Segment Object Contour
-#  * Extract Calibration
-#  * Rectify and Report Contour
+#  * Calibrate
+#  * Select and Export Contour
+#
+# Calibration currently uses IdentityCalibration, a stub that treats pixels
+# as millimeters 1:1 - a placeholder until a real fiducial-based calibration
+# (HoughCircleCalibration, PaperCalibration in calibration.py) is wired in.
 
 
 
@@ -61,16 +66,14 @@ class SVGGui(QMainWindow):
         self.object_labels = None
         self.object_contours = []
 
-        self.click_point = []
-
         self.segmenter_stage = SegmenterStage()
         self.morphology_stage = MorphologyStage()
-        self.calibration_stage = HoughCircleCalibrationStage()
+        self.calibration_stage = IdentityCalibrationStage()
         self.contour_selection_stage = ContourSelectionStage()
         self.rectify = Rectify()
 
         self.pipeline = Pipeline()
-        self.pipeline.Register("calibration", self.find_circles, downstream=["display"])
+        self.pipeline.Register("calibration", lambda: self.calibration_stage.Run(self.original_image))
         self.pipeline.Register("contours", self.find_contours, downstream=["selection"])
         self.pipeline.Register(
             "selection",
@@ -87,10 +90,9 @@ class SVGGui(QMainWindow):
             lambda: self.segmenter_stage.Run(self.original_image),
             downstream=["morphology"],
         )
-        # Warp and export are manually triggered (they pop up matplotlib
-        # windows / a dialog), so nothing lists them as a downstream - they
-        # aren't part of the auto-cascade, just registered for consistency.
-        self.pipeline.Register("warp", self.warp_image)
+        # Export is manually triggered (it pops up a dialog), so nothing
+        # lists it as a downstream - it isn't part of the auto-cascade, just
+        # registered for consistency.
         self.pipeline.Register("export", self.export_contours)
         self.pipeline.Register("display", self.update_display)
 
@@ -111,17 +113,9 @@ class SVGGui(QMainWindow):
         self.load_btn = QPushButton("Load Image")
         self.load_btn.clicked.connect(self.load_image)
 
-        self.show_binary_btn = QPushButton("Show Binary Image")
-        self.show_binary_btn.clicked.connect(self.show_binary_image)
-        self.show_binary_btn.setEnabled(False)
-
         self.show_original_btn = QPushButton("Show Original")
         self.show_original_btn.clicked.connect(self.show_original_image)
         self.show_original_btn.setEnabled(False)
-
-        self.warp_image_btn = QPushButton("warp image")
-        self.warp_image_btn.clicked.connect(lambda: self.pipeline.RunFrom("warp"))
-        self.warp_image_btn.setEnabled(False)
 
         self.export_btn = QPushButton("Export")
         self.export_btn.clicked.connect(lambda: self.pipeline.RunFrom("export"))
@@ -129,34 +123,20 @@ class SVGGui(QMainWindow):
 
         # Add controls to layout
         control_layout.addWidget(self.load_btn)
-        control_layout.addWidget(self.show_binary_btn)
         control_layout.addWidget(self.show_original_btn)
-        control_layout.addWidget(self.warp_image_btn)
         control_layout.addWidget(self.export_btn)
 
         # Clicking the image either adds a segmentation point (default) or,
-        # in select mode, toggles a circle/object under the click - the two
-        # can't be disambiguated from the click alone once a mask already
-        # covers part of the image.
-        self.select_mode_checkbox = QCheckBox("Select Mode (click to choose circles/objects)")
+        # in select mode, toggles the object under the click - the two can't
+        # be disambiguated from the click alone once a mask already covers
+        # part of the image.
+        self.select_mode_checkbox = QCheckBox("Select Mode (click to choose an object)")
         control_layout.addWidget(self.select_mode_checkbox)
 
-        # Add collapsible circle detection parameters
-        self.circle_params_toggle = QPushButton("▶ Circle Detection Parameters")
-        self.circle_params_toggle.setFlat(True)
-        self.circle_params_toggle.clicked.connect(self.toggle_circle_params)
-        control_layout.addWidget(self.circle_params_toggle)
-
-        # Circle parameters widget: built by the calibration stage itself,
-        # wired so a settled edit reruns calibration (and the display
-        # refresh downstream of it) through the pipeline.
-        self.circle_params_widget = self.calibration_stage.CreateWidget(
-            on_change=lambda: self.pipeline.RunFrom("calibration")
-        )
-        control_layout.addWidget(self.circle_params_widget)
-
-        # Hide parameters by default (collapsed)
-        self.circle_params_widget.setVisible(False)
+        # Calibration stage widget: currently just an explanatory label,
+        # since IdentityCalibration has no parameters to tune.
+        self.calibration_widget = self.calibration_stage.CreateWidget(on_change=lambda: None)
+        control_layout.addWidget(self.calibration_widget)
 
         # Morphology cleanup parameters: settled edits rerun morphology
         # (and contours/display downstream of it) through the pipeline.
@@ -188,17 +168,6 @@ class SVGGui(QMainWindow):
         layout.addWidget(control_panel, stretch=1)
         layout.addWidget(self.image_label, stretch=3)
 
-    def toggle_circle_params(self):
-        """Toggle visibility of circle detection parameters."""
-        is_visible = self.circle_params_widget.isVisible()
-        self.circle_params_widget.setVisible(not is_visible)
-
-        # Update button text
-        if is_visible:
-            self.circle_params_toggle.setText("▶ Circle Detection Parameters")
-        else:
-            self.circle_params_toggle.setText("▼ Circle Detection Parameters")
-
     def load_image(self, file_path: str | None = None):
         if not file_path:
             file_path, _ = QFileDialog.getOpenFileName(
@@ -208,11 +177,7 @@ class SVGGui(QMainWindow):
             self.original_image = cv2.imread(file_path, cv2.IMREAD_COLOR)
             if self.original_image is not None:
                 self.processed_image = self.original_image.copy()
-                # Configure radius sliders based on image size
-                self.calibration_stage.ConfigureForImageShape(self.original_image.shape)
-                self.show_binary_btn.setEnabled(True)
                 self.show_original_btn.setEnabled(True)
-                self.warp_image_btn.setEnabled(True)
                 self.export_btn.setEnabled(True)
 
                 self.segmenter_stage.AttachToImageWidget(
@@ -221,16 +186,12 @@ class SVGGui(QMainWindow):
                     on_change=lambda: self.pipeline.RunFrom("segmentation"),
                 )
 
-                # Automatically detect the circle fiducials; object contours
-                # only become available once the user clicks segmentation
-                # points, cascading through segmentation -> morphology ->
-                # contours -> display.
                 self.pipeline.RunFrom("calibration")
 
-    def find_circles(self):
-        if self.original_image is None:
-            return
-        self.calibration_stage.Run(self.original_image)
+                # Object contours only become available once the user clicks
+                # segmentation points, cascading through segmentation ->
+                # morphology -> contours -> display.
+                self.pipeline.RunFrom("display")
 
     def find_contours(self):
         """Extract object contours from the morphology stage's cleaned-up
@@ -254,16 +215,6 @@ class SVGGui(QMainWindow):
         # Extract contours for visualization
         self.object_contours = FindContours(mask_image)
 
-    def show_binary_image(self):
-        """Display the binary image circle detection runs against, for
-        debugging purposes.
-        """
-        if self.original_image is None:
-            return
-
-        self.processed_image = self.calibration_stage.calibration.DebugLayer(self.original_image)
-        self.update_display()
-
     def show_original_image(self):
         """Show the original image."""
         if self.original_image is None:
@@ -278,67 +229,18 @@ class SVGGui(QMainWindow):
         if self.processed_image is None:
             return
 
-        # Get the current pixmap and its dimensions
-        pixmap = self.image_label.pixmap()
-        if pixmap is None:
+        coords = WidgetToImageCoords(self.image_label, self.processed_image.shape, ev)
+        if coords is None:
             return
-
-        # Get widget and image dimensions
-        widget_width = self.image_label.width()
-        widget_height = self.image_label.height()
-        pixmap_width = pixmap.width()
-        pixmap_height = pixmap.height()
-
-        # Calculate the actual position of the scaled image within the widget
-        # The image is centered and scaled to fit while maintaining aspect ratio
-        scale_x = pixmap_width / self.processed_image.shape[1]
-        scale_y = pixmap_height / self.processed_image.shape[0]
-
-        # Calculate offset to center the image in the widget
-        offset_x = (widget_width - pixmap_width) // 2
-        offset_y = (widget_height - pixmap_height) // 2
-
-        # Convert widget coordinates to image coordinates
-        widget_x = ev.pos().x() - offset_x
-        widget_y = ev.pos().y() - offset_y
-
-        # Check if click is within the image bounds
-        if (
-            widget_x < 0
-            or widget_y < 0
-            or widget_x >= pixmap_width
-            or widget_y >= pixmap_height
-        ):
-            return
-
-        # Scale back to original image coordinates
-        img_x = int(widget_x / scale_x)
-        img_y = int(widget_y / scale_y)
-
-        if self.processed_image is not None:
-            height, width, channel = self.processed_image.shape
-            assert 0 <= img_x
-            assert img_x < width
-            assert 0 <= img_y
-            assert img_y < height
-
-        self.click_point = [img_x, img_y]
+        img_x, img_y = coords
 
         if not self.select_mode_checkbox.isChecked():
             self.segmenter_stage.OnClick(ev)
             return
 
-        # Select mode: try a circle fiducial, then an object contour.
-        # Neither adds a segmentation point.
-        if self.calibration_stage.calibration.ToggleSelection(img_x, img_y):
-            self.pipeline.RunFrom("display")
-            return
-
-        if (
-            self.object_contours
-            and 0 <= img_x < self.processed_image.shape[1]
-            and 0 <= img_y < self.processed_image.shape[0]
-        ):
+        # Select mode: toggle an object contour under the click. Doesn't add
+        # a segmentation point.
+        if self.object_contours:
             if self.contour_selection_stage.contour_selection.ToggleSelection(img_x, img_y, self.object_contours):
                 self.pipeline.RunFrom("selection")
                 return
@@ -353,39 +255,17 @@ class SVGGui(QMainWindow):
         # Create overlay for transparent effects
         overlay = display_image.copy()
 
-        # If we have a clicked point, draw it.
-        if self.click_point:
-            cv2.circle(
-                overlay, (self.click_point[0], self.click_point[1]), 50, (0, 0, 255), -1
-            )
-
-        # Draw detected circles
-        i_selected = 0
-        for i, (x, y, r) in enumerate(self.calibration_stage.calibration.circles):
-            color = (255, 0, 0) if i in self.calibration_stage.calibration.selected_circles else (0, 0, 255)
-            cv2.circle(display_image, (x, y), r, color, 2)
-            cv2.circle(display_image, (x, y), 2, (0, 255, 0), 3)
-
-            if i in self.calibration_stage.calibration.selected_circles:
-                # Add transparent blue fill
-                cv2.circle(overlay, (x, y), r, (255, 0, 0), -1)  # Filled circle
-
-                # Label circle with its index
-                label = str(i_selected)
-                i_selected += 1
-                # Position label slightly above and to the right of center
-                label_x = x + r // 5
-                label_y = y - r // 5
-                cv2.putText(
-                    display_image,
-                    label,
-                    (label_x, label_y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    4,
-                    (255, 0, 0),
-                    8,
-                    cv2.LINE_AA,
-                )
+        # Draw segmentation click points: a green "+" for positive
+        # (label 1) points, a red "-" for negative (label 0) points.
+        click_recorder = self.segmenter_stage.click_recorder
+        if click_recorder is not None:
+            marker_len = max(15, min(display_image.shape[:2]) // 80)
+            thickness = max(3, marker_len // 5)
+            for (x, y), label in zip(click_recorder.image_points, click_recorder.image_labels):
+                color = (0, 255, 0) if label == 1 else (0, 0, 255)
+                cv2.line(display_image, (x - marker_len, y), (x + marker_len, y), color, thickness)
+                if label == 1:
+                    cv2.line(display_image, (x, y - marker_len), (x, y + marker_len), color, thickness)
 
         # Draw object boundaries if available
         selected_objects = self.contour_selection_stage.contour_selection.selected
@@ -556,31 +436,20 @@ class SVGGui(QMainWindow):
                 )
 
     def export_contours(self):
-        """Export simplified contour points in a new window."""
-        if not self.contour_selection_stage.contour_selection.selected or not self.rectify.contours:
+        """Export simplified contour points, converted to real-world units
+        by the calibration stage's affine transform (currently
+        IdentityCalibration: 1px = 1mm, pending a real fiducial-based
+        calibration) in a new window.
+        """
+        contour_selection = self.contour_selection_stage.contour_selection
+        if not contour_selection.selected or not contour_selection.simplified:
             return
 
-        dialog = ContourExportDialog(
-            self.contour_selection_stage.contour_selection.selected, self.rectify.contours, self
-        )
-        dialog.exec_()
-
-    def warp_image(self):
         affine = self.calibration_stage.calibration.GetTransform()
+        self.rectify.Run(self.processed_image, affine, contour_selection.simplified)
 
-        self.rectify.Run(self.processed_image, affine, self.contour_selection_stage.contour_selection.simplified)
-
-        plt.figure()
-        plt.imshow(np.sum(self.rectify.warped_image[:400, :400], axis=2), cmap="Greys")
-        plt.show()
-
-        for i, contour in self.rectify.contours.items():
-            plt.figure()
-            plt.title("tranformed contour")
-            plt.plot(contour[:, 0], contour[:, 1], "-")
-            plt.xlabel("mm")
-            plt.ylabel("mm")
-            plt.show()
+        dialog = ContourExportDialog(contour_selection.selected, self.rectify.contours, self)
+        dialog.exec_()
 
 
 class ContourExportDialog(QDialog):

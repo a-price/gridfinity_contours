@@ -6,6 +6,48 @@ from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QLabel
 
 
+def WidgetToImageCoords(
+    widget: QLabel, image_shape: tuple, ev: QMouseEvent
+) -> tuple[int, int] | None:
+    """Convert a mouse event's widget-relative position to image pixel
+    coordinates, accounting for the displayed pixmap's letterboxing within
+    the widget (it's centered and scaled to fit while preserving aspect
+    ratio, so it rarely fills the widget exactly).
+
+    Returns None if there's no pixmap yet or the click fell outside it.
+    """
+    pixmap = widget.pixmap()
+    if pixmap is None:
+        return None
+
+    widget_width = widget.width()
+    widget_height = widget.height()
+    pixmap_width = pixmap.width()
+    pixmap_height = pixmap.height()
+
+    scale_x = pixmap_width / image_shape[1]
+    scale_y = pixmap_height / image_shape[0]
+
+    # Offset to center the image in the widget
+    offset_x = (widget_width - pixmap_width) // 2
+    offset_y = (widget_height - pixmap_height) // 2
+
+    widget_x = ev.pos().x() - offset_x
+    widget_y = ev.pos().y() - offset_y
+
+    if (
+        widget_x < 0
+        or widget_y < 0
+        or widget_x >= pixmap_width
+        or widget_y >= pixmap_height
+    ):
+        return None
+
+    img_x = int(widget_x / scale_x)
+    img_y = int(widget_y / scale_y)
+    return img_x, img_y
+
+
 class ClickRecorder:
     def __init__(self, image_widget: QLabel, image_shape: tuple) -> None:
         self.image_widget = image_widget
@@ -17,47 +59,10 @@ class ClickRecorder:
         if ev is None:
             return
 
-        # Get the current pixmap and its dimensions
-        pixmap = self.image_widget.pixmap()
-        if pixmap is None:
+        coords = WidgetToImageCoords(self.image_widget, self.image_shape, ev)
+        if coords is None:
             return
-
-        # Get widget and image dimensions
-        widget_width = self.image_widget.width()
-        widget_height = self.image_widget.height()
-        pixmap_width = pixmap.width()
-        pixmap_height = pixmap.height()
-
-        # Calculate the actual position of the scaled image within the widget
-        # The image is centered and scaled to fit while maintaining aspect ratio
-        scale_x = pixmap_width / self.image_shape[1]
-        scale_y = pixmap_height / self.image_shape[0]
-
-        # Calculate offset to center the image in the widget
-        offset_x = (widget_width - pixmap_width) // 2
-        offset_y = (widget_height - pixmap_height) // 2
-
-        # Convert widget coordinates to image coordinates
-        widget_x = ev.pos().x() - offset_x
-        widget_y = ev.pos().y() - offset_y
-
-        # Check if click is within the image bounds
-        if (
-            widget_x < 0
-            or widget_y < 0
-            or widget_x >= pixmap_width
-            or widget_y >= pixmap_height
-        ):
-            return
-
-        # Scale back to original image coordinates
-        img_x = int(widget_x / scale_x)
-        img_y = int(widget_y / scale_y)
-
-        assert 0 <= img_x
-        assert img_x < self.image_shape[1]
-        assert 0 <= img_y
-        assert img_y < self.image_shape[0]
+        img_x, img_y = coords
 
         if ev.button() == Qt.MouseButton.MiddleButton:
             erase_radius = 5

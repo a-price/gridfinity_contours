@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from calibration import HoughCircleCalibration, PaperCalibration
+from calibration import HoughCircleCalibration, IdentityCalibration, PaperCalibration
 
 
 def _draw_circle_image(circles: list[tuple[int, int, int]]) -> cv2.typing.MatLike:
@@ -116,6 +116,22 @@ def test_paper_calibration_detects_corners_and_transform():
         [0.0, PaperCalibration.HEIGHT_MM],
         atol=1e-1,
     )
+
+
+def test_identity_calibration_is_a_1px_to_1mm_noop():
+    calibration = IdentityCalibration()
+    image = np.zeros((50, 50, 3), dtype=np.uint8)
+
+    calibration.Detect(image)  # should not raise; there's nothing to detect
+    assert calibration.DebugLayer(image) is image
+
+    affine = calibration.GetTransform()
+
+    def transform(point):
+        return affine @ np.array([point[0], point[1], 1.0])
+
+    assert np.allclose(transform((0.0, 0.0)), [0.0, 0.0])
+    assert np.allclose(transform((12.5, 30.0)), [12.5, 30.0])
 
 
 def test_paper_calibration_no_quadrilateral_found():
