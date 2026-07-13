@@ -17,7 +17,7 @@ it.
 from typing import Callable
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QDoubleSpinBox, QLabel, QSlider, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QDoubleSpinBox, QGroupBox, QLabel, QSlider, QVBoxLayout, QWidget
 
 
 class Stage:
@@ -26,6 +26,17 @@ class Stage:
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
         raise NotImplementedError
+
+
+def CreateGroupBox(title: str) -> QGroupBox:
+    """A titled QGroupBox with an empty QVBoxLayout, ready for a stage's
+    CreateWidget to add its controls into - keeps every stage's widget
+    grouped and labeled the same way, without SVGGui having to know each
+    stage's display title.
+    """
+    group = QGroupBox(title)
+    QVBoxLayout(group)
+    return group
 
 
 class Pipeline:

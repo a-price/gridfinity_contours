@@ -1,9 +1,9 @@
 from typing import Callable
 
-from PyQt5.QtWidgets import QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QWidget
 
 from morphology import Morphology
-from pipeline import CreateSlider, Stage
+from pipeline import CreateGroupBox, CreateSlider, Stage
 
 
 class MorphologyStage(Stage):
@@ -20,9 +20,8 @@ class MorphologyStage(Stage):
         self.mask = None if mask_image is None else self.morphology.Apply(mask_image)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        widget = CreateGroupBox("Mask Cleanup")
+        layout = widget.layout()
 
         def apply_closing_radius(value):
             self.morphology.parameters.closing_radius = value

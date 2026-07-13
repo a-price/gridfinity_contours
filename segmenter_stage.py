@@ -1,10 +1,10 @@
 from typing import Callable
 
 from PyQt5.QtGui import QMouseEvent
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QLabel, QWidget
 
 from click_recorder import ClickRecorder, ClickRecorderParameters
-from pipeline import CreateSlider, Stage
+from pipeline import CreateGroupBox, CreateSlider, Stage
 from segmenter import Segmenter
 
 # SAM2's processor typically ranks 3 mask hypotheses per click set (0 =
@@ -63,9 +63,8 @@ class SegmenterStage(Stage):
         self.mask = masks[0, hypothesis_index].astype(bool)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        widget = CreateGroupBox("Segmentation")
+        layout = widget.layout()
 
         def apply_erase_radius(value):
             # Only affects future middle-clicks, not the current mask - no

@@ -14,7 +14,6 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QDialog,
     QCheckBox,
-    QGroupBox,
 )
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QLibraryInfo
@@ -134,32 +133,35 @@ class SVGGui(QMainWindow):
         self.select_mode_checkbox = QCheckBox("Select Mode (click to choose an object)")
         control_layout.addWidget(self.select_mode_checkbox)
 
-        # Each pipeline stage's widget goes in its own labeled group box, so
-        # the control panel visually mirrors the stage graph.
-        self.segmenter_widget = self.segmenter_stage.CreateWidget(
-            on_change=lambda: self.pipeline.RunFrom("segmentation")
+        # Each pipeline stage's CreateWidget returns its own titled
+        # QGroupBox, so the control panel visually mirrors the stage graph
+        # without SVGGui needing to know each stage's display title.
+        control_layout.addWidget(
+            self.segmenter_stage.CreateWidget(
+                on_change=lambda: self.pipeline.RunFrom("segmentation")
+            )
         )
-        self._add_stage_group(control_layout, "Segmentation", self.segmenter_widget)
 
         # Calibration stage widget: currently just an explanatory label,
         # since IdentityCalibration has no parameters to tune.
-        self.calibration_widget = self.calibration_stage.CreateWidget(on_change=lambda: None)
-        self._add_stage_group(control_layout, "Calibration", self.calibration_widget)
+        control_layout.addWidget(self.calibration_stage.CreateWidget(on_change=lambda: None))
 
         # Morphology cleanup parameters: settled edits rerun morphology
         # (and contours/display downstream of it) through the pipeline.
-        self.morphology_widget = self.morphology_stage.CreateWidget(
-            on_change=lambda: self.pipeline.RunFrom("morphology")
+        control_layout.addWidget(
+            self.morphology_stage.CreateWidget(
+                on_change=lambda: self.pipeline.RunFrom("morphology")
+            )
         )
-        self._add_stage_group(control_layout, "Mask Cleanup", self.morphology_widget)
 
         # Contour selection parameters: settled edits rerun selection (and
         # display downstream of it) through the pipeline. Selecting an
         # object itself happens by clicking it in the image view.
-        self.contour_selection_widget = self.contour_selection_stage.CreateWidget(
-            on_change=lambda: self.pipeline.RunFrom("selection")
+        control_layout.addWidget(
+            self.contour_selection_stage.CreateWidget(
+                on_change=lambda: self.pipeline.RunFrom("selection")
+            )
         )
-        self._add_stage_group(control_layout, "Contour Selection", self.contour_selection_widget)
 
         # Add stretch to push everything to the top
         control_layout.addStretch()
@@ -173,15 +175,6 @@ class SVGGui(QMainWindow):
         # Add widgets to main layout
         layout.addWidget(control_panel, stretch=1)
         layout.addWidget(self.image_label, stretch=3)
-
-    @staticmethod
-    def _add_stage_group(control_layout: QVBoxLayout, title: str, stage_widget: QWidget) -> None:
-        """Wrap a pipeline stage's widget in a titled QGroupBox so the
-        control panel visually mirrors the stage graph."""
-        group = QGroupBox(title)
-        group_layout = QVBoxLayout(group)
-        group_layout.addWidget(stage_widget)
-        control_layout.addWidget(group)
 
     def load_image(self, file_path: str | None = None):
         if not file_path:

@@ -1,9 +1,9 @@
 from typing import Callable
 
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QLabel, QWidget
 
 from calibration import HoughCircleCalibration, IdentityCalibration
-from pipeline import CreateSlider, CreateSpinBox, Stage
+from pipeline import CreateGroupBox, CreateSlider, CreateSpinBox, Stage
 
 
 class IdentityCalibrationStage(Stage):
@@ -18,10 +18,8 @@ class IdentityCalibrationStage(Stage):
         self.calibration.Detect(image)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel("Calibration: identity stub (1px = 1mm)"))
+        widget = CreateGroupBox("Calibration")
+        widget.layout().addWidget(QLabel("Calibration: identity stub (1px = 1mm)"))
         return widget
 
 
@@ -41,9 +39,8 @@ class HoughCircleCalibrationStage(Stage):
         self.calibration.Detect(image)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        widget = CreateGroupBox("Calibration")
+        layout = widget.layout()
 
         def add_slider(field_name: str, label_text: str, min_val: int, max_val: int):
             def apply(value):

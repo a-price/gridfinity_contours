@@ -1,9 +1,9 @@
 from typing import Callable
 
-from PyQt5.QtWidgets import QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QWidget
 
 from contour_extraction import ContourSelection
-from pipeline import CreateSlider, Stage
+from pipeline import CreateGroupBox, CreateSlider, Stage
 
 _EPSILON_SLIDER_SCALE = 1000  # slider is int-only; epsilon_fraction is a small float
 
@@ -22,9 +22,8 @@ class ContourSelectionStage(Stage):
         self.contour_selection.Run(contours)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        widget = CreateGroupBox("Contour Selection")
+        layout = widget.layout()
 
         def apply(value):
             self.contour_selection.parameters.epsilon_fraction = value / _EPSILON_SLIDER_SCALE
