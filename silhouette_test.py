@@ -196,6 +196,7 @@ def _click_gui(window: SVGGui, x: int, y: int, button) -> None:
 
 
 @pytest.mark.slow
+@pytest.mark.filterwarnings("ignore:FigureCanvasAgg is non-interactive:UserWarning")
 def test_full_app_click_flow(gui, monkeypatch):
     """Drives the whole app the way a user would: click to segment, click to
     select the object, then export - replacing what used to be a series of
