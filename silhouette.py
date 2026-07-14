@@ -1,3 +1,4 @@
+import argparse
 import sys
 import os
 import cv2
@@ -20,6 +21,7 @@ from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 
 from click_recorder import WidgetToImageCoords
+from segmenter import Segmenter
 from segmenter_stage import SegmenterStage
 from morphology_stage import MorphologyStage
 from calibration_stage import ArucoCalibrationStage
@@ -58,7 +60,7 @@ _MODE_SELECT_FIDUCIAL = "Select a Fiducial"
 
 
 class SVGGui(QMainWindow):
-    def __init__(self):
+    def __init__(self, local_files_only: bool = True):
         super().__init__()
         self.setWindowTitle("SVG Outliner")
         self.setGeometry(100, 100, 1200, 800)
@@ -68,7 +70,7 @@ class SVGGui(QMainWindow):
         self.processed_image = None
         self.object_contours = []
 
-        self.segmenter_stage = SegmenterStage()
+        self.segmenter_stage = SegmenterStage(Segmenter(local_files_only=local_files_only))
         self.morphology_stage = MorphologyStage()
         self.calibration_stage = ArucoCalibrationStage()
         self.contour_selection_stage = ContourSelectionStage()
@@ -416,8 +418,24 @@ class ContourExportDialog(QDialog):
 
 
 def main():
+    # QApplication strips any Qt-specific flags (e.g. -style) out of
+    # sys.argv in place, so parse our own arguments from what's left.
     app = QApplication(sys.argv)
-    window = SVGGui()
+
+    parser = argparse.ArgumentParser(description="Interactive photo-to-Gridfinity-contour capture tool.")
+    parser.add_argument("image_path", nargs="?", default=None, help="Image to load at launch (optional).")
+    parser.add_argument(
+        "--download-model",
+        action="store_true",
+        help=(
+            "Allow downloading the SAM2 model from the Hugging Face Hub "
+            "if it isn't already cached locally (default: offline, local "
+            "files only)."
+        ),
+    )
+    args = parser.parse_args(sys.argv[1:])
+
+    window = SVGGui(local_files_only=not args.download_model)
     # Resize window to 75% of available screen size and center it
     screen = app.primaryScreen()
     if screen is not None:
@@ -430,11 +448,9 @@ def main():
         y = avail.y() + (avail.height() - h) // 2
         window.move(x, y)
     window.show()
-    # Optional CLI argument: image path to load at launch
-    if len(sys.argv) > 1:
-        launch_path = sys.argv[1]
+    if args.image_path:
         # Normalize path: expand ~ and env vars, resolve relative to CWD
-        launch_path = os.path.expanduser(os.path.expandvars(launch_path))
+        launch_path = os.path.expanduser(os.path.expandvars(args.image_path))
         if not os.path.isabs(launch_path):
             launch_path = os.path.abspath(launch_path)
         window.load_image(launch_path)

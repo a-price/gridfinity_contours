@@ -1,0 +1,5 @@
+# mdformat reads its config only from this file (not pyproject.toml).
+# Defaults are used throughout - this file exists mainly so a parent
+# directory's .mdformat.toml (if any) can't be picked up instead.
+wrap = "keep"
+number = true

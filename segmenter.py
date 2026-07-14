@@ -33,13 +33,18 @@ class SegmenterLike(Protocol):
 
 
 class Segmenter:
-    def __init__(self) -> None:
+    def __init__(self, local_files_only: bool = True) -> None:
+        """local_files_only=False allows fetching the model from the
+        Hugging Face Hub if it isn't already cached locally; the default
+        (True) never makes a network call, failing instead if the model
+        isn't cached.
+        """
         self.parameters = SegmenterParameters()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = Sam2Model.from_pretrained("facebook/sam2-hiera-tiny", local_files_only=True).to(
+        self.model = Sam2Model.from_pretrained("facebook/sam2-hiera-tiny", local_files_only=local_files_only).to(
             self.device  # pyright: ignore[reportArgumentType]
         )
-        self.processor = Sam2Processor.from_pretrained("facebook/sam2-hiera-tiny", local_files_only=True)
+        self.processor = Sam2Processor.from_pretrained("facebook/sam2-hiera-tiny", local_files_only=local_files_only)
 
     # Returns mask hypotheses as an array with indices:
     # [object, mask_hypothesis, height, width]
