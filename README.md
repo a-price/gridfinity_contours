@@ -124,6 +124,17 @@ them:
 - `make typecheck` - `pyright`
 - `make test` - `pytest`
 - `make check` - all of the above, stopping at the first failure
+- `make requirements` - regenerate `requirements.txt` from `requirements.in`
+  (see below)
+
+`requirements.in` lists only direct dependencies (runtime + dev tooling);
+`requirements.txt` is the fully-pinned, `pip-compile`-generated lockfile
+(every transitive dependency, annotated with `# via <package>` showing why
+it's there) - install from `requirements.txt`, but edit `requirements.in`
+and run `make requirements` to change a direct dependency or its version.
+`make requirements` needs `pip-tools` (`pip install pip-tools`); it's a
+meta-tool for maintaining the lockfile, not a project dependency itself,
+so it isn't in `requirements.in`.
 
 Tests are plain `pytest`; the `slow` marker flags tests that exercise the
 real SAM2 model end-to-end (slower, needs the cached weights):

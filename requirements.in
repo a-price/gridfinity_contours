@@ -1,0 +1,19 @@
+# Direct (top-level) dependencies only - run `make requirements` (or
+# `pip-compile requirements.in`) to regenerate the fully-pinned, annotated
+# requirements.txt after editing this file.
+
+# Runtime
+opencv-python==5.0.0.93
+numpy==2.5.1
+PyQt5==5.15.11
+matplotlib==3.11.0
+scikit-image==0.25.2
+torch==2.12.1
+transformers==5.13.0
+
+# Dev tooling (see Makefile)
+pytest==9.1.1
+black==26.5.1
+pyflakes==3.4.0
+pyright==1.1.411
+mdformat==1.0.0
