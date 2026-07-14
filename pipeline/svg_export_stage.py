@@ -5,6 +5,7 @@ import numpy as np
 from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from pipeline.core import CreateGroupBox, Stage
+from pipeline.pdf_writer import WritePdf
 from pipeline.svg_writer import WriteSvg
 
 
@@ -21,6 +22,11 @@ class SvgExportStage(Stage):
     360 expect for sketch import, which is the whole point of a tool named
     SVGGui. Like the rest of export, this only runs when explicitly
     triggered, not on every upstream change.
+
+    Also writes a same-scale PDF alongside it (`<filename>.pdf`): not every
+    SVG viewer/print path honors the SVG's embedded physical units, while
+    a PDF's page size is unambiguous - print that one if a printed SVG
+    comes out the wrong size.
     """
 
     def __init__(self) -> None:
@@ -30,6 +36,7 @@ class SvgExportStage(Stage):
         if not contours:
             return
         WriteSvg(self.parameters.filename, contours)
+        WritePdf(f"{self.parameters.filename}.pdf", contours)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
         widget, layout = CreateGroupBox("SVG Export")

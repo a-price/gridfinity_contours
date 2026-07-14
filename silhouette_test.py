@@ -9,6 +9,10 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import matplotlib
+
+matplotlib.use("Agg")  # headless: no window should pop up when writing the export PDF
+
 import cv2
 import numpy as np
 import pytest
@@ -261,6 +265,8 @@ def test_full_app_click_flow(gui, tmp_path):
     assert contour_selection.selected == {target_index}
     gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
 
-    # Export just writes the already-rectified contours out to an SVG file.
+    # Export just writes the already-rectified contours out to an SVG file
+    # (plus a same-scale PDF sibling, for printing without SVG unit gotchas).
     gui.pipeline.RunFrom("export")
     assert (tmp_path / "contours.svg").exists()
+    assert (tmp_path / "contours.svg.pdf").exists()

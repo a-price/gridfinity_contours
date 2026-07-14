@@ -3,19 +3,13 @@ import numpy as np
 from pipeline.contour_extraction import PCABox
 
 
-def _FormatPoints(points: np.ndarray) -> str:
-    return " ".join(f"{x:.4f},{y:.4f}" for x, y in points)
-
-
-def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
-    """Writes `contours` (real-world mm coordinates, e.g. Rectify.contours)
-    to an SVG file: one closed <polygon> per contour, each rotated and
-    shifted into its own PCA-aligned local frame (principal axis along x,
-    origin at its bounding box's corner) - the same alignment already used
-    for the text preview, so the shape comes out level instead of at
-    whatever angle the object happened to sit at in the photo. 1 SVG user
-    unit = 1mm, the scale tools like Fusion 360 expect when importing an
-    SVG sketch.
+def AlignContoursToPca(contours: dict[int, np.ndarray]) -> tuple[dict[int, np.ndarray], float, float]:
+    """PCA-aligns each contour into its own local frame (principal axis
+    along x, origin at its bounding box's corner) - the same alignment
+    used for the text preview, so a shape comes out level instead of at
+    whatever angle the object happened to sit at in the photo. Returns the
+    aligned contours plus the width/height needed to fit the largest one,
+    in the same real-world units as the input (e.g. mm).
     """
     if not contours:
         raise ValueError("no contours to export")
@@ -28,6 +22,22 @@ def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
         aligned[obj_id] = box.ToLocal(points)
         width = max(width, box.max1 - box.min1)
         height = max(height, box.max2 - box.min2)
+    return aligned, width, height
+
+
+def _FormatPoints(points: np.ndarray) -> str:
+    return " ".join(f"{x:.4f},{y:.4f}" for x, y in points)
+
+
+def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
+    """Writes `contours` (real-world mm coordinates, e.g. Rectify.contours)
+    to an SVG file: one closed <polygon> per contour, PCA-aligned (see
+    AlignContoursToPca). 1 SVG user unit = 1mm, the scale tools like Fusion
+    360 expect when importing an SVG sketch. Not every SVG viewer/print
+    path honors that unit correctly though - see WritePdf for a
+    print-safe alternative.
+    """
+    aligned, width, height = AlignContoursToPca(contours)
 
     polygons = "\n".join(
         f'  <polygon points="{_FormatPoints(points)}" fill="none" stroke="black" stroke-width="0.1" />'

@@ -34,7 +34,11 @@ An interactive PyQt5 GUI that runs the whole capture pipeline:
    automatically - a text preview updates live, no button needed.
 7. **Export** writes the selected, rectified contour to an SVG file (1
    unit = 1mm, PCA-aligned so it comes out level), ready to import into a
-   CAD tool like Fusion 360.
+   CAD tool like Fusion 360. A same-scale PDF (`<filename>.svg.pdf`) is
+   written alongside it - print that one instead of the SVG directly if a
+   printed SVG comes out the wrong size, since not every SVG viewer/print
+   path honors its embedded physical units (a PDF's page size is
+   unambiguous).
 
 Each stage's tunable parameters live in its own group box in the control
 panel (Segmentation, Calibration, Mask Cleanup, Contour Selection, SVG
