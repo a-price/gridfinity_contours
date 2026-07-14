@@ -2,12 +2,12 @@ from typing import Callable
 
 from PyQt5.QtWidgets import QLabel, QWidget
 
-from calibration import (
+from pipeline.calibration import (
     ArucoCalibration,
     HoughCircleCalibration,
     IdentityCalibration,
 )
-from pipeline import CreateGroupBox, CreateSlider, CreateSpinBox, Stage
+from pipeline.core import CreateGroupBox, CreateSlider, CreateSpinBox, Stage
 
 
 class ArucoCalibrationStage(Stage):

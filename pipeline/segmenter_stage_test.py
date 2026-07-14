@@ -8,10 +8,10 @@ from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QApplication, QLabel
 
-from segmenter import SegmenterParameters
-from segmenter_stage import SegmenterStage
+from pipeline.segmenter import SegmenterParameters
+from pipeline.segmenter_stage import SegmenterStage
 
-IMAGE_PATH = os.path.join(os.path.dirname(__file__), "IMG_SPOON.JPG")
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), "..", "IMG_SPOON.JPG")
 
 SPOON_POINT_A = (3550, 1550)  # bowl
 BACKGROUND_POINT = (900, 2700)  # dark cloth
@@ -149,7 +149,7 @@ def test_run_clamps_mask_hypothesis_index_to_available_range(qapp, spoon_image):
 
 @pytest.mark.slow
 def test_run_end_to_end_with_real_segmenter(qapp, spoon_image):
-    from segmenter import Segmenter
+    from pipeline.segmenter import Segmenter
 
     widget = _make_widget(spoon_image.shape)
     stage = SegmenterStage(Segmenter())

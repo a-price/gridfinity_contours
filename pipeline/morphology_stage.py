@@ -2,8 +2,8 @@ from typing import Callable
 
 from PyQt5.QtWidgets import QWidget
 
-from morphology import Morphology
-from pipeline import CreateGroupBox, CreateSlider, Stage
+from pipeline.morphology import Morphology
+from pipeline.core import CreateGroupBox, CreateSlider, Stage
 
 
 class MorphologyStage(Stage):

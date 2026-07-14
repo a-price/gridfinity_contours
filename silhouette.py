@@ -20,15 +20,15 @@ import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 
-from click_recorder import WidgetToImageCoords
-from segmenter import Segmenter
-from segmenter_stage import SegmenterStage
-from morphology_stage import MorphologyStage
-from calibration_stage import ArucoCalibrationStage
-from contour_extraction import FindContours, PCABox
-from contour_selection_stage import ContourSelectionStage
-from rectify import Rectify
-from pipeline import Pipeline
+from pipeline.click_recorder import WidgetToImageCoords
+from pipeline.segmenter import Segmenter
+from pipeline.segmenter_stage import SegmenterStage
+from pipeline.morphology_stage import MorphologyStage
+from pipeline.calibration_stage import ArucoCalibrationStage
+from pipeline.contour_extraction import FindContours, PCABox
+from pipeline.contour_selection_stage import ContourSelectionStage
+from pipeline.rectify import Rectify
+from pipeline.core import Pipeline
 
 # Fix PyQt5 / OpenCV collision
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)

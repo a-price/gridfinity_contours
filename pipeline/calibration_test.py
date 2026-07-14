@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from calibration import (
+from pipeline.calibration import (
     HoughCircleCalibration,
     IdentityCalibration,
     PaperCalibration,

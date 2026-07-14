@@ -1,5 +1,5 @@
 PYTHON := .venv/bin/python3
-PY_FILES := $(wildcard *.py)
+PY_FILES := $(wildcard *.py) $(wildcard pipeline/*.py)
 MD_FILES := $(wildcard *.md)
 
 .PHONY: format format-check lint typecheck test check
