@@ -3,13 +3,14 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import cv2
+import numpy as np
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QApplication, QLabel
 
 from pipeline.segmenter import SegmenterParameters
-from pipeline.segmenter_stage import SegmenterStage
+from pipeline.segmenter_stage import SegmenterStage, _KeepClickedComponents
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "..", "IMG_SPOON.JPG")
 
@@ -54,10 +55,29 @@ class FakeSegmenter:
     def Segment(self, image, input_points, input_labels):
         self.calls.append((input_points, input_labels))
         height, width = image.shape[:2]
-        import numpy as np
-
         masks = np.zeros((1, 3, height, width), dtype=bool)
         masks[0, 0] = True
+        return masks
+
+
+class DisjointBlobSegmenter:
+    """Returns a single mask hypothesis with two disjoint square blobs, to
+    test that SegmenterStage discards components not touched by a
+    positive click."""
+
+    BLOB_A = (slice(0, 20), slice(0, 20))
+    BLOB_B = (slice(100, 120), slice(100, 120))
+
+    def __init__(self) -> None:
+        self.parameters = SegmenterParameters()
+
+    def Segment(self, image, input_points, input_labels):
+        height, width = image.shape[:2]
+        mask = np.zeros((height, width), dtype=bool)
+        mask[self.BLOB_A] = True
+        mask[self.BLOB_B] = True
+        masks = np.zeros((1, 3, height, width), dtype=bool)
+        masks[0, 0] = mask
         return masks
 
 
@@ -145,6 +165,67 @@ def test_run_clamps_mask_hypothesis_index_to_available_range(qapp, spoon_image):
     stage.Run(spoon_image)  # should not raise an IndexError
 
     assert stage.mask is not None
+
+
+def test_keep_clicked_components_discards_blobs_with_no_seed():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:5, 2:5] = True  # seeded blob
+    mask[15:18, 15:18] = True  # disjoint, unseeded blob
+
+    result = _KeepClickedComponents(mask, [(3, 3)])
+
+    assert result[3, 3]
+    assert not result[16, 16]
+
+
+def test_keep_clicked_components_unions_all_seeded_blobs():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:5, 2:5] = True
+    mask[15:18, 15:18] = True
+
+    result = _KeepClickedComponents(mask, [(3, 3), (16, 16)])
+
+    assert result[3, 3]
+    assert result[16, 16]
+
+
+def test_keep_clicked_components_falls_back_to_the_full_mask_with_no_foreground_seed():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:5, 2:5] = True
+    mask[15:18, 15:18] = True
+
+    result = _KeepClickedComponents(mask, [(10, 10)])  # background, on neither blob
+
+    np.testing.assert_array_equal(result, mask)
+
+
+def test_run_discards_disjoint_blobs_not_touched_by_a_positive_click(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(DisjointBlobSegmenter())
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+
+    stage.OnClick(_click(10, 10, Qt.MouseButton.LeftButton))  # inside blob A only
+
+    stage.Run(spoon_image)
+
+    assert stage.mask is not None
+    assert stage.mask[10, 10]
+    assert not stage.mask[110, 110], "the disjoint blob not touched by a click should be discarded"
+
+
+def test_run_keeps_every_blob_touched_by_a_positive_click(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(DisjointBlobSegmenter())
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+
+    stage.OnClick(_click(10, 10, Qt.MouseButton.LeftButton))
+    stage.OnClick(_click(110, 110, Qt.MouseButton.LeftButton))
+
+    stage.Run(spoon_image)
+
+    assert stage.mask is not None
+    assert stage.mask[10, 10]
+    assert stage.mask[110, 110]
 
 
 @pytest.mark.slow

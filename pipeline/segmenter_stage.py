@@ -1,5 +1,6 @@
 from typing import Callable
 
+import cv2
 import numpy as np
 from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QLabel, QWidget
@@ -12,6 +13,24 @@ from pipeline.segmenter import Segmenter, SegmenterLike
 # highest predicted IoU); the slider range is fixed to that rather than
 # discovered at runtime.
 _MAX_MASK_HYPOTHESIS_INDEX = 2
+
+
+def _KeepClickedComponents(mask: np.ndarray, seed_points: list) -> np.ndarray:
+    """Keeps only the connected component(s) of `mask` that contain at
+    least one of `seed_points` (image (x, y) coordinates), discarding any
+    other disjoint blob a SAM mask hypothesis may have produced elsewhere
+    in the image. Falls back to the unmodified mask if no seed point
+    landed on foreground.
+    """
+    height, width = mask.shape[:2]
+    _, labels = cv2.connectedComponents(mask.astype(np.uint8), connectivity=8)
+
+    seed_labels = {int(labels[y, x]) for x, y in seed_points if 0 <= x < width and 0 <= y < height and mask[y, x]}
+    seed_labels.discard(0)  # label 0 is background
+    if not seed_labels:
+        return mask
+
+    return np.isin(labels, list(seed_labels))
 
 
 class SegmenterStage(Stage):
@@ -60,7 +79,14 @@ class SegmenterStage(Stage):
         input_labels = [[self.click_recorder.image_labels]]
         masks = self.segmenter.Segment(image, input_points, input_labels)
         hypothesis_index = min(self.segmenter.parameters.mask_hypothesis_index, masks.shape[1] - 1)
-        self.mask = masks[0, hypothesis_index].astype(bool)
+        mask = masks[0, hypothesis_index].astype(bool)
+
+        positive_points = [
+            point
+            for point, label in zip(self.click_recorder.image_points, self.click_recorder.image_labels)
+            if label == 1
+        ]
+        self.mask = _KeepClickedComponents(mask, positive_points) if positive_points else mask
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
         widget, layout = CreateGroupBox("Segmentation")
