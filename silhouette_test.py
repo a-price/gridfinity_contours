@@ -250,10 +250,11 @@ def test_full_app_click_flow(gui, tmp_path):
     )
     assert f"Object {target_index}" in gui.contour_text_edit.toPlainText()
 
-    # Fiducial-select mode: the active calibration is still the
-    # IdentityCalibration stub, which has no fiducials to select - a click
-    # in this mode should be a safe no-op, not crash and not touch the
-    # segmentation points or contour selection made above.
+    # Fiducial-select mode: the active calibration is ArucoCalibration,
+    # which auto-matches markers by ID and doesn't override
+    # ToggleSelection - a click in this mode should be a safe no-op, not
+    # crash and not touch the segmentation points or contour selection
+    # made above.
     gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_FIDUCIAL)
     _click_gui(gui, *BACKGROUND_POINT, Qt.MouseButton.LeftButton)
     assert len(gui.segmenter_stage.click_recorder.image_points) == 3

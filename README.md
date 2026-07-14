@@ -15,26 +15,38 @@ An interactive PyQt5 GUI that runs the whole capture pipeline:
 1. **Load** a photo of the object.
 2. **Segment** it by clicking points on the image - left-click adds an
    interior (positive) point, right-click an exterior (negative) point -
-   which are fed to a SAM2 model to produce a mask.
-3. **Clean up** the mask (morphological closing to smooth jitter, a
-   minimum-area filter to drop small noise blobs).
+   which are fed to a SAM2 model to produce a mask. Only the connected
+   component(s) touched by a positive click are kept, so a stray disjoint
+   blob elsewhere in the frame doesn't leak into the result.
+3. **Clean up** the mask: morphological closing to smooth jitter, a
+   minimum-area filter to drop small noise blobs, and optional
+   lateral/longitudinal symmetry (many manmade objects are symmetric) -
+   combined with the original mask via AND (carve out one-sided errors) or
+   OR (fill in an occluded side from its mirror), pivoted on the mask's
+   PCA-aligned bounding box.
 4. **Extract and simplify** the object's contour, with a PCA-aligned
    bounding box.
 5. **Calibrate**: detects ArUco markers on a printed calibration sheet
    (see `generate_aruco_sheet.py` below) and solves for the camera pose to
    recover real-world (mm) coordinates. If no sheet is in frame, contours
-   export in pixel space instead of failing.
-6. **Export** the selected object's simplified contour points as text.
+   fall back to pixel space instead of failing.
+6. **Select** a contour to see it rectified to real-world units
+   automatically - a text preview updates live, no button needed.
+7. **Export** writes the selected, rectified contour to an SVG file (1
+   unit = 1mm, PCA-aligned so it comes out level), ready to import into a
+   CAD tool like Fusion 360.
 
 Each stage's tunable parameters live in its own group box in the control
-panel (Segmentation, Calibration, Mask Cleanup, Contour Selection).
+panel (Segmentation, Calibration, Mask Cleanup, Contour Selection, SVG
+Export).
 
 Clicking the image view does one of three things, chosen from the "Click
 Mode" dropdown:
 
 - **Add Segmentation Points** (default) - left/right click adds an
   interior/exterior point for SAM2.
-- **Select a Contour** - click a detected object to select it for export.
+- **Select a Contour** - click a detected object to select/deselect it,
+  rectifying and previewing it automatically.
 - **Select a Fiducial** - click to toggle a calibration fiducial, for
   calibration strategies that support manual selection (not the default
   ArUco one, which auto-matches by marker ID).

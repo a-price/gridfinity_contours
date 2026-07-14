@@ -40,15 +40,18 @@ os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.P
 
 # The pipeline has the following stages
 #  * Load Image
-#  * Segment Object Contour
+#  * Segment Object Contour (SAM2, restricted to the clicked connected
+#    component, then cleaned up and optionally symmetrized)
 #  * Calibrate
-#  * Select and Export Contour
+#  * Select Contour - also auto-rectifies to real-world units and refreshes
+#    the text preview
+#  * Export - writes the already-rectified contour out to an SVG file
 #
 # Calibration uses ArucoCalibration by default: print
 # generate_aruco_sheet.py's PDF, place it in frame, and its markers get
 # detected automatically - no manual fiducial selection needed. If no
-# markers are detected (e.g. no sheet in frame), export_contours() falls
-# back to pixel-space output rather than failing.
+# markers are detected (e.g. no sheet in frame), update_rectified_contours()
+# falls back to pixel-space output rather than failing.
 
 # What a click on the image view does - one mode is active at a time, since
 # a click alone can't otherwise disambiguate "add a segmentation point" from
@@ -130,8 +133,9 @@ class SVGGui(QMainWindow):
         self.export_btn.clicked.connect(lambda: self.pipeline.RunFrom("export"))
         self.export_btn.setEnabled(False)
 
-        # Read-only preview of the last export's transformed contour
-        # points - refreshed every time Export runs, no popup needed.
+        # Read-only preview of the current selection's transformed contour
+        # points - refreshed automatically whenever it changes, no popup
+        # needed.
         self.contour_text_edit = QTextEdit()
         self.contour_text_edit.setReadOnly(True)
 
@@ -177,8 +181,9 @@ class SVGGui(QMainWindow):
 
         control_layout.addWidget(self.export_btn)
 
-        # Text preview of the last export's transformed contour points -
-        # takes up the rest of the panel instead of a stretch spacer.
+        # Text preview of the current selection's transformed contour
+        # points - takes up the rest of the panel instead of a stretch
+        # spacer.
         control_layout.addWidget(QLabel("Exported Contour Points:"))
         control_layout.addWidget(self.contour_text_edit, stretch=1)
 

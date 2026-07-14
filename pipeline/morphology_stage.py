@@ -8,8 +8,10 @@ from pipeline.core import CreateGroupBox, CreateSlider, Stage
 
 class MorphologyStage(Stage):
     """Qt wiring for Morphology: debounced sliders controlling the closing
-    radius and minimum surviving area, and the cleaned-up mask it produces
-    from whatever mask is fed into it (e.g. a segmentation stage's output).
+    radius and minimum surviving area, checkboxes for optional
+    lateral/longitudinal symmetry and how to combine it (AND/OR) with the
+    original mask, and the cleaned-up mask it produces from whatever mask
+    is fed into it (e.g. a segmentation stage's output).
     """
 
     def __init__(self, morphology: Morphology | None = None) -> None:

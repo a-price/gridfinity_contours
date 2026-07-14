@@ -51,9 +51,9 @@ class Calibration:
 
 class IdentityCalibration(Calibration):
     """Stub calibration with no fiducial to detect: treats image pixels as
-    millimeters 1:1. Placeholder so the rest of the pipeline (export) can
-    work in real-world units before a real fiducial-based calibration
-    (HoughCircleCalibration, PaperCalibration) is wired back into the UI.
+    millimeters 1:1. Not wired into the UI by default (ArucoCalibration is),
+    but available as a fallback/simple option for callers that don't need
+    real-world units.
     """
 
     def Detect(self, image: cv2.typing.MatLike) -> None:
@@ -188,7 +188,7 @@ class HoughCircleCalibration(Calibration):
 
 class PaperCalibration(Calibration):
     """Calibrates against a standard 8.5in x 11in sheet of paper visible in
-    the frame, using 3 of its corners as fiducials.
+    the frame, using all 4 of its corners as fiducials.
     """
 
     WIDTH_MM = 215.9  # 8.5 in
