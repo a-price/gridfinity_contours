@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 
 from pipeline.calibration import (
+    ArucoCalibration,
     HoughCircleCalibration,
     IdentityCalibration,
     PaperCalibration,
@@ -191,3 +192,87 @@ def test_paper_calibration_no_quadrilateral_found():
     calibration.Detect(image)
 
     assert calibration.corners is None
+
+
+def _project_marker_corners(calibration: ArucoCalibration, marker_id: int, world_to_image: np.ndarray) -> np.ndarray:
+    """Synthetic detected_corners for `marker_id`: its 4 real-world corners
+    (from its known center + marker_size_mm), projected into image pixels
+    through `world_to_image` - lets tests exercise GetTransform without a
+    real photo or a real ArUco detector.
+    """
+    cx, cy = calibration.parameters.marker_positions_mm[marker_id]
+    half = calibration.parameters.marker_size_mm / 2
+    world_corners = np.array(
+        [[cx - half, cy - half], [cx + half, cy - half], [cx + half, cy + half], [cx - half, cy + half]],
+        dtype=np.float32,
+    )
+    pixel_corners = cv2.perspectiveTransform(world_corners.reshape(-1, 1, 2), world_to_image)
+    return pixel_corners.reshape(-1, 2).astype(np.float64)
+
+
+def _make_perspective_world_to_image() -> np.ndarray:
+    """A deliberately non-affine mapping from the sheet's real mm-plane to
+    image pixels, simulating a camera that isn't fronto-parallel - same
+    style as test_paper_calibration_transform_corrects_real_perspective_distortion.
+    """
+    world_corners = np.array(
+        [
+            [0, 0],
+            [PaperCalibration.WIDTH_MM, 0],
+            [PaperCalibration.WIDTH_MM, PaperCalibration.HEIGHT_MM],
+            [0, PaperCalibration.HEIGHT_MM],
+        ],
+        dtype=np.float32,
+    )
+    image_corners = np.array([[300, 200], [1600, 220], [1700, 2200], [150, 2100]], dtype=np.float32)
+    return cv2.getPerspectiveTransform(world_corners, image_corners)
+
+
+def test_aruco_calibration_transform_recovers_known_marker_positions():
+    calibration = ArucoCalibration()
+    world_to_image = _make_perspective_world_to_image()
+    marker_positions = calibration.parameters.marker_positions_mm
+
+    for marker_id in marker_positions:
+        calibration.detected_corners[marker_id] = _project_marker_corners(calibration, marker_id, world_to_image)
+
+    transform = calibration.GetTransform()
+
+    for marker_id, (cx, cy) in marker_positions.items():
+        pixel_center = _apply(world_to_image, (cx, cy))
+        assert np.allclose(_apply(transform, pixel_center), [cx, cy], atol=1e-2)
+
+
+def test_aruco_calibration_transform_works_with_a_single_marker():
+    # Unlike the removed solvePnP-based approach, a direct planar
+    # homography fit has no pose ambiguity to worry about - one marker's 4
+    # corners are already enough for an exact fit.
+    calibration = ArucoCalibration()
+    world_to_image = _make_perspective_world_to_image()
+    marker_id, (cx, cy) = next(iter(calibration.parameters.marker_positions_mm.items()))
+    calibration.detected_corners[marker_id] = _project_marker_corners(calibration, marker_id, world_to_image)
+
+    transform = calibration.GetTransform()
+
+    pixel_center = _apply(world_to_image, (cx, cy))
+    assert np.allclose(_apply(transform, pixel_center), [cx, cy], atol=1e-2)
+
+
+def test_aruco_calibration_requires_at_least_one_matched_marker():
+    calibration = ArucoCalibration()
+    calibration.detected_corners = {99: np.zeros((4, 2))}  # id 99 has no known position
+
+    try:
+        calibration.GetTransform()
+        assert False, "expected ValueError when no detected marker matches a known position"
+    except ValueError:
+        pass
+
+
+def test_aruco_calibration_detect_finds_nothing_on_a_blank_image():
+    calibration = ArucoCalibration()
+    image = np.zeros((200, 200, 3), dtype=np.uint8)
+
+    calibration.Detect(image)
+
+    assert calibration.detected_corners == {}

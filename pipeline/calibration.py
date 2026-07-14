@@ -297,21 +297,10 @@ class ArucoCalibration(Calibration):
     """Calibrates against ArUco fiducial markers printed at known
     real-world (mm) positions on a sheet.
 
-    Unlike the affine calibrations above, this corrects for real
-    perspective distortion rather than just fitting a plane-preserving
-    approximation: it detects each marker's 4 corners, solves PnP against
-    their known real-world positions to recover the camera's pose relative
-    to the sheet, then builds the image-to-sheet homography from that pose.
-
-    Caveats (this hasn't been exercised against a real photo yet):
-      * Camera intrinsics aren't actually calibrated - GetTransform() falls
-        back to a rough pinhole guess (focal length ~ image width,
-        principal point at the image center) via _EstimateCameraMatrix.
-        That's good enough for a rough cut, but a real checkerboard-based
-        cv2.calibrateCamera pass would meaningfully improve accuracy.
-      * A single marker's 4 coplanar corners can leave solvePnP with a
-        pose ambiguity at near-fronto-parallel viewing angles; using
-        several markers spread across the sheet (as intended) avoids this.
+    Every fiducial point lies on the same real-world plane (z=0), so the
+    image-to-sheet mapping is exactly a planar homography - GetTransform()
+    fits it directly via cv2.findHomography(image_points, object_points),
+    with no camera model (intrinsics, pose) involved at all.
     """
 
     def __init__(self) -> None:
@@ -319,13 +308,11 @@ class ArucoCalibration(Calibration):
         self._dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         self._detector = cv2.aruco.ArucoDetector(self._dictionary, cv2.aruco.DetectorParameters())
         self.detected_corners: dict[int, np.ndarray] = {}  # marker id -> (4, 2) pixel corners
-        self._image_shape: tuple[int, int] | None = None
 
     def Detect(self, image: cv2.typing.MatLike) -> None:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = self._detector.detectMarkers(gray)
 
-        self._image_shape = image.shape[:2]
         self.detected_corners = {}
         if ids is None:
             return
@@ -345,28 +332,10 @@ class ArucoCalibration(Calibration):
         cv2.aruco.drawDetectedMarkers(debug, corners_list, ids_array)
         return debug
 
-    def _EstimateCameraMatrix(self) -> np.ndarray:
-        """A rough pinhole camera matrix, absent a real calibration: focal
-        length approximated as the image width, principal point at the
-        image center.
-        """
-        if self._image_shape is None:
-            raise ValueError("ArucoCalibration.Detect() hasn't run yet")
-        height, width = self._image_shape
-        focal_length = float(width)
-        return np.array(
-            [
-                [focal_length, 0, width / 2],
-                [0, focal_length, height / 2],
-                [0, 0, 1],
-            ],
-            dtype=np.float64,
-        )
-
     def GetTransform(self) -> cv2.typing.MatLike:
-        """Solve PnP against detected markers with known real-world
-        positions, then return the 3x3 homography mapping image pixels to
-        the calibration sheet's real-world (mm) plane.
+        """Fit a planar homography mapping image pixels to the calibration
+        sheet's real-world (mm) plane, from detected markers with known
+        real-world positions.
         """
         marker_positions = self.parameters.marker_positions_mm
         matched_ids = [marker_id for marker_id in self.detected_corners if marker_id in marker_positions]
@@ -394,24 +363,13 @@ class ArucoCalibration(Calibration):
         for marker_id in matched_ids:
             center_x, center_y = marker_positions[marker_id]
             for offset, pixel in zip(corner_offsets, self.detected_corners[marker_id]):
-                object_points.append([center_x + offset[0], center_y + offset[1], 0.0])
+                object_points.append([center_x + offset[0], center_y + offset[1]])
                 image_points.append(pixel)
 
-        camera_matrix = self._EstimateCameraMatrix()
-        dist_coeffs = np.zeros(5)
-
-        success, rotation_vector, translation_vector = cv2.solvePnP(
-            np.array(object_points, dtype=np.float64),
+        homography, _ = cv2.findHomography(
             np.array(image_points, dtype=np.float64),
-            camera_matrix,
-            dist_coeffs,
+            np.array(object_points, dtype=np.float64),
         )
-        if not success:
-            raise ValueError("ArucoCalibration: solvePnP failed to converge")
-
-        rotation_matrix, _ = cv2.Rodrigues(rotation_vector)
-        # All object points lie on z=0, so the plane-to-image homography
-        # only needs the rotation matrix's x/y columns plus translation -
-        # the z column (which would move points off-plane) is dropped.
-        plane_to_image = camera_matrix @ np.hstack([rotation_matrix[:, :2], translation_vector])
-        return np.linalg.inv(plane_to_image).astype(np.float32)
+        if homography is None:
+            raise ValueError("ArucoCalibration: findHomography failed to converge")
+        return homography.astype(np.float32)
