@@ -13,10 +13,8 @@ from PyQt5.QtWidgets import (
     QLabel,
     QWidget,
     QTextEdit,
-    QDialog,
     QComboBox,
 )
-import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 
@@ -28,6 +26,7 @@ from pipeline.calibration_stage import ArucoCalibrationStage
 from pipeline.contour_extraction import FindContours, PCABox
 from pipeline.contour_selection_stage import ContourSelectionStage
 from pipeline.rectify import Rectify
+from pipeline.svg_export_stage import SvgExportStage
 from pipeline.core import Pipeline
 
 # Fix PyQt5 / OpenCV collision
@@ -75,6 +74,7 @@ class SVGGui(QMainWindow):
         self.calibration_stage = ArucoCalibrationStage()
         self.contour_selection_stage = ContourSelectionStage()
         self.rectify = Rectify()
+        self.svg_export_stage = SvgExportStage()
 
         self.pipeline = Pipeline()
         self.pipeline.Register(
@@ -85,7 +85,7 @@ class SVGGui(QMainWindow):
         self.pipeline.Register(
             "selection",
             lambda: self.contour_selection_stage.Run(self.object_contours),
-            downstream=["display"],
+            downstream=["display", "rectify"],
         )
         self.pipeline.Register(
             "morphology",
@@ -97,9 +97,11 @@ class SVGGui(QMainWindow):
             lambda: self.segmenter_stage.Run(self.original_image),
             downstream=["morphology"],
         )
-        # Export is manually triggered (it pops up a dialog), so nothing
-        # lists it as a downstream - it isn't part of the auto-cascade, just
-        # registered for consistency.
+        # Rectifying to real-world units and refreshing the text preview
+        # happens automatically whenever the selection changes - Export is
+        # only manually triggered to write the already-rectified contours
+        # out to an SVG file.
+        self.pipeline.Register("rectify", self.update_rectified_contours)
         self.pipeline.Register("export", self.export_contours)
         self.pipeline.Register("display", self.update_display)
 
@@ -128,10 +130,14 @@ class SVGGui(QMainWindow):
         self.export_btn.clicked.connect(lambda: self.pipeline.RunFrom("export"))
         self.export_btn.setEnabled(False)
 
+        # Read-only preview of the last export's transformed contour
+        # points - refreshed every time Export runs, no popup needed.
+        self.contour_text_edit = QTextEdit()
+        self.contour_text_edit.setReadOnly(True)
+
         # Add controls to layout
         control_layout.addWidget(self.load_btn)
         control_layout.addWidget(self.show_original_btn)
-        control_layout.addWidget(self.export_btn)
 
         # What a click on the image view does - see the _MODE_* constants.
         control_layout.addWidget(QLabel("Click Mode:"))
@@ -165,8 +171,16 @@ class SVGGui(QMainWindow):
             self.contour_selection_stage.CreateWidget(on_change=lambda: self.pipeline.RunFrom("selection"))
         )
 
-        # Add stretch to push everything to the top
-        control_layout.addStretch()
+        # SVG export parameters: just the output filename - writing the
+        # file itself happens when the user clicks Export, not on edit.
+        control_layout.addWidget(self.svg_export_stage.CreateWidget(on_change=lambda: None))
+
+        control_layout.addWidget(self.export_btn)
+
+        # Text preview of the last export's transformed contour points -
+        # takes up the rest of the panel instead of a stretch spacer.
+        control_layout.addWidget(QLabel("Exported Contour Points:"))
+        control_layout.addWidget(self.contour_text_edit, stretch=1)
 
         # Image display area
         self.image_label = QLabel()
@@ -340,81 +354,61 @@ class SVGGui(QMainWindow):
             )
         )
 
-    def export_contours(self):
-        """Export simplified contour points, converted to real-world units
-        by the calibration stage's transform, in a new window.
+    def update_rectified_contours(self):
+        """Recomputes real-world (mm) contours for the current selection
+        and refreshes the text preview. Runs automatically whenever the
+        selection changes, not just when Export is clicked.
         """
         contour_selection = self.contour_selection_stage.contour_selection
         if not contour_selection.selected or not contour_selection.simplified:
+            self.rectify.contours = {}
+            self.contour_text_edit.clear()
             return
 
         try:
             transform = self.calibration_stage.calibration.GetTransform()
         except ValueError:
             # No calibration sheet detected (or not enough of it) - fall
-            # back to pixel space rather than blocking export entirely.
+            # back to pixel space rather than blocking the preview entirely.
             transform = np.eye(3, dtype=np.float32)
 
         self.rectify.Run(transform, contour_selection.simplified)
+        self._update_contour_text(contour_selection.selected, self.rectify.contours)
 
-        dialog = ContourExportDialog(contour_selection.selected, self.rectify.contours, self)
-        dialog.exec_()
-
-
-class ContourExportDialog(QDialog):
-    def __init__(self, selected_objects, simplified_contours, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Export Simplified Contours")
-        self.setGeometry(200, 200, 600, 400)
-
-        # Create layout
-        layout = QVBoxLayout(self)
-
-        # Create text edit widget
-        self.text_edit = QTextEdit()
-        self.text_edit.setReadOnly(True)
-
-        # Format contour data, and plot each selected object's transformed
-        # contour in its own figure.
+    def _update_contour_text(self, selected_objects, contours):
+        """Formats each selected object's transformed contour points into
+        the text preview box.
+        """
         contour_text = ""
         for obj_id in selected_objects:
-            if obj_id in simplified_contours:
-                contour = simplified_contours[obj_id]
+            if obj_id not in contours:
+                continue
 
-                # Transform contour to origin-based coordinate system
-                transformed_points = self.transform_to_origin(contour)
+            # Transform contour to origin-based coordinate system
+            points = contours[obj_id].reshape(-1, 2).astype(np.float32)
+            transformed_points = PCABox(points).ToLocal(points)
 
-                contour_text += f"Object {obj_id} Simplified Contour Points (Transformed to Origin):\n"
-                contour_text += "[\n"
+            contour_text += f"Object {obj_id} Simplified Contour Points (Transformed to Origin):\n"
+            contour_text += "[\n"
 
-                # Format transformed points
-                for i, (x, y) in enumerate(transformed_points):
-                    contour_text += f"  [{x:.2f}, {y:.2f}]"
-                    if i < len(transformed_points) - 1:
-                        contour_text += ","
-                    contour_text += "\n"
+            # Format transformed points
+            for i, (x, y) in enumerate(transformed_points):
+                contour_text += f"  [{x:.2f}, {y:.2f}]"
+                if i < len(transformed_points) - 1:
+                    contour_text += ","
+                contour_text += "\n"
 
-                contour_text += "]\n\n"
+            contour_text += "]\n\n"
 
-                plt.figure()
-                plt.title(f"Object {obj_id}: transformed contour")
-                plt.plot(transformed_points[:, 0], transformed_points[:, 1], "-")
-                plt.xlabel("mm")
-                plt.ylabel("mm")
-                plt.show()
+        self.contour_text_edit.setPlainText(contour_text)
 
-        self.text_edit.setPlainText(contour_text)
-        layout.addWidget(self.text_edit)
-
-        # Add close button
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        layout.addWidget(close_btn)
-
-    def transform_to_origin(self, contour):
-        """Transform contour so that one corner of the PCA-aligned bounding box is at origin."""
-        points = contour.reshape(-1, 2).astype(np.float32)
-        return PCABox(points).ToLocal(points)
+    def export_contours(self):
+        """Writes the current selection's real-world contours out to an
+        SVG file. Rectification and the text preview already happened
+        automatically when the selection last changed (see
+        update_rectified_contours).
+        """
+        self.svg_export_stage.Run(self.rectify.contours)
 
 
 def main():

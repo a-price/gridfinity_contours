@@ -9,16 +9,12 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import matplotlib
-
-matplotlib.use("Agg")  # headless: plt.show() must not block or open a window
-
 import cv2
 import numpy as np
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
-from PyQt5.QtWidgets import QApplication, QDialog, QLabel
+from PyQt5.QtWidgets import QApplication, QLabel
 
 from pipeline.click_recorder import ClickRecorder, ClickRecorderParameters
 from pipeline.morphology import Morphology
@@ -196,14 +192,14 @@ def _click_gui(window: SVGGui, x: int, y: int, button) -> None:
 
 
 @pytest.mark.slow
-@pytest.mark.filterwarnings("ignore:FigureCanvasAgg is non-interactive:UserWarning")
-def test_full_app_click_flow(gui, monkeypatch):
+def test_full_app_click_flow(gui, tmp_path):
     """Drives the whole app the way a user would: click to segment, click to
     select the object, then export - replacing what used to be a series of
     one-off manual verification scripts.
     """
-    # Don't block on the modal export dialog's own event loop.
-    monkeypatch.setattr(QDialog, "exec_", lambda self: None)
+    # Write to a scratch path instead of the default "contours.svg", so the
+    # test doesn't leave a stray file in the repo root.
+    gui.svg_export_stage.parameters.filename = str(tmp_path / "contours.svg")
 
     # A cleaner morphology threshold than the 1000px default, so the
     # segmented spoon collapses to a single contour instead of dozens of
@@ -241,6 +237,19 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert target_index in contour_selection.simplified
     assert target_index in contour_selection.boxes
 
+    # Rectification and the text preview happen automatically as soon as
+    # the selection changes, with no Export click needed yet - the spoon
+    # photo has no ArUco markers, so GetTransform() raises and
+    # update_rectified_contours() falls back to an identity transform
+    # rather than failing.
+    assert gui.calibration_stage.calibration.detected_corners == {}
+    assert target_index in gui.rectify.contours
+    assert np.allclose(
+        gui.rectify.contours[target_index],
+        np.squeeze(contour_selection.simplified[target_index]),
+    )
+    assert f"Object {target_index}" in gui.contour_text_edit.toPlainText()
+
     # Fiducial-select mode: the active calibration is still the
     # IdentityCalibration stub, which has no fiducials to select - a click
     # in this mode should be a safe no-op, not crash and not touch the
@@ -251,14 +260,6 @@ def test_full_app_click_flow(gui, monkeypatch):
     assert contour_selection.selected == {target_index}
     gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
 
-    # Export: the spoon photo has no ArUco markers, so GetTransform() raises
-    # and export_contours() falls back to an identity transform rather than
-    # failing - contours come out in pixel space, and the dialog still
-    # builds without raising, thanks to the monkeypatch.
-    assert gui.calibration_stage.calibration.detected_corners == {}
+    # Export just writes the already-rectified contours out to an SVG file.
     gui.pipeline.RunFrom("export")
-    assert target_index in gui.rectify.contours
-    assert np.allclose(
-        gui.rectify.contours[target_index],
-        np.squeeze(contour_selection.simplified[target_index]),
-    )
+    assert (tmp_path / "contours.svg").exists()
