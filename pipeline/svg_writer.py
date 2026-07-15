@@ -29,18 +29,35 @@ def _FormatPoints(points: np.ndarray) -> str:
     return " ".join(f"{x:.4f},{y:.4f}" for x, y in points)
 
 
+# SVG's own fallback definition of "1 user unit" absent other info is 1 CSS
+# pixel = 1/96 inch. Several real-world SVG importers (Fusion 360 among
+# them) apply that conversion to the viewBox/path coordinates unconditionally,
+# ignoring the width/height attributes' physical-unit suffix entirely - so a
+# viewBox scaled 1:1 with mm imports ~3.78x too small there. Pre-scaling the
+# viewBox and path coordinates by this factor makes both kinds of consumer
+# agree: spec-compliant viewers still derive the correct real-world size from
+# width/height (which stay in true, unscaled mm), while DPI-assuming
+# importers now get the right size too, since 1 user unit genuinely is
+# 1/96in by construction.
+_SVG_USER_UNITS_PER_MM = 96.0 / 25.4
+
+
 def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
     """Writes `contours` (real-world mm coordinates, e.g. Rectify.contours)
     to an SVG file: one closed <polygon> per contour, PCA-aligned (see
-    AlignContoursToPca). 1 SVG user unit = 1mm, the scale tools like Fusion
-    360 expect when importing an SVG sketch. Not every SVG viewer/print
-    path honors that unit correctly though - see WritePdf for a
-    print-safe alternative.
+    AlignContoursToPca). The `width`/`height` attributes are the true
+    physical size in mm; the viewBox and path coordinates are scaled by
+    _SVG_USER_UNITS_PER_MM to also import correctly in tools that ignore
+    those attributes' units (see the comment above). Not every SVG
+    viewer/print path even honors physical print size though - see
+    WritePdf for a print-safe alternative.
     """
     aligned, width, height = AlignContoursToPca(contours)
+    scale = _SVG_USER_UNITS_PER_MM
 
     polygons = "\n".join(
-        f'  <polygon points="{_FormatPoints(points)}" fill="none" stroke="black" stroke-width="0.1" />'
+        f'  <polygon points="{_FormatPoints(points * scale)}" '
+        f'fill="none" stroke="black" stroke-width="{0.1 * scale:.4f}" />'
         for points in aligned.values()
     )
 
@@ -48,7 +65,7 @@ def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{width:.4f}mm" height="{height:.4f}mm" '
-        f'viewBox="0 0 {width:.4f} {height:.4f}">\n'
+        f'viewBox="0 0 {width * scale:.4f} {height * scale:.4f}">\n'
         f"{polygons}\n"
         "</svg>\n"
     )

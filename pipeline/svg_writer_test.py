@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pytest
 
@@ -48,7 +50,28 @@ def test_write_svg_aligns_a_rotated_contour_to_its_pca_axes(tmp_path):
 
     assert level_svg == tilted_svg
     assert 'width="20.0000mm" height="10.0000mm"' in level_svg
-    assert 'points="0.0000,0.0000 20.0000,0.0000 20.0000,10.0000 0.0000,10.0000"' in level_svg
+    # Path coordinates are scaled by 96/25.4 (see _SVG_USER_UNITS_PER_MM),
+    # so tools that ignore the mm-unit width/height still import this at
+    # the right real-world size.
+    assert 'points="0.0000,0.0000 75.5906,0.0000 75.5906,37.7953 0.0000,37.7953"' in level_svg
+
+
+def test_write_svg_viewbox_is_scaled_for_96dpi_importers(tmp_path):
+    # width/height stay true mm; the viewBox is pre-scaled by 96/25.4 so
+    # importers that assume "1 user unit = 1px @ 96dpi" and ignore the mm
+    # suffix entirely (e.g. Fusion 360) still recover the correct
+    # real-world size instead of coming out ~3.78x too small.
+    path = tmp_path / "out.svg"
+
+    WriteSvg(str(path), {0: _RECT})
+
+    svg = path.read_text()
+    match = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    assert match is not None, "no viewBox found in the written SVG"
+    viewbox_width, viewbox_height = float(match.group(1)), float(match.group(2))
+
+    assert viewbox_width == pytest.approx(20.0 * 96 / 25.4, abs=1e-3)
+    assert viewbox_height == pytest.approx(10.0 * 96 / 25.4, abs=1e-3)
 
 
 def test_write_svg_aligns_a_translated_contour_to_its_pca_axes(tmp_path):
