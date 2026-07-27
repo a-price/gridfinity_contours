@@ -55,6 +55,10 @@ docs: $(DOT_SVGS)
 
 # Not part of `check`: graphviz is not in requirements.in and a machine
 # without it should still be able to run the tests.
-docs-check: docs
-	@git diff --quiet -- $(DOT_SVGS) || \
-		{ echo "docs/*.svg are stale - commit the re-rendered files"; exit 1; }
+#
+# Timestamps rather than a re-render and diff: graphviz embeds its own
+# version in the output, so comparing bytes would call the SVGs stale on
+# any machine with a different graphviz than the one that rendered them.
+docs-check:
+	@$(MAKE) --no-print-directory -q docs || \
+		{ echo "docs/*.svg are older than their .dot sources - run 'make docs'"; exit 1; }

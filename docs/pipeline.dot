@@ -52,7 +52,7 @@ digraph pipeline {
 
   group  [label="grouping\nwhich parts share a bin\nFFD + local search", fillcolor="#dee7f6"];
   pack   [label="arrangement\nwhich grid, where in it\ngrid search + relaxation", fillcolor="#dee7f6"];
-  assign [label="drawer assignment\nwhich bins share a drawer\n(proposed)", fillcolor="#dee7f6"];
+  assign [label="drawer assignment\nwhich bins share a drawer\nexact", fillcolor="#dee7f6"];
 
   build -> group  [label=" N parts"];
   group -> assign [label=" M bins\l footprints only\l"];

@@ -462,25 +462,51 @@ assignment depends only on M8, does not depend on semantic coherence, and
 is the nearer-term of the two — the numbering follows the dependency order
 the rest of this document uses.
 
-- [ ] `Drawer` as an integer `W x H` of grid cells, and a bitmask
+- [x] `Drawer` as an integer `W x H` of grid cells, and a bitmask
   occupancy over it. Python integers are arbitrary precision, so one
   integer holds a drawer of any size; "does this bin fit here" is a shift
-  and an AND.
-- [ ] Exact assignment search: bins into drawers, quarter turns allowed,
-  canonical placement at the lowest-index free cell so the search does not
-  re-derive every permutation of one packing.
-- [ ] One-sided area bound in front of it — total bin cells against total
+  and an AND. `DrawerCells` converts from millimeters, and takes the
+  inter-bin gap off the *run* rather than off each bin — a 41.5mm drawer
+  holds one cell, which naive floor division would deny it.
+- [x] Exact assignment search: bins into drawers, quarter turns allowed,
+  restricted to **bottom-left stable** positions — see below, the plan's
+  "lowest-index free cell" rule does not apply here.
+- [x] One-sided area bound in front of it — total bin cells against total
   drawer cells — with the same soundness requirement M4 and M8 record. An
   over-eager bound here silently reports "buy another drawer".
-- [ ] On failure, name the footprints that could not be placed, so
-  grouping can be re-run with them excluded.
-- [ ] Admissible-footprint predicate on `packer.CandidateGrids`, so a
-  drawer-aware grouping never proposes a bin no drawer can hold.
+- [x] On failure, name the footprints that could not be placed, so
+  grouping can be re-run with them excluded. The search maximizes bins
+  placed, so the leftovers are what genuinely would not go anywhere.
+- [x] Admissible-footprint predicate on `packer.CandidateGrids`, via
+  `LayoutParameters.admissible_grids` and `packer.GridsFor`.
+- [ ] Wire into a front end — M10, together with grouping's output.
 
 **Done when:** a set of bins with a known-tight drawer packing is placed
-exactly, a set one cell too large is reported infeasible *as a fact*
-rather than as a failed search, and the three spoons' single 5x2 places
-into a realistic drawer with the free space left contiguous.
+exactly, and a set that passes the area bound but cannot tile is reported
+infeasible *as a fact* rather than as a failed search. **Met** — 30 tests
+in `pipeline/layout/drawer_test.py`. Three 2x2 bins into a 3x4 drawer is
+exactly 12 cells into 12 and provably does not tile; the search says so in
+under a millisecond, having placed two.
+
+**The canonical-placement rule in the plan was wrong for this problem.**
+"Some bin must cover the lowest-index free cell" is the standard trick for
+*exact cover*, and it is unsound here, because a drawer may legitimately
+have empty cells — a rule demanding they be filled would reject every
+assignment that leaves room. The correct restriction is bottom-left
+stability: a bin goes only where it cannot slide one cell further left or
+down. That is complete for rectangle packing, because pushing every
+rectangle left and down terminates and never creates an overlap, so any
+packing normalizes into one made of stable positions.
+
+**Contiguity is reported, not optimized, and the design's claim about it
+was too strong.** Bottom-left stability was said to leave free space in
+one piece. It very nearly does — measured on a realistic drawer, 143 of
+144 free cells came out connected — but one cell was stranded behind a
+1x1 bin. Making contiguity an objective would mean enumerating every
+complete assignment rather than stopping at the first, which is the early
+exit the search's speed depends on. So `FreeCells` counts and
+`LargestFreeRegion` says how much is usable, and the test asserts the
+thing that actually matters: another whole 5x2 bin still fits afterwards.
 
 **Why this level is exact, and no other one is.** Every quantity is an
 integer count of cells. There are no clearances: `OuterFootprint` is

@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from itertools import combinations, permutations
 
 from pipeline.layout.container import BuildContainer
-from pipeline.layout.packer import CandidateGrids, ProvablyTooSmall
+from pipeline.layout.packer import GridsFor, ProvablyTooSmall
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
@@ -102,6 +102,10 @@ class _Oracle:
         self._smallest: dict[frozenset[int], Layout | None] = {}
         self._bounds: dict[frozenset[int], int | None] = {}
         self.solver_calls = 0
+
+    def Unfittable(self, part_id: int) -> ValueError:
+        """The error for a part no allowed bin size can hold."""
+        return _Unfittable(part_id, self._params)
 
     def _Subset(self, ids: frozenset[int]) -> dict[int, Part]:
         return {part_id: self._parts[part_id] for part_id in sorted(ids)}
@@ -172,7 +176,7 @@ class _Oracle:
         return SolveFixedGrid(subset, n, m, self._params)
 
     def _Pack(self, ids: frozenset[int]) -> Layout | None:
-        for grid in CandidateGrids(self._params.max_grid):
+        for grid in GridsFor(self._params):
             layout = self.FitsIn(ids, grid)
             if layout is not None:
                 return layout
@@ -180,10 +184,26 @@ class _Oracle:
 
     def _Bound(self, ids: frozenset[int]) -> int | None:
         subset = self._Subset(ids)
-        for n, m in CandidateGrids(self._params.max_grid):
+        for n, m in GridsFor(self._params):
             if ProvablyTooSmall(subset, BuildContainer(n, m, self._params.inset), self._params) is None:
                 return n * m
         return None
+
+
+def _Unfittable(part_id: int, params: LayoutParameters) -> ValueError:
+    """Why a part could not be given a bin of its own.
+
+    Names the restriction when there is one: with `admissible_grids` set
+    the reachable sizes are whatever the drawers can hold, and "does not
+    fit any size" is a confusing thing to read about a part that would
+    have fitted perfectly well in a bin nobody can store.
+    """
+    if params.admissible_grids is None:
+        return ValueError(f"part {part_id} does not fit a bin of any size up to {params.max_grid}x{params.max_grid}")
+    return ValueError(
+        f"part {part_id} does not fit any of the {len(params.admissible_grids)} footprints currently "
+        "allowed - the admissible set is restricted, so a bin that would hold it may exist but not be storable"
+    )
 
 
 def _OnePerBin(oracle: _Oracle, part_ids: list[int]) -> list[Layout]:
@@ -191,7 +211,7 @@ def _OnePerBin(oracle: _Oracle, part_ids: list[int]) -> list[Layout]:
     for part_id in part_ids:
         layout = oracle.Smallest(frozenset([part_id]))
         if layout is None:
-            raise ValueError(f"part {part_id} does not fit a bin of any size that was tried")
+            raise oracle.Unfittable(part_id)
         bins.append(layout)
     return bins
 
@@ -213,7 +233,7 @@ def _FirstFit(oracle: _Oracle, parts: dict[int, Part]) -> list[Layout]:
         else:
             opened = oracle.Smallest(frozenset([part_id]))
             if opened is None:
-                raise ValueError(f"part {part_id} does not fit a bin of any size that was tried")
+                raise oracle.Unfittable(part_id)
             bins.append(opened)
     return bins
 

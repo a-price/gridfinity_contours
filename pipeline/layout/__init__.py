@@ -9,6 +9,7 @@
     solver      a solved arrangement, and the search for one
     packer      choosing the bin size, and the bounds that rule one out
     grouping    partitioning parts across several bins
+    drawer      which bins share a drawer, in whole grid cells
     spacing     evening out the gaps once a layout already fits
     loading     getting parts in, from SVGs or contours you already have
     preview     drawing a solved layout at true scale

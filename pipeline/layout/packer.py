@@ -15,7 +15,7 @@ from an unavoidable one.
 """
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Collection
 
 from pipeline.layout.container import BuildContainer, Container
 from pipeline.layout.parameters import LayoutParameters
@@ -113,7 +113,7 @@ class PackResult:
         return "\n".join(lines)
 
 
-def CandidateGrids(max_grid: int) -> list[tuple[int, int]]:
+def CandidateGrids(max_grid: int, admissible: Collection[tuple[int, int]] | None = None) -> list[tuple[int, int]]:
     """Grid sizes worth trying, smallest first, squarest first among
     equals.
 
@@ -121,13 +121,33 @@ def CandidateGrids(max_grid: int) -> list[tuple[int, int]]:
     and since every part can also turn a quarter turn, the two have exactly
     the same set of solutions - enumerating both would double the search to
     rediscover each answer sideways.
+
+    `admissible`, if given, restricts the result to footprints something
+    downstream can actually accept - in practice, sizes that fit a drawer
+    (`drawer.AdmissibleFootprints`). A bin no drawer can hold is not worth
+    packing however well it packs, and the rotation argument above survives
+    the restriction unchanged, since a bin turns in a drawer exactly as a
+    part turns in a bin.
     """
     if max_grid < 1:
         raise ValueError(f"max_grid must be at least 1, got {max_grid}")
 
     grids = [(n, m) for n in range(1, max_grid + 1) for m in range(1, n + 1)]
+    if admissible is not None:
+        grids = [grid for grid in grids if grid in admissible]
     grids.sort(key=lambda grid: (grid[0] * grid[1], grid[0] - grid[1], grid[0]))
     return grids
+
+
+def GridsFor(params: LayoutParameters) -> list[tuple[int, int]]:
+    """The candidate grids this parameter set allows - its size cap and
+    its admissible footprints together.
+
+    A single place to ask, so the packer and the grouping search cannot
+    end up enumerating different sets and disagreeing about what is
+    packable.
+    """
+    return CandidateGrids(params.max_grid, params.admissible_grids)
 
 
 def RequiredArea(parts: dict[int, Part], params: LayoutParameters) -> float:
@@ -209,7 +229,7 @@ def Pack(
     stopped = cancelled if cancelled is not None else lambda: False
 
     attempts: list[GridAttempt] = []
-    for n, m in CandidateGrids(params.max_grid):
+    for n, m in GridsFor(params):
         if stopped():
             attempts.append(GridAttempt((n, m), CANCELLED, "stopped before this size was tried"))
             break

@@ -10,6 +10,8 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from typing import Any
+
 import numpy as np
 import pytest
 from PyQt5.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QPushButton
@@ -31,7 +33,7 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
 
 
 def _quick(**overrides) -> LayoutParameters:
-    settings = dict(restarts=4, iterations=120, patience=25, max_grid=2)
+    settings: dict[str, Any] = dict(restarts=4, iterations=120, patience=25, max_grid=2)
     settings.update(overrides)
     return LayoutParameters(**settings)
 

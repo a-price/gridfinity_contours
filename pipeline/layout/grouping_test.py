@@ -10,9 +10,12 @@ survives the independent geometric check, since a grouping is only as
 sound as the layouts it is made of.
 """
 
+from typing import Any
+
 import numpy as np
 import pytest
 
+from pipeline.layout.drawer import AdmissibleFootprints, Drawer
 from pipeline.layout.grouping import (
     FirstFit,
     Group,
@@ -36,7 +39,7 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
 
 
 def _quick(**overrides) -> LayoutParameters:
-    settings = dict(restarts=6, iterations=150, patience=25)
+    settings: dict[str, Any] = dict(restarts=6, iterations=150, patience=25)
     settings.update(overrides)
     return LayoutParameters(**settings)
 
@@ -292,6 +295,46 @@ def test_an_empty_grouping_improves_to_nothing():
     params = _quick()
 
     assert Improve(_twins(params), Grouping([]), params).bins == []
+
+
+# ------------------------------------------------- restricted by the drawers
+
+
+def test_grouping_never_proposes_a_footprint_no_drawer_can_hold():
+    """The feedback edge from M9. A bin 5 cells long is useless if the
+    only drawer is 4 wide, however well it packs.
+    """
+    admissible = AdmissibleFootprints([Drawer(4, 4)], max_grid=6)
+    params = _quick(admissible_grids=admissible)
+    parts = _parts([(130, 25), (20, 20), (30, 30)], params)
+
+    grouping = Group(parts, params)
+
+    for layout in grouping.bins:
+        assert layout.grid in admissible, f"{layout.grid} does not fit the drawer"
+
+
+def test_a_roomy_drawer_restricts_nothing():
+    """The restriction has to be inert when it does not bite, or every
+    grouping would depend on whether a drawer happened to be mentioned.
+    """
+    params = _quick()
+    parts = _rider(params)
+    roomy = _quick(admissible_grids=AdmissibleFootprints([Drawer(6, 6)], max_grid=6))
+
+    assert Group(parts, roomy).Contents() == Group(parts, params).Contents()
+    assert Group(parts, roomy).cells == Group(parts, params).cells
+
+
+def test_a_part_no_admissible_bin_holds_says_so():
+    """Rather than "does not fit any size", which is a confusing thing to
+    read about a part that would fit a bin nobody can store.
+    """
+    params = _quick(admissible_grids=AdmissibleFootprints([Drawer(1, 1)], max_grid=6))
+    parts = _parts([(130, 25)], params)
+
+    with pytest.raises(ValueError, match="admissible set is restricted"):
+        Group(parts, params)
 
 
 # ------------------------------------------------------------- the fixtures

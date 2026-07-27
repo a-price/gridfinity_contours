@@ -20,7 +20,7 @@ shape, and every one of them has already caused a design correction.
 | Capture | which pixels are the object | per-photo functions | M0 |
 | Arrangement | where each part sits in a bin | continuous, stochastic | M3–M7 |
 | Grouping | which parts share a bin | discrete, heuristic | M8 |
-| Drawer | which bins share a drawer | discrete, exact | proposed |
+| Drawer | which bins share a drawer | discrete, exact | M9 |
 
 **The stack gets more discrete as it goes up, and exactly one level is
 exact.** The arrangement solver moves floats and is stochastic, so a
@@ -52,7 +52,7 @@ instruction for the level below it.
 | `Pack` | N parts | 1 layout |
 | `Group` | N parts | M layouts |
 | Preview, solid | 1 layout | 1 file |
-| Drawer assignment | M bins, D drawers | placed bins, or infeasible |
+| `Assign` | M bins, D drawers | placed bins, or infeasible |
 
 **The capture session is one *photo*, not one object.** This is easy to
 get backwards, and worth pinning down because a lot follows from it:
@@ -142,7 +142,7 @@ small one fits.
 
 ## The drawer level
 
-The proposal. Given a set of drawers, each an integer `W × H` of grid
+Given a set of drawers, each an integer `W × H` of grid
 cells, and the bins grouping produced, each an integer `n × m` footprint:
 find an assignment of bins to drawers and positions within them such that
 no two bins overlap and every bin is inside its drawer. Or report that no
@@ -164,11 +164,20 @@ turned a quarter turn in a drawer, exactly as a part may be turned in a
 bin. `packer.CandidateGrids` already emits only `n ≥ m` on that reasoning,
 and the argument survives one level up unchanged.
 
-**Feasibility first, then the tiebreak.** The primary question is whether
-the bins fit at all. Among assignments that do, the recommendation is to
-prefer the one leaving free space *contiguous* rather than merely
-maximal — the next object photographed has to go somewhere, and a drawer
-with six scattered single cells free has room for nothing.
+**Feasibility first, and contiguity reported rather than optimized.** The
+primary question is whether the bins fit at all. Leftover room matters
+too — the next object photographed has to go somewhere, and a drawer with
+six scattered single cells free has room for nothing — but making
+contiguity an *objective* would mean enumerating every complete
+assignment instead of stopping at the first, and that early exit is what
+the search's speed rests on.
+
+Bottom-left stability turns out to give most of the benefit for free,
+though **not all of it**, which an earlier draft of this section got
+wrong. Measured on a realistic drawer, 143 of the 144 free cells came out
+connected and one was stranded behind a 1×1 bin. So `FreeCells` counts
+what is left and `LargestFreeRegion` says how much of it is in one piece;
+the gap between the two is precisely the space that is free and useless.
 
 ### Sketch
 
@@ -181,10 +190,18 @@ comfortably past a machine word and still a single value.
 The search needs the two disciplines this project already applies one
 level down:
 
-- **Canonical placement order.** Always place the next bin at the
-  lowest-index free cell. Without it the search re-derives every
+- **A canonical placement rule.** Without one the search re-derives every
   permutation of the same packing, and the branching factor is the whole
-  drawer.
+  drawer. The rule is **bottom-left stability**: a bin goes only where it
+  cannot slide one cell further left or down. This is complete, because
+  pushing rectangles left and down terminates and never creates an
+  overlap, so every packing normalizes into one made of stable positions.
+
+  Not "some bin must cover the lowest-index free cell", which is the rule
+  for *exact cover* and is unsound here — a drawer is allowed to have
+  empty cells, and demanding they be filled would reject every assignment
+  that leaves room for the next object.
+
 - **A one-sided bound in front of the solver.** Total bin cells against
   total drawer cells. Same shape as M4's area bound and M8's, and the same
   requirement: it must never reject an assignment that would have worked,

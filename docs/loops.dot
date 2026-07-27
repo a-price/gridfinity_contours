@@ -16,14 +16,14 @@ digraph loops {
          color="#00000000", fillcolor="#00000000", margin="0.06,0.03"];
 
   subgraph cluster_drawer {
-    label = "drawer assignment  —  which bins share a drawer";
+    label = "drawer assignment  —  which bins share a drawer  (M9)";
     fontsize = 12;
     style = "rounded";
     color = "#33475e";
     fontcolor = "#33475e";
     labeljust = "l";
 
-    d_note [label="integers only, exhaustive, no tuning parameters\lthe only level where \"does not fit\" is decidable\lproposed — not built\l",
+    d_note [label="integers only, exhaustive, no tuning parameters\lthe only level where \"does not fit\" is decidable\lbottom-left stable positions only — complete, and small enough to search\l",
             fontcolor="#33475e"];
 
     subgraph cluster_group {

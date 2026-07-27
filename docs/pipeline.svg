@@ -177,7 +177,7 @@
 <path fill="#dee7f6" stroke="#888888" d="M1771,-106.5C1771,-106.5 1647,-106.5 1647,-106.5 1641,-106.5 1635,-100.5 1635,-94.5 1635,-94.5 1635,-73.5 1635,-73.5 1635,-67.5 1641,-61.5 1647,-61.5 1647,-61.5 1771,-61.5 1771,-61.5 1777,-61.5 1783,-67.5 1783,-73.5 1783,-73.5 1783,-94.5 1783,-94.5 1783,-100.5 1777,-106.5 1771,-106.5"/>
 <text text-anchor="middle" x="1709" y="-92.5" font-family="Helvetica,sans-Serif" font-size="10.00">drawer assignment</text>
 <text text-anchor="middle" x="1709" y="-81.5" font-family="Helvetica,sans-Serif" font-size="10.00">which bins share a drawer</text>
-<text text-anchor="middle" x="1709" y="-70.5" font-family="Helvetica,sans-Serif" font-size="10.00">(proposed)</text>
+<text text-anchor="middle" x="1709" y="-70.5" font-family="Helvetica,sans-Serif" font-size="10.00">exact</text>
 </g>
 <!-- group&#45;&gt;assign -->
 <g id="edge11" class="edge">

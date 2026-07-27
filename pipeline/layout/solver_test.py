@@ -11,6 +11,8 @@ Budgets are cut well below the defaults throughout, so the suite stays
 quick; the cases are chosen to be comfortably solvable at that budget.
 """
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -38,7 +40,7 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
 
 def _quick(**overrides) -> LayoutParameters:
     """Default parameters with a budget small enough for a test suite."""
-    settings = dict(restarts=6, iterations=150, patience=25)
+    settings: dict[str, Any] = dict(restarts=6, iterations=150, patience=25)
     settings.update(overrides)
     return LayoutParameters(**settings)
 

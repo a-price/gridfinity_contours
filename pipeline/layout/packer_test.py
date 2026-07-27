@@ -6,6 +6,8 @@ fits, since that would silently inflate every result - and that whatever
 comes back survives the independent geometric check.
 """
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -33,7 +35,7 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
 
 
 def _quick(**overrides) -> LayoutParameters:
-    settings = dict(restarts=6, iterations=150, patience=25)
+    settings: dict[str, Any] = dict(restarts=6, iterations=150, patience=25)
     settings.update(overrides)
     return LayoutParameters(**settings)
 
