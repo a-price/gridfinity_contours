@@ -133,7 +133,7 @@ def test_a_successful_pack_reports_the_grid_size(qapp):
 
 
 def test_a_failure_reports_why_rather_than_just_failing(qapp):
-    """"Too small" and "the search gave up" call for different responses
+    """ "Too small" and "the search gave up" call for different responses
     from the user, and the packer already tells them apart.
     """
     stage = LayoutStage(_quick(max_grid=1))
