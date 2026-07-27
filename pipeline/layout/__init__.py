@@ -3,6 +3,7 @@
     container   the bin interior, from the Gridfinity spec
     part        a contour and its signed distance field
     placement   a part positioned in a bin
+    parameters  everything tunable, in one place
     energy      how badly an arrangement violates its clearances
     solver      a solved arrangement, and the search for one
     packer      choosing the bin size, and the bounds that rule one out

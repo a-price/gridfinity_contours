@@ -39,7 +39,8 @@ from dataclasses import replace
 import numpy as np
 
 from pipeline.layout.container import Container
-from pipeline.layout.energy import ComputeEnergy, LayoutParameters
+from pipeline.layout.energy import ComputeEnergy
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Placement
 

@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from pipeline.layout.container import BuildContainer, InteriorSpan
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.packer import (
     CANCELLED,
@@ -23,6 +22,7 @@ from pipeline.layout.packer import (
     ProvablyTooSmall,
     RequiredArea,
 )
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.verify import CheckLayout
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]

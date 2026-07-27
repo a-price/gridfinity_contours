@@ -22,7 +22,7 @@ import os
 import numpy as np
 
 from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, InteriorSpan
-from pipeline.layout.energy import LayoutParameters
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
 from pipeline.layout.spacing import Gaps

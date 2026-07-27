@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 
 from pipeline.layout.container import DIVIDER_WIDTH_MM, InteriorSpan
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.packer import Pack
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.solid import (
     BASE_HEIGHT_MM,

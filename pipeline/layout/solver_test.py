@@ -15,8 +15,9 @@ import numpy as np
 import pytest
 
 from pipeline.layout.container import BuildContainer, InteriorSpan
-from pipeline.layout.energy import ComputeEnergy, LayoutParameters, PlacementEnergy
+from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Placement
 from pipeline.layout.solver import (
     FittingOrientations,

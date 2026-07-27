@@ -14,9 +14,9 @@ import numpy as np
 import pytest
 from PyQt5.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QPushButton
 
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import NOT_FOUND, PACKED, GridAttempt, PackResult
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout
 from pipeline.layout_stage import LayoutStage
 

@@ -362,6 +362,7 @@ before the solver was even written, against a house style of 100-375.
 pipeline/layout/container.py   the bin interior, from the Gridfinity spec
 pipeline/layout/part.py        a contour and its signed distance field
 pipeline/layout/placement.py   a part positioned in a bin
+pipeline/layout/parameters.py  everything tunable, in one place
 pipeline/layout/energy.py      clearance violation and the forces to fix it
 pipeline/layout/solver.py      arranging parts inside a bin of fixed size
 pipeline/layout/packer.py      choosing the bin size, with the bounds that
@@ -387,9 +388,18 @@ consumes them; the cost is that changing `container.py` gives no hint that
 its tests live somewhere else entirely.
 
 Dependencies run one way: `container` and `part` depend on nothing local,
-`placement` on `part`, `energy` on all three, `svg` and `solver` above
-that, and `verify` deliberately to one side. Nothing in the package
-imports Qt, so all of it is unit-testable without a display.
+`placement` on `part`, `parameters` on `container` and `part`, `energy` on
+those, `loading`, `spacing`, `solver`, `packer`, `preview`, `render` and
+`solid` above that, and `verify` deliberately to one side.
+
+`parameters` is separate from `energy` because six of the nine modules
+that need a `LayoutParameters` compute no energy at all — the loader sizes
+distance fields from it, the packer reads the grid limit, the solid
+generator takes the pocket offset, the GUI edits it. It had grown to 40%
+of `energy.py` while being the configuration of the whole subsystem.
+
+Nothing in the package imports Qt, so all of it is unit-testable without
+a display.
 
 The stage stays outside the package, mirroring the existing pattern
 ([contour_extraction.py](../pipeline/contour_extraction.py) vs.

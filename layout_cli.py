@@ -18,9 +18,9 @@ from contextlib import contextmanager
 from typing import Callable, Iterator, Sequence, TextIO
 
 from pipeline.contour_io import SaveContours
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack, Progress
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
 from pipeline.layout.solid import DEFAULT_HEIGHT_UNITS, WriteScad
 

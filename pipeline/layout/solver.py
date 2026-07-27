@@ -25,7 +25,8 @@ from typing import Callable
 import numpy as np
 
 from pipeline.layout.container import BuildContainer, Container
-from pipeline.layout.energy import ComputeEnergy, LayoutParameters, PlacementEnergy
+from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout, Placement, RotatedSize
 from pipeline.layout.spacing import Spread

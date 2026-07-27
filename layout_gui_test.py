@@ -14,7 +14,7 @@ import pytest
 from PyQt5.QtWidgets import QApplication
 
 from pipeline.contour_io import SaveContours
-from pipeline.layout.energy import LayoutParameters
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout_stage import EXPORT_EXTENSIONS
 from layout_gui import LayoutGui
 

@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ElementTree
 import numpy as np
 
 from pipeline.contour_io import LoadContours
-from pipeline.layout.energy import LayoutParameters
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import BuildPart, Part
 
 
@@ -97,12 +97,11 @@ def BuildParts(contours: dict[int, np.ndarray], params: LayoutParameters | None 
 
 
 def LoadParts(paths: Sequence[str], params: LayoutParameters | None = None) -> dict[int, Part]:
-    """Build a Part per polygon across a set of SVG files, keyed by the
-    order encountered - the `dict[int, ...]` shape the rest of the pipeline
-    passes contours around in.
+    """Build a Part per contour across a set of files - the two steps most
+    callers want together.
+
+    Reads whatever `ReadContours` reads rather than SVGs alone: it used to
+    walk the paths itself, which meant a second copy of the renumbering
+    and a loader that silently could not open a contour dump.
     """
-    contours: dict[int, np.ndarray] = {}
-    for path in paths:
-        for contour in LoadSvgContours(path):
-            contours[len(contours)] = contour
-    return BuildParts(contours, params)
+    return BuildParts(ReadContours(paths), params)

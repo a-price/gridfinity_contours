@@ -9,8 +9,8 @@ while saying nothing about that.
 import numpy as np
 import pytest
 
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.preview import LayoutShapes
 from pipeline.layout.render import (

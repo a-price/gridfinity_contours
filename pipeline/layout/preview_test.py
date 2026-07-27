@@ -14,8 +14,8 @@ import pytest
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
 
 from pipeline.layout.container import BASE_GAP_MM, GRID_PITCH_MM, InteriorSpan
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, LoadSvgContours
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.preview import (
     LayoutShapes,

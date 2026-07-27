@@ -13,9 +13,9 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import Pack, PackResult, Progress
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
 from pipeline.layout.render import DEFAULT_PIXELS_PER_MM, RenderLayout

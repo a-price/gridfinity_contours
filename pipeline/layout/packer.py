@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from pipeline.layout.container import BuildContainer, Container
-from pipeline.layout.energy import LayoutParameters
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
 from pipeline.layout.solver import FittingOrientations, SolveFixedGrid

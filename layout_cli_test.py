@@ -26,9 +26,9 @@ from layout_cli import (
     ShouldShowProgress,
 )
 from pipeline.contour_io import LoadContours, SaveContours
-from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import LoadSvgContours
 from pipeline.layout.packer import Progress
+from pipeline.layout.parameters import LayoutParameters
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
 

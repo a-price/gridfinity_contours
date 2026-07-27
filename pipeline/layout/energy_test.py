@@ -11,8 +11,9 @@ import numpy as np
 import pytest
 
 from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, BuildContainer, Container
-from pipeline.layout.energy import ComputeEnergy, LayoutParameters
+from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import BuildPart
 from pipeline.layout.placement import Placement
 from pipeline.layout.verify import MinimumSeparation, PolygonsOverlap

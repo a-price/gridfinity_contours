@@ -10,8 +10,9 @@ import numpy as np
 import pytest
 
 from pipeline.layout.container import BuildContainer
-from pipeline.layout.energy import ComputeEnergy, LayoutParameters
+from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.spacing import Gaps, Spread, SpringParameters
 from pipeline.layout.verify import CheckLayout
