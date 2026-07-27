@@ -294,18 +294,33 @@ print against a physical bin is Andrew's check.
 
 ## M6 — GUI stage
 
-- [ ] `pipeline/layout_stage.py`: `LayoutStage(Stage)` with a "Layout"
-  group box — clearance spin boxes, max grid size, seed, and a "Pack"
-  button.
-- [ ] Explicit trigger only, like
+- [x] `pipeline/layout_stage.py`: `LayoutStage(Stage)` with a "Layout"
+  group box — pocket offset, max grid size, seed, and a "Pack" button.
+  Offset rather than two independent clearance boxes: they are derived
+  from it (D5), and typing them separately invites a divider too thin to
+  print. The derived values are shown read-only beside it.
+- [x] Explicit trigger only, like
   [SvgExportStage](../pipeline/svg_export_stage.py) — packing takes
-  seconds and must not run on slider drags.
-- [ ] Register in `SVGGui` downstream of rectification; render the
-  resulting layout in the image view.
-- [ ] Report grid size and any failure reason in the panel.
+  seconds and must not run on slider drags. Pack is also disabled while a
+  pack runs, since the status label pumps the event loop.
+- [x] `pipeline/layout/render.py`: rasterize `preview.LayoutShapes` for
+  the image view, so the screen and the printed sheet cannot drift apart.
+- [x] Report grid size, any failure reason, and whether a smaller size was
+  skipped, in the panel.
 
-**Done when:** a full photo-to-layout run works in the GUI and the stage
-never blocks on an upstream parameter change.
+**Changed here — the stage does not go in `SVGGui`.** The plan was to
+register it downstream of rectification; building it showed that
+`SVGGui` captures *one* photo (one segmentation, one calibration, one set
+of clicks) while packing needs many objects, which arrive from many
+sessions — the three spoon fixtures are three separate captures. A Pack
+button there could only pack the current frame. It lives in its own
+window, [layout_gui.py](../layout_gui.py), which loads dumps and SVGs and
+accumulates them across files. A common entry point over both may come
+later, once that workflow is understood.
+
+**Done when:** a full contours-to-layout run works in the GUI and the
+stage never blocks on an upstream parameter change. The three spoon
+captures load and pack to 5x2 in the window.
 
 ## M7 — Solid generation
 

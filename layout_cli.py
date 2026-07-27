@@ -15,31 +15,11 @@ import argparse
 import sys
 from typing import Sequence
 
-import numpy as np
-
-from pipeline.contour_io import LoadContours, SaveContours
+from pipeline.contour_io import SaveContours
 from pipeline.layout.energy import LayoutParameters
-from pipeline.layout.loading import BuildParts, LoadSvgContours
+from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
-
-
-def ReadContours(paths: Sequence[str]) -> dict[int, np.ndarray]:
-    """Every contour across the given files, renumbered from zero.
-
-    Ids are assigned by order encountered rather than carried over from the
-    inputs, because two files dumped from two sessions both start at 0 and
-    silently dropping half the contours to a key collision would look
-    exactly like a packing that went well.
-    """
-    contours: dict[int, np.ndarray] = {}
-    for path in paths:
-        loaded = LoadContours(path) if path.lower().endswith(".json") else dict(enumerate(LoadSvgContours(path)))
-        for _, points in sorted(loaded.items()):
-            contours[len(contours)] = points
-    if not contours:
-        raise ValueError("no contours found in the given files")
-    return contours
 
 
 def BuildParser() -> argparse.ArgumentParser:

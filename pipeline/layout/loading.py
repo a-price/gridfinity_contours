@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ElementTree
 
 import numpy as np
 
+from pipeline.contour_io import LoadContours
 from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.part import BuildPart, Part
 
@@ -59,6 +60,29 @@ def LoadSvgContours(path: str) -> list[np.ndarray]:
 
     if not contours:
         raise ValueError(f"no <polygon> elements found in {path}")
+    return contours
+
+
+def ReadContours(paths: Sequence[str]) -> dict[int, np.ndarray]:
+    """Every contour across the given files, renumbered from zero.
+
+    Takes either format this project writes: a JSON contour dump or an
+    exported SVG. Which one is decided by extension, since a dump and a
+    drawing of the same contours are not interchangeable - the SVG is
+    per-shape PCA-aligned and rounded for drawing.
+
+    Ids are assigned by order encountered rather than carried over from the
+    inputs, because two files dumped from two sessions both start at 0 and
+    silently dropping half the contours to a key collision would look
+    exactly like a packing that went well.
+    """
+    contours: dict[int, np.ndarray] = {}
+    for path in paths:
+        loaded = LoadContours(path) if path.lower().endswith(".json") else dict(enumerate(LoadSvgContours(path)))
+        for _, points in sorted(loaded.items()):
+            contours[len(contours)] = points
+    if not contours:
+        raise ValueError("no contours found in the given files")
     return contours
 
 

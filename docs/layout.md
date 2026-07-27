@@ -297,10 +297,12 @@ pipeline/layout/packer.py      choosing the bin size, with the bounds that
 pipeline/layout/loading.py     getting parts in, from SVGs or from
                                contours you already have
 pipeline/layout/preview.py     drawing a solved layout at true scale
+pipeline/layout/render.py      the same drawing, rasterized for a screen
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
 pipeline/layout_stage.py       Stage subclass, group box, Qt
 layout_cli.py                  headless entry point
+layout_gui.py                  interactive entry point
 ```
 
 One test module per source module, strictly — a test lives beside the
@@ -342,10 +344,25 @@ A mirrored outline is the one error a printed template cannot survive —
 it measures correctly and still will not fit, because a reflected tool
 sits upside down in its pocket (D1).
 
-The stage is registered downstream of contour selection/rectification in
-`SVGGui`'s pipeline, but — like SVG export — runs only when explicitly
-triggered by a button, not on every upstream parameter change. Packing
-takes seconds; it must not run on every slider drag.
+The stage is hosted by its **own window**
+([layout_gui.py](../layout_gui.py)), not registered into `SVGGui`. M6
+originally planned the latter, and building it showed why it does not
+work: `SVGGui` captures one photo — one segmentation, one calibration,
+one set of clicks — while packing needs many objects, which in practice
+arrive from many sessions. The three spoon fixtures in `test_data/` are
+three separate captures. A Pack button inside the capture window could
+only ever pack what happened to be in the current frame. A second symptom
+pointed the same way: a layout lives in bin millimeters, so it cannot
+overlay the photo — it has to replace the image view entirely.
+
+`LayoutGui` therefore starts where capture leaves off. It loads the dumps
+and SVGs those sessions wrote, *accumulating* across files, and packs the
+collection. The two may eventually meet under a common entry point, but
+that workflow is not understood well enough yet to design for.
+
+Either way the stage runs only when explicitly triggered by its Pack
+button, never on a parameter edit — packing takes seconds, and the panel's
+controls are exactly the kind a person drags.
 
 ## Grouping (future work)
 
