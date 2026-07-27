@@ -18,7 +18,7 @@ reviewable commit, made by hand after inspection. The "Done when" clause
 on each milestone is the completion criterion; meeting it is the signal
 to stop.
 
-No new dependencies are needed through M8: SDFs use `opencv-python` and
+No new dependencies were needed through M8: SDFs use `opencv-python` and
 `numpy`, the test oracle uses `matplotlib`, and the SVG loader uses the
 standard library — all already in `requirements.in`. Only M9's embedding
 provider might add one, and only if CLIP beats the alternatives. If a
@@ -392,18 +392,57 @@ divider against the 1.2mm minimum; the physical print is Andrew's check.
 
 ## M8 — Grouping
 
-Only after M4's validation sweep is clean and M7 has produced a real
-print — see [Grouping](layout.md#grouping-future-work).
+See [Grouping](layout.md#grouping).
 
-- [ ] First-fit-decreasing over open bins, with `Pack` as the
+- [x] First-fit-decreasing over open bins, with the packer as the
   feasibility oracle.
-- [ ] Cache keyed by (frozenset of part ids, grid size); prune candidate
+- [x] Cache keyed by (frozenset of part ids, grid size); prune candidate
   moves with the area bound before ever calling the solver.
-- [ ] Local search: move/swap parts between bins, keep improvements.
+- [x] Local search: move/swap parts between bins, keep improvements.
+- [ ] Wire into a front end — see below.
 
 **Done when:** the three `test_data/` spoons group from 22 cells
 (one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
-passing the independent overlap check.
+passing the independent overlap check. **Met** — 22 tests in
+`pipeline/layout/grouping_test.py`; the spoons group to a single 5x2 at
+**10 cells**, every bin clean under `CheckLayout`.
+
+**The gate was only half met when this was built.** M4's sweep is clean,
+but M7's physical print is still outstanding, so the clearances this
+optimizes against remain derived rather than measured. The algorithm does
+not depend on their values — revising `c_pair` changes the cell counts
+grouping reports, not the search that produces them — but the 22-to-10
+figure above is stated at the current defaults and will need re-measuring
+if the print says they are wrong.
+
+**Two things settled here that the design left open:**
+
+- **First-fit does not grow a bin.** The design said a bin "may grow up to
+  a user-set maximum footprint" during first-fit. Building it showed that
+  growth is not a fit but a *trade* — this bin costs more in exchange for
+  one fewer bin elsewhere — and stage 3 exists precisely to price trades.
+  Taken greedily in part-arrival order, it would be committed to without
+  ever being compared. Bins still grow; they grow where the alternative is
+  visible.
+- **The cache key in the design is the right one, and it is why the oracle
+  answers two questions rather than one.** "Does this set fit this size"
+  is what first-fit asks; "what is this set's smallest size" is what the
+  local search asks. Building the second on the first makes them share one
+  cache, so answering either partly answers the other. Going through
+  `packer.Pack` instead would have kept the two apart.
+
+**The bound is load-bearing in a way the packer's is not.** M4's bounds
+save the solver from hopeless bin *sizes*; here the same bound decides
+which candidate *moves* are worth pricing at all, and it runs on every one
+of them. The one-sidedness requirement carries over unchanged and is
+tested directly — measured on two 30x30 squares, which cannot gain by
+sharing, the entire local search completes with **zero** solver calls.
+
+**Not wired into a front end.** The CLI and GUI still pack one explicit
+set into one bin, which is M5 and M6's contract; grouping changes the
+shape of the output from a layout to a list of them, and the preview,
+export, and solid paths all assume the former. That is a milestone's worth
+of work on its own rather than a loose end of this one.
 
 ## M9 — Semantic coherence
 

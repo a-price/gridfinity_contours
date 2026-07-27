@@ -26,10 +26,9 @@ Two phases, in this order:
    contours that the user has decided should share a bin, find the
    smallest `N x M` grid and a collision-free placement of every contour
    inside it.
-2. **Grouping** (designed here, built later). Given all the contours,
-   decide the partition into bins that minimizes total cells. Phase 1 is
-   the feasibility oracle this search calls; see
-   [Grouping](#grouping-future-work).
+2. **Grouping**. Given all the contours, decide the partition into bins
+   that minimizes total cells. Phase 1 is the feasibility oracle this
+   search calls; see [Grouping](#grouping).
 
 ## Inputs and outputs
 
@@ -368,6 +367,7 @@ pipeline/layout/descent.py     moving parts along those forces
 pipeline/layout/solver.py      arranging parts inside a bin of fixed size
 pipeline/layout/packer.py      choosing the bin size, with the bounds that
                                reject one without running the solver
+pipeline/layout/grouping.py    partitioning parts across several bins
 pipeline/layout/loading.py     getting parts in, from SVGs or from
                                contours you already have
 pipeline/layout/spacing.py     evening out the gaps once a layout fits
@@ -391,7 +391,8 @@ its tests live somewhere else entirely.
 Dependencies run one way: `container` and `part` depend on nothing local,
 `placement` on `part`, `parameters` on `container` and `part`, `energy` and
 `descent` on those, `loading`, `spacing`, `solver`, `packer`, `preview`,
-`render` and `solid` above that, and `verify` deliberately to one side.
+`render` and `solid` above that, `grouping` on top of `packer`, and
+`verify` deliberately to one side.
 
 `parameters` is separate from `energy` because six of the nine modules
 that need a `LayoutParameters` compute no energy at all — the loader sizes
@@ -457,15 +458,15 @@ Either way the stage runs only when explicitly triggered by its Pack
 button, never on a parameter edit — packing takes seconds, and the panel's
 controls are exactly the kind a person drags.
 
-## Grouping (future work)
+## Grouping
 
-Phase 2 turns "pack this set" into "partition these parts into bins".
-The arrangement packer is the feasibility oracle; the search around it:
+Phase 2 turns "pack this set" into "partition these parts into bins"
+([grouping.py](../pipeline/layout/grouping.py)). The arrangement packer is
+the feasibility oracle; the search around it:
 
 1. Sort parts by area, descending.
 2. First-fit-decreasing into open bins, where "fits" = the packer
-   succeeds at the bin's current size, and a bin may grow up to a
-   user-set maximum footprint.
+   succeeds at the bin's current size.
 3. Improve with local search: move or swap parts between bins, keeping
    changes that reduce total cells.
 
@@ -473,8 +474,33 @@ Two things make this affordable: the area lower bound rejects most
 candidate moves without ever running the solver, and results are cached
 by (frozen set of part ids, grid size).
 
-Explicitly deferred, because the arrangement packer must be solid first —
-a grouping search built on a flaky oracle is untunable.
+**Stage 2 deliberately never grows a bin**, which the earlier draft of
+this section left open ("a bin may grow up to a user-set maximum
+footprint"). A part that fits only once its bin gets larger is not a fit,
+it is a *trade* — this bin costs more, in exchange for one fewer bin
+elsewhere — and pricing that trade is exactly what stage 3 does. Letting
+first-fit take it greedily, in whatever order the parts happen to arrive,
+would commit to it without ever comparing it against the alternative.
+Growth still happens; it happens where it can be compared.
+
+**The lower bound must be one-sided, and that is the property worth
+testing** — the same lesson M4 recorded about the packer's own bounds, now
+load-bearing in a second place. The search discards a candidate move when
+even the bound cannot beat what the move would replace. A bound that ever
+came out *above* the true cost would silently discard improvements, and
+the grouping would come back larger looking perfectly correct.
+
+The local search takes the **first** improvement rather than the best:
+candidates are cheap to generate and expensive to price, so taking the
+first that helps and re-generating beats pricing them all. It needs no
+iteration cap, because every accepted change strictly lowers a
+non-negative integer.
+
+Measured on the three `test_data/` spoons: one bin each costs 22 cells
+(5x2 + 5x2 + 2x1), and grouping returns a single 5x2 at **10 cells**. The
+local search reaches that on its own — started from one bin per spoon,
+without first-fit's help, it still collapses to one bin — which is what
+distinguishes a search that works from one that never fires.
 
 ### Semantic coherence (much later)
 
