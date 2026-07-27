@@ -39,6 +39,7 @@ from dataclasses import replace
 import numpy as np
 
 from pipeline.layout.container import Container
+from pipeline.layout.descent import Descent
 from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
@@ -83,13 +84,17 @@ def Gaps(
     """
     gaps: dict[tuple[int, int], float] = {}
 
+    # Once per part rather than once per direction of every pair, matching
+    # ComputeEnergy - rotating a spoon's several thousand boundary samples
+    # is the expensive half of this.
+    world_samples = {part_id: placement.SamplesToWorld(parts[part_id]) for part_id, placement in placements.items()}
+
     ordered = sorted(placements)
     for index, id_a in enumerate(ordered):
         for id_b in ordered[index + 1 :]:
             separation = np.inf
             for source, target in ((id_a, id_b), (id_b, id_a)):
-                samples = placements[source].SamplesToWorld(parts[source])
-                local = placements[target].ToLocal(parts[target], samples)
+                local = placements[target].ToLocal(parts[target], world_samples[source])
                 separation = min(separation, float(parts[target].SampleSdf(local).min()))
             gaps[(id_a, id_b)] = separation - params.c_pair
 
@@ -121,20 +126,14 @@ def Spread(
         return dict(placements)
 
     springs = SpringParameters(params)
-
-    positions = {part_id: placement.position.astype(np.float64).copy() for part_id, placement in placements.items()}
-    orientations = {part_id: placement.orientation for part_id, placement in placements.items()}
-    velocities = {part_id: np.zeros(2) for part_id in placements}
-    # Same normalization as the solver's relaxation: force scales with a
-    # part's sample count, which says nothing about how badly it is placed.
-    per_sample = {part_id: 1.0 / max(1, len(parts[part_id].samples)) for part_id in placements}
+    descent = Descent(parts, placements, params)
 
     best = dict(placements)
     best_energy = ComputeEnergy(parts, placements, container, springs).energy
     stalled = 0
 
     for _ in range(params.spacing_iterations):
-        current = {part_id: Placement(part_id, positions[part_id], orientations[part_id]) for part_id in positions}
+        current = descent.Placements()
         result = ComputeEnergy(parts, current, container, springs)
 
         # Keep it only if the true clearances still hold. The springs push
@@ -153,13 +152,8 @@ def Spread(
             if stalled >= params.patience:
                 break
 
-        for part_id in positions:
-            step = result.forces[part_id] * per_sample[part_id] * params.step_scale
-            velocities[part_id] = params.damping * velocities[part_id] + step
-            move = velocities[part_id]
-            distance = float(np.linalg.norm(move))
-            if distance > params.max_step:
-                move = move / distance * params.max_step
-            positions[part_id] = positions[part_id] + move
+        # No noise: this starts from a feasible arrangement and is looking
+        # for the nearest balanced one, not exploring.
+        descent.Step(result.forces)
 
     return best

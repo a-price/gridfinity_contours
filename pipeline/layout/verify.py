@@ -115,10 +115,10 @@ def CheckLayout(
     what went wrong everywhere instead of one symptom at a time.
     """
     envelope = layout.Envelope()
-    placed = {part_id: placement.ToWorld(parts[part_id]) for part_id, placement in layout.placements.items()}
+    placed = sorted((part_id, placement.ToWorld(parts[part_id])) for part_id, placement in layout.placements.items())
     problems = []
 
-    for part_id, polygon in sorted(placed.items()):
+    for part_id, polygon in placed:
         if not PolygonInside(polygon, envelope):
             problems.append(f"part {part_id} is not fully inside the {layout.grid[0]}x{layout.grid[1]} interior")
         elif wall_clearance > 0:
@@ -128,8 +128,8 @@ def CheckLayout(
                     f"part {part_id} is {separation:.3f}mm from the wall, below the {wall_clearance:.3f}mm clearance"
                 )
 
-    for i, (id_a, polygon_a) in enumerate(sorted(placed.items())):
-        for id_b, polygon_b in sorted(placed.items())[i + 1 :]:
+    for i, (id_a, polygon_a) in enumerate(placed):
+        for id_b, polygon_b in placed[i + 1 :]:
             if PolygonsOverlap(polygon_a, polygon_b):
                 problems.append(f"parts {id_a} and {id_b} overlap")
             elif pair_clearance > 0:

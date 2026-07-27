@@ -31,6 +31,11 @@ DIVIDER_WIDTH_MM = 1.2  # d_div
 # hence the parameter rather than a hardcoded constant.
 DEFAULT_INTERIOR_INSET_MM = STACKING_LIP_INTRUSION_MM
 
+# Below this distance past a corner's straight section, a point is treated
+# as being on the straight side rather than around the arc - the two agree
+# there anyway, and normalizing a vector this short yields noise.
+_CORNER_TOLERANCE = 1e-12
+
 
 def InteriorSpan(cells: int, inset: float = DEFAULT_INTERIOR_INSET_MM) -> float:
     """Usable interior length of a run of `cells` grid units, in mm.
@@ -85,20 +90,25 @@ class Container:
             points.append(np.stack([cx + radius * np.cos(angles), cy + radius * np.sin(angles)], axis=-1))
         return np.concatenate(points)
 
-    def _Offsets(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _Offsets(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Which side of center each point is on, and how far it lies past
+        the straight section of each side.
+
+        The second is measured in the positive quadrant so both axes can be
+        handled symmetrically; the sign is handed back separately to undo
+        that at the end.
+        """
         points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
         half = np.array([self.width, self.height]) / 2.0
         offset = points - half
-        # Distance past the straight section of each side, measured in the
-        # positive quadrant so the two axes can be handled symmetrically.
-        return offset, np.where(offset >= 0, 1.0, -1.0), np.abs(offset) - (half - self.radius)
+        return np.where(offset >= 0, 1.0, -1.0), np.abs(offset) - (half - self.radius)
 
     def SampleDepth(self, points: np.ndarray) -> np.ndarray:
         """How far inside the interior each point sits, in mm. Negative
         outside, so a part that has escaped reports how far it has to come
         back.
         """
-        _, _, q = self._Offsets(points)
+        _, q = self._Offsets(points)
         outside = np.linalg.norm(np.maximum(q, 0.0), axis=1)
         within = np.minimum(np.maximum(q[:, 0], q[:, 1]), 0.0)
         return self.radius - (outside + within)
@@ -107,17 +117,20 @@ class Container:
         """The gradient of SampleDepth: unit vectors pointing inward, toward
         deeper interior.
         """
-        _, signs, q = self._Offsets(points)
+        signs, q = self._Offsets(points)
         positive = np.maximum(q, 0.0)
         magnitude = np.linalg.norm(positive, axis=1, keepdims=True)
 
-        # Beyond a corner both axes contribute; along a side only the
-        # nearer wall does.
-        rounded = np.divide(positive, magnitude, out=np.zeros_like(positive), where=magnitude > 1e-12)
+        # Beyond a corner both axes contribute; along a side only the nearer
+        # wall does. The same threshold picks the branch and guards the
+        # division: splitting them would leave points a hair outside a
+        # corner taking the normalized branch and reading back the zero the
+        # guarded divide left there, which is no direction at all.
+        rounded = np.divide(positive, magnitude, out=np.zeros_like(positive), where=magnitude > _CORNER_TOLERANCE)
         straight = np.zeros_like(positive)
         straight[np.arange(len(q)), np.argmax(q, axis=1)] = 1.0
 
-        outward = np.where(magnitude > 0, rounded, straight) * signs
+        outward = np.where(magnitude > _CORNER_TOLERANCE, rounded, straight) * signs
         return -outward
 
 

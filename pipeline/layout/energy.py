@@ -153,12 +153,7 @@ def ComputeEnergy(
                 forces[source] += push
                 forces[target] -= push  # equal and opposite, which is also the exact gradient
 
-    return EnergyResult(
-        energy=energy,
-        forces=forces,
-        deepest_penetration=max(0.0, deepest),
-        containment=containment,
-    )
+    return EnergyResult(energy=energy, forces=forces, deepest_penetration=deepest, containment=containment)
 
 
 def PlacementEnergy(
@@ -218,13 +213,15 @@ def _DirectedPairTerm(
     if not penalty.any():
         return 0.0, np.zeros(2), 0.0, 0.0
 
-    # Free here, since the signs are already computed.
+    # Free here, since the signs are already computed. `distance.min()` is
+    # only negative when something penetrates, hence the guard - without it
+    # a pair merely inside its clearance would report a negative depth.
     penetrating = distance < 0
     deepest = -float(distance.min()) if penetrating.any() else 0.0
-    containment = float(penetrating.mean()) if penetrating.any() else 0.0
+    containment = float(penetrating.mean())
 
     # The field is the target's, so its derivative comes back in the
     # target's frame and has to be rotated into the bin's.
     direction = RotateVectors(target_part.SampleDerivative(local), target.orientation)
     push = (scale[:, None] * direction).sum(axis=0)
-    return float(penalty.sum()), push, max(0.0, deepest), containment
+    return float(penalty.sum()), push, deepest, containment

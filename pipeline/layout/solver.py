@@ -25,6 +25,7 @@ from typing import Callable
 import numpy as np
 
 from pipeline.layout.container import BuildContainer, Container
+from pipeline.layout.descent import Descent
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
@@ -246,19 +247,12 @@ def Relax(
     bad arrangement - stacked parts, say - and confirm it either fixes them
     or gives up, and never calls them done.
     """
-    positions = {part_id: placement.position.astype(np.float64).copy() for part_id, placement in placements.items()}
-    orientations = {part_id: placement.orientation for part_id, placement in placements.items()}
-    velocities = {part_id: np.zeros(2) for part_id in placements}
-    # Force scales with how many samples a part has, which is a property of
-    # its size and the raster resolution rather than of how badly it is
-    # placed. Dividing it out keeps one step size meaningful for a spoon
-    # and a washer alike.
-    per_sample = {part_id: 1.0 / max(1, len(parts[part_id].samples)) for part_id in placements}
+    descent = Descent(parts, placements, params)
     best_energy = np.inf
     stalled = 0
 
     for iteration in range(params.iterations):
-        current = {part_id: Placement(part_id, positions[part_id], orientations[part_id]) for part_id in placements}
+        current = descent.Placements()
         result = ComputeEnergy(parts, current, container, params)
 
         if result.feasible:
@@ -281,16 +275,7 @@ def Relax(
                 return None
 
         cooling = 1.0 - iteration / params.iterations
-        for part_id in placements:
-            velocities[part_id] = (
-                params.damping * velocities[part_id] + params.step_scale * result.forces[part_id] * per_sample[part_id]
-            )
-            move = velocities[part_id] + rng.normal(scale=params.jitter * cooling, size=2)
-
-            distance = float(np.linalg.norm(move))
-            if distance > params.max_step:
-                move = move * (params.max_step / distance)
-            positions[part_id] = positions[part_id] + move
+        descent.Step(result.forces, noise=params.jitter * cooling, rng=rng)
 
     return None
 
