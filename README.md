@@ -100,6 +100,14 @@ different color from the top, for printers without AMS.
 python3 postprocess_gcode_for_prusa_i3.py path/to/file.gcode [height_mm]
 ```
 
+## Design docs
+
+- [docs/layout.md](docs/layout.md) - packing several contours into the
+  smallest practical number of Gridfinity cells, via a repulsive-force
+  relaxation. Not yet implemented;
+  [docs/layout_roadmap.md](docs/layout_roadmap.md) is the implementation
+  plan.
+
 ## Installation
 
 1. Create and activate a virtual environment:
