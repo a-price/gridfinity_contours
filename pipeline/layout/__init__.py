@@ -6,6 +6,7 @@
     energy      how badly an arrangement violates its clearances
     solver      a solved arrangement, and the search for one
     packer      choosing the bin size, and the bounds that rule one out
+    spacing     evening out the gaps once a layout already fits
     loading     getting parts in, from SVGs or contours you already have
     preview     drawing a solved layout at true scale
     verify      independent checks, sharing no code with the solver

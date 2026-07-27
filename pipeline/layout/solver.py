@@ -28,6 +28,7 @@ from pipeline.layout.container import BuildContainer, Container
 from pipeline.layout.energy import ComputeEnergy, LayoutParameters, PlacementEnergy
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout, Placement, RotatedSize
+from pipeline.layout.spacing import Spread
 from pipeline.layout.verify import CheckLayout
 
 
@@ -357,6 +358,10 @@ def SolveFixedGrid(
         # discovering it in a printed bin.
         if CheckLayout(layout, parts):
             continue
-        return layout
+
+        # Feasible, but the solver stopped at the first arrangement that
+        # was - so the gaps are arbitrary. Even them out before returning.
+        balanced = Layout(grid=(n, m), placements=Spread(parts, settled, container, params), inset=params.inset)
+        return balanced if not CheckLayout(balanced, parts) else layout
 
     return None

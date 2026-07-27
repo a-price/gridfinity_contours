@@ -65,6 +65,20 @@ class LayoutParameters:
     damping: float = 0.6
     jitter: float = 0.35
 
+    # How far past each clearance the spacing springs reach, and how long
+    # the balancing pass gets.
+    #
+    # Longer is not better, and the curve has a clear optimum. Measured on
+    # the three spoons from one fixed starting layout, the spread of the
+    # gaps came out 3.45 / 2.74 / 1.98 / 2.04 / 2.92 / 3.81mm at margins of
+    # 1.0 / 1.5 / 2.0 / 2.5 / 3.0 / 4.0. A rest length far beyond the slack
+    # the bin actually has compresses every spring against the hard limits
+    # instead of letting them balance, and contacts that 2.0mm leaves at
+    # 1.6mm of slack get squeezed to 0.5mm at 4.0mm. It also costs raster
+    # memory, since `pad` is sized from it.
+    spacing_margin: float = 2.0
+    spacing_iterations: int = 150
+
     # Hard cap on how far a part may move in one iteration. This is not
     # only for stability: a part that jumps several millimeters can land
     # more than halfway through another, which is exactly the regime where
@@ -116,16 +130,48 @@ class LayoutParameters:
         return self.c_pair + self.raster_margin
 
     @property
+    def spacing_pair(self) -> float:
+        """The spacing springs' rest length between parts.
+
+        Every active neighbour shares this one target, which is what makes
+        the gaps come out even: where parts are mutually blocked, equal
+        springs balance at equal compression. Nothing imposes uniformity -
+        it falls out of them all pulling toward the same length.
+
+        It only ever pushes apart. Equalizing the *variance* of the gaps
+        would have been the other reading of "make them the same", and it
+        is the wrong one: it would happily drag a roomy gap down toward a
+        cramped one, which is worse in every way that matters to a print.
+        """
+        return self.c_pair_enforced + self.spacing_margin
+
+    @property
+    def spacing_wall(self) -> float:
+        """The same rest length against the bin wall.
+
+        Measured from `c_wall` rather than `c_pair`, so what the springs
+        equalize is the *slack* over each contact's own clearance. The two
+        clearances differ (1.95 vs 3.2 by D5), and treating the raw
+        distances as comparable would systematically favour one.
+        """
+        return self.c_wall + self.spacing_margin
+
+    @property
     def pad(self) -> float:
         """How far each part's distance field must reach beyond itself.
 
         A part only feels another once a sample lands inside the other's
         raster, so a field that stops short of the enforced clearance would
         let parts pass straight through each other at exactly the distance
-        it is meant to protect. The margin is generous because the cost is
-        a few hundred kilobytes.
+        it is meant to protect.
+
+        It also has to outreach the spacing springs, which is now the
+        binding requirement: a spring whose rest length sat outside the
+        raster would read every neighbour as infinitely far and pull on
+        nothing. That is the real limit on how far parts can be spread -
+        not the optimizer, but how far the field can see.
         """
-        return self.c_pair_enforced + 2.0
+        return self.spacing_pair + 1.0
 
 
 @dataclass

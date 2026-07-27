@@ -175,16 +175,76 @@ Two properties fall out of this:
   condition and the packer's success condition are the same number. No
   separate collision re-check pass, no threshold to tune.
 - **No compaction term is needed.** Within a fixed `N x M` bin every
-  feasible layout is equally good — the bin is already the size it is.
+  feasible layout is *acceptable* — the bin is already the size it is.
   Compaction happens in the outer loop by *shrinking the container*
   (trying a smaller grid) rather than by adding an attractive force.
-  Repulsion alone spreads parts evenly, which is what we want anyway:
-  even spacing means thicker dividers and easier finger access than a
-  clumped layout with the same cell count.
 
 This is the piece most likely to get "improved" into an attraction-to-
 center term. Resist it: it fights the wall force, adds a weight to tune,
 and buys nothing the grid-size search doesn't already buy.
+
+**Corrected.** This section originally went on to claim that "repulsion
+alone spreads parts evenly, which is what we want anyway". It does not,
+and the reason is the first property above rather than any defect in the
+forces: the energy is zero the instant nothing is too close, so the
+descent stops at the *first* feasible arrangement and has no reason to
+prefer one over another. Measured on the three spoons, the slack over the
+clearances ran 0.00, 0.02, 0.44, 2.30, 4.79mm — one contact exactly at
+the limit while another had nearly 5mm spare. Feasible layouts are
+interchangeable to the solver but plainly not to a printed bin, which is
+what D8 addresses.
+
+### D8: Even spacing — a spring network at an inflated rest length
+
+Once a layout is feasible, a second pass evens out the gaps
+([spacing.py](../pipeline/layout/spacing.py)). Every pair of parts near
+enough to sense each other, and every part near a wall, gets a quadratic
+spring pulling toward one shared rest length, `clearance + spacing_margin`.
+Where they cannot all reach it — which in a bin worth packing is
+everywhere — equal springs balance at equal compression, so the gaps come
+out even without anything measuring evenness.
+
+It is the existing energy at wider clearances, not a second force model:
+`LayoutParameters` already accepts explicit clearance overrides, so the
+pass builds an inflated copy and reuses `ComputeEnergy` unchanged. That
+matters for trust — there is no separate gradient to keep consistent with
+the first, and the finite-difference tests already cover it.
+
+Three things this deliberately is not:
+
+- **Not variance minimization.** "Make the gaps the same" also reads as
+  "minimize their spread", and that version is wrong: it would drag a
+  roomy gap *down* toward a cramped one. A shared rest length only ever
+  pushes apart. (Individual gaps can still close as a part is pushed off
+  something else — the guarantee is about the springs, not every gap.)
+- **Not equal spacing between everything.** Only parts within the
+  distance field's reach interact. That is not a threshold anyone picked:
+  past `pad` a part cannot sense another at all, so the field's range
+  *is* the definition of "neighbour". Spoons at opposite ends of a bin
+  are not neighbours and must not be equalized against each other.
+- **Not a risk to feasibility.** The springs run at clearances that
+  strictly contain the true ones, and every candidate is re-checked
+  against the true clearances before being kept, falling back to the
+  arrangement passed in. The pass can only improve a layout or leave it
+  alone.
+
+`spacing_margin` has a real optimum rather than "as far as possible".
+From one fixed starting layout on the spoons, the spread of the gaps came
+out 3.45 / 2.74 / **1.98** / 2.04 / 2.92 / 3.81mm at margins of 1.0 / 1.5
+/ **2.0** / 2.5 / 3.0 / 4.0. A rest length well beyond the slack the bin
+actually has just compresses everything against the hard limits instead
+of letting the springs balance — at 4.0 two contacts get squeezed to
+0.5mm that 2.0 leaves at 1.6mm. It also sets `pad`, so it costs raster
+memory on every part. Note this is tuned on one fixture; the shape of the
+curve is the durable finding, not the exact figure.
+
+End to end on the spoons, the slack over the clearances went from
+0.00/0.02/0.44/2.30/4.79 to 0.03/0.88/0.99/1.87/2.95 — the spread nearly
+halved, at no measurable cost to the pack (3.02s against 3.14s without),
+because the pass stops on the same patience rule the main relaxation uses.
+The one contact still at 0.03mm is the big spoon's length against the bin:
+200.26mm of spoon in a 204.3mm interior leaves about 0.05mm total, so it
+is geometry, not the solver.
 
 ### D4: Solver — damped descent with annealed restarts
 
@@ -296,6 +356,7 @@ pipeline/layout/packer.py      choosing the bin size, with the bounds that
                                reject one without running the solver
 pipeline/layout/loading.py     getting parts in, from SVGs or from
                                contours you already have
+pipeline/layout/spacing.py     evening out the gaps once a layout fits
 pipeline/layout/preview.py     drawing a solved layout at true scale
 pipeline/layout/render.py      the same drawing, rasterized for a screen
 pipeline/layout/verify.py      independent checks, no code shared with above
