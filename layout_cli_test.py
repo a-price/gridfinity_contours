@@ -337,3 +337,70 @@ def test_a_cancelled_run_exits_with_the_signal_convention(tmp_path):
 
     assert status == 130
     assert not (tmp_path / "layout.svg").exists()
+
+
+# -------------------------------------------------------------------- solid
+
+
+def test_a_pack_also_writes_the_openscad_bin(tmp_path):
+    out = str(tmp_path / "layout")
+    dump = str(tmp_path / "dump.json")
+    SaveContours(dump, {0: _rectangle(20.0, 10.0)})
+
+    Main([dump, "--out", out, "--max-grid", "2"])
+
+    assert "bin_render(bin)" in (tmp_path / "layout.scad").read_text()
+
+
+def test_the_solid_can_be_skipped(tmp_path):
+    out = str(tmp_path / "layout")
+    dump = str(tmp_path / "dump.json")
+    SaveContours(dump, {0: _rectangle(20.0, 10.0)})
+
+    Main([dump, "--out", out, "--max-grid", "2", "--no-scad"])
+
+    assert not (tmp_path / "layout.scad").exists()
+    assert (tmp_path / "layout.svg").exists()
+
+
+def test_the_bin_height_is_settable(tmp_path):
+    out = str(tmp_path / "layout")
+    dump = str(tmp_path / "dump.json")
+    SaveContours(dump, {0: _rectangle(20.0, 10.0)})
+
+    Main([dump, "--out", out, "--max-grid", "2", "--height", "6"])
+
+    assert "height_mm = 42.0000" in (tmp_path / "layout.scad").read_text()
+
+
+def test_a_solid_that_cannot_be_cut_does_not_lose_the_preview(tmp_path, capsys):
+    """The layout is still good and the preview still worth having - only
+    the tolerance is unbuildable, so that alone should be reported.
+
+    Uses --solid-offset rather than --pocket-offset: the latter widens the
+    clearances the layout packs to as well, so the arrangement would just
+    make room and the guard would never fire.
+    """
+    out = str(tmp_path / "layout")
+    dump = str(tmp_path / "dump.json")
+    SaveContours(dump, {0: _rectangle(20.0, 10.0), 1: _rectangle(18.0, 12.0)})
+
+    assert Main([dump, "--out", out, "--max-grid", "2", "--solid-offset", "6.0"]) == 0
+
+    assert (tmp_path / "layout.svg").exists()
+    assert not (tmp_path / "layout.scad").exists()
+    assert "could not generate the solid" in capsys.readouterr().out
+
+
+def test_the_solid_tolerance_can_differ_from_the_layouts(tmp_path):
+    """The freedom M7 exists to preserve: the tolerance is a property of
+    the printer, so changing it re-cuts the solid instead of invalidating
+    the arrangement.
+    """
+    out = str(tmp_path / "layout")
+    dump = str(tmp_path / "dump.json")
+    SaveContours(dump, {0: _rectangle(20.0, 10.0), 1: _rectangle(18.0, 12.0)})
+
+    Main([dump, "--out", out, "--max-grid", "2", "--pocket-offset", "1.0", "--solid-offset", "0.4"])
+
+    assert "offset(r = 0.4000)" in (tmp_path / "layout.scad").read_text()

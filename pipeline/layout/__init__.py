@@ -9,6 +9,7 @@
     spacing     evening out the gaps once a layout already fits
     loading     getting parts in, from SVGs or contours you already have
     preview     drawing a solved layout at true scale
+    solid       the printable bin, as OpenSCAD
     verify      independent checks, sharing no code with the solver
 
 Design: docs/layout.md. Build order: docs/layout_roadmap.md.

@@ -351,14 +351,44 @@ captures load and pack to 5x2 in the window.
 
 ## M7 — Solid generation
 
-- [ ] Extend `solid.py` to take a `Layout` — many pockets, bin sized from
-  the layout's grid rather than from one contour's bbox.
-- [ ] Apply `pocket_offset` here, not in layout (so changing print
-  tolerance does not invalidate a layout).
+- [x] [pipeline/layout/solid.py](../pipeline/layout/solid.py) takes a
+  `Layout` — one pocket per part, bin sized from the layout's grid.
+  A new module rather than an extension of the root `solid.py`, which
+  keeps layout in one package and leaves the old single-contour path
+  alone; the root script's import-time side effect (it wrote `test.scad`
+  on import) is now behind a `__main__` guard.
+- [x] `pocket_offset` is applied here, not in layout, so changing print
+  tolerance re-cuts the solid instead of invalidating the arrangement.
+  `layout_cli.py --solid-offset` exercises that; `ThinnestWalls` keeps it
+  honest by refusing a tolerance the layout never budgeted for.
+- [x] Wired into both front-ends: the CLI writes `<out>.scad` alongside
+  the preview, and the GUI's Export writes all three.
 - [ ] Verify a printed multi-pocket bin against the real objects.
 
+**On the cutout mechanism.** Pockets are passed as *children* of
+`bin_render`, which places them at the top of the infill extending
+downward — that is where the pocket depth and its limit come from. The
+older top-level `difference()` against `bin_render(...)` is *not* broken,
+contrary to a claim made here in an earlier draft: it cuts the base and
+then unions `bin_render_base` back on top, and the base survives.
+(Checked by intersecting the result with a slab in the base under the
+cutout: solid with the outer union, empty without it.) What the older
+form does leave implicit is the depth — a bare `linear_extrude()` cuts
+100mm upward from z=0, so the floor lands wherever the base happens to
+start rather than somewhere chosen.
+
+**One thing that would have survived review and failed on the bed:**
+
+- **OpenSCAD is y-up; the layout frame is the printed page's, y-down.**
+  Emitting the coordinates unchanged mirrors every pocket — it measures
+  correctly on every axis and still will not hold the tool (D1). Pinned
+  by a test that checks the emitted outline's winding is reversed, since
+  a 180° rotation would pass a bounding-box check just as well.
+
 **Done when:** a generated `.scad` renders and a test print holds every
-object with the divider walls intact.
+object with the divider walls intact. The three spoons render to a
+manifold solid (9639 facets, `Simple: yes`) with a 3.23mm thinnest
+divider against the 1.2mm minimum; the physical print is Andrew's check.
 
 ## M8 — Grouping
 

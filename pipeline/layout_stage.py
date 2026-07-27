@@ -19,6 +19,12 @@ from pipeline.layout.packer import Pack, PackResult, Progress
 from pipeline.layout.part import Part
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
 from pipeline.layout.render import DEFAULT_PIXELS_PER_MM, RenderLayout
+from pipeline.layout.solid import WriteScad
+
+# What `Export` writes, in the order it writes them. Named here because a
+# caller offering a filename has to strip exactly what gets appended, and
+# a second hardcoded copy of this list is how the two drift apart.
+EXPORT_EXTENSIONS = (".svg", ".pdf", ".scad")
 
 
 class LayoutStage(Stage):
@@ -82,8 +88,8 @@ class LayoutStage(Stage):
         return None if layout is None else RenderLayout(layout, self.parts, pixels_per_mm)
 
     def Export(self, basename: str) -> list[str]:
-        """Write the layout as `<basename>.svg` and `<basename>.pdf`,
-        returning what was written.
+        """Write the layout as one file per `EXPORT_EXTENSIONS`, returning
+        what was written.
 
         Lives here rather than in the window because the writers need both
         the layout and the parts it placed, and this is what holds them.
@@ -92,10 +98,11 @@ class LayoutStage(Stage):
         if layout is None:
             raise ValueError("nothing packed to export")
 
-        svg_path, pdf_path = f"{basename}.svg", f"{basename}.pdf"
-        WriteLayoutSvg(svg_path, layout, self.parts)
-        WriteLayoutPdf(pdf_path, layout, self.parts)
-        return [svg_path, pdf_path]
+        svg, pdf, scad = (f"{basename}{extension}" for extension in EXPORT_EXTENSIONS)
+        WriteLayoutSvg(svg, layout, self.parts)
+        WriteLayoutPdf(pdf, layout, self.parts)
+        WriteScad(scad, layout, self.parts, pocket_offset=self.parameters.pocket_offset)
+        return [svg, pdf, scad]
 
     def Summary(self) -> str:
         """One line for the panel: what was packed, or why nothing was.

@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import QApplication
 
 from pipeline.contour_io import SaveContours
 from pipeline.layout.energy import LayoutParameters
+from pipeline.layout_stage import EXPORT_EXTENSIONS
 from layout_gui import LayoutGui
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
@@ -175,7 +176,7 @@ def test_the_view_prompts_before_anything_is_packed(gui):
 # ------------------------------------------------------------------- export
 
 
-def test_exporting_writes_both_files(gui, tmp_path):
+def test_exporting_writes_the_preview_and_the_bin(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
     _pack(gui)
     gui.export_edit.setText(str(tmp_path / "out"))
@@ -184,6 +185,7 @@ def test_exporting_writes_both_files(gui, tmp_path):
 
     assert (tmp_path / "out.svg").exists()
     assert (tmp_path / "out.pdf").exists()
+    assert "bin_render(bin)" in (tmp_path / "out.scad").read_text()
     assert "Wrote" in gui.export_label.text()
 
 
@@ -196,17 +198,43 @@ def test_exporting_before_packing_is_reported_not_raised(gui, tmp_path):
     assert not (tmp_path / "out.svg").exists()
 
 
-def test_a_chosen_svg_filename_does_not_become_svg_svg(gui, tmp_path):
-    gui.export_edit.setText(str(tmp_path / "layout.svg"))
-    base, extension = os.path.splitext(gui.export_edit.text())
-    gui.export_edit.setText(base if extension.lower() in (".svg", ".pdf") else gui.export_edit.text())
+@pytest.mark.parametrize("extension", EXPORT_EXTENSIONS)
+def test_a_chosen_filename_does_not_gain_a_second_extension(gui, tmp_path, extension):
+    """The save dialog offers a filename, but the stage appends its own -
+    so every extension it writes has to be strippable, not just the two
+    it happened to write first.
+    """
+    gui.export_edit.setText(str(tmp_path / f"layout{extension}"))
+    base, chosen = os.path.splitext(gui.export_edit.text())
+    gui.export_edit.setText(base if chosen.lower() in EXPORT_EXTENSIONS else gui.export_edit.text())
 
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
     _pack(gui)
     gui.export_layout()
 
-    assert (tmp_path / "layout.svg").exists()
-    assert not (tmp_path / "layout.svg.svg").exists()
+    assert (tmp_path / f"layout{extension}").exists()
+    assert not (tmp_path / f"layout{extension}{extension}").exists()
+
+
+def test_the_export_button_names_every_format_it_writes(gui):
+    """The button said "SVG + PDF" for a while after the export started
+    writing a .scad as well.
+    """
+    label = gui.export_button.text()
+
+    for extension in EXPORT_EXTENSIONS:
+        assert extension.lstrip(".").upper() in label
+
+
+def test_exporting_writes_one_file_per_advertised_format(gui, tmp_path):
+    gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
+    _pack(gui)
+    gui.export_edit.setText(str(tmp_path / "every"))
+
+    gui.export_layout()
+
+    for extension in EXPORT_EXTENSIONS:
+        assert (tmp_path / f"every{extension}").exists(), extension
 
 
 # --------------------------------------------------------- off the ui thread

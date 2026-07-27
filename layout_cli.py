@@ -22,6 +22,7 @@ from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack, Progress
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
+from pipeline.layout.solid import DEFAULT_HEIGHT_UNITS, WriteScad
 
 
 def ShouldShowProgress(stream: TextIO, quiet: bool) -> bool:
@@ -104,6 +105,21 @@ def BuildParser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--resolution", type=float, default=None, metavar="MM", help="distance field resolution")
     parser.add_argument("--quiet", action="store_true", help="suppress the live progress line")
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=DEFAULT_HEIGHT_UNITS,
+        metavar="UNITS",
+        help=f"bin height in 7mm Gridfinity units (default: {DEFAULT_HEIGHT_UNITS})",
+    )
+    parser.add_argument("--no-scad", action="store_true", help="write only the preview, not the OpenSCAD bin")
+    parser.add_argument(
+        "--solid-offset",
+        type=float,
+        default=None,
+        metavar="MM",
+        help="cut the pockets at a different tolerance than the layout was packed with (default: the same)",
+    )
     return parser
 
 
@@ -153,13 +169,28 @@ def Main(argv: Sequence[str] | None = None) -> int:
     if result.layout is None:
         return 1
 
-    svg_path, pdf_path = f"{args.out}.svg", f"{args.out}.pdf"
-    WriteLayoutSvg(svg_path, result.layout, parts)
-    WriteLayoutPdf(pdf_path, result.layout, parts)
+    written = [f"{args.out}.svg", f"{args.out}.pdf"]
+    WriteLayoutSvg(written[0], result.layout, parts)
+    WriteLayoutPdf(written[1], result.layout, parts)
 
     n, m = result.layout.grid
     print(f"packed {len(parts)} parts into {n}x{m} ({result.cells} cells)")
-    print(f"wrote {svg_path} and {pdf_path}")
+
+    if not args.no_scad:
+        scad_path = f"{args.out}.scad"
+        # The tolerance the pockets are cut at is a property of the printer,
+        # not of the arrangement, so it can differ from the one the layout
+        # reserved room for - within what that layout actually left.
+        offset = params.pocket_offset if args.solid_offset is None else args.solid_offset
+        try:
+            WriteScad(scad_path, result.layout, parts, pocket_offset=offset, height_units=args.height)
+            written.append(scad_path)
+        except ValueError as error:
+            # The layout is still good and its preview is already written;
+            # only the solid could not be cut at this tolerance.
+            print(f"could not generate the solid: {error}")
+
+    print("wrote " + ", ".join(written))
     return 0
 
 

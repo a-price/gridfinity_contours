@@ -36,7 +36,7 @@ from PyQt5.QtWidgets import (
 
 from pipeline.core import CreateGroupBox
 from pipeline.layout.loading import ReadContours
-from pipeline.layout_stage import LayoutStage
+from pipeline.layout_stage import EXPORT_EXTENSIONS, LayoutStage
 
 # Fix PyQt5 / OpenCV collision
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
@@ -160,7 +160,9 @@ class LayoutGui(QMainWindow):
         row.addWidget(browse_button)
         layout.addLayout(row)
 
-        self.export_button = QPushButton("Export SVG + PDF")
+        # Named from what the stage actually writes, so adding a format
+        # cannot leave the button advertising the old set.
+        self.export_button = QPushButton("Export " + " + ".join(e.lstrip(".").upper() for e in EXPORT_EXTENSIONS))
         self.export_button.clicked.connect(self.export_layout)
         layout.addWidget(self.export_button)
 
@@ -299,12 +301,19 @@ class LayoutGui(QMainWindow):
     # -------------------------------------------------------------- export
 
     def browse_for_export(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Export Layout", self.export_edit.text(), "SVG Files (*.svg)")
+        """Choose the *basename* the export writes all its formats under.
+
+        A save dialog naturally offers a filename, so whatever extension
+        comes back has to come off again - the stage appends its own, and
+        picking `layout.scad` would otherwise write `layout.scad.scad`.
+        """
+        pattern = " ".join(f"*{extension}" for extension in EXPORT_EXTENSIONS)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Layout", self.export_edit.text(), f"Layout files ({pattern})"
+        )
         if path:
-            # The stage appends its own extensions, so strip a chosen one
-            # rather than writing layout.svg.svg.
             base, extension = os.path.splitext(path)
-            self.export_edit.setText(base if extension.lower() in (".svg", ".pdf") else path)
+            self.export_edit.setText(base if extension.lower() in EXPORT_EXTENSIONS else path)
 
     def export_layout(self) -> None:
         try:

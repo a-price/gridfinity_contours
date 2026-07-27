@@ -54,9 +54,21 @@ into an align-then-write wrapper over a write-these-coordinates core
 (`WriteShapesSvg`/`WriteShapesPdf`, taking a `Shape`
 ([svg_writer.py](../pipeline/svg_writer.py))); the preview uses the core.
 
-Deliberately *not* an output: the `.scad` itself. Layout stays a geometry
-module; solid generation remains `solid.py`'s job, extended to accept
-many polygons instead of one.
+The `.scad` is generated from a `Layout` by
+[pipeline/layout/solid.py](../pipeline/layout/solid.py) — a separate
+module, so layout stays pure geometry. It supersedes the root
+`solid.py`, whose single-contour path predates `Layout`.
+
+That older path subtracts its cutout from *outside* `bin_render` and then
+unions `bin_render_base` back on top. It is sound — the outer union
+restores the base the difference removed, verified by intersecting the
+result with a slab in the base under the cutout and finding it solid —
+but the pocket depth is implicit: a bare `linear_extrude()` cuts 100mm
+upward from z=0, so the floor lands wherever the base happens to start.
+The new generator passes pockets as children of `bin_render`, the
+mechanism the library provides, which places them at the top of the
+infill extending downward by a stated depth and never cuts the base at
+all.
 
 ## Container geometry
 
@@ -358,6 +370,7 @@ pipeline/layout/loading.py     getting parts in, from SVGs or from
                                contours you already have
 pipeline/layout/spacing.py     evening out the gaps once a layout fits
 pipeline/layout/preview.py     drawing a solved layout at true scale
+pipeline/layout/solid.py       the printable bin, as OpenSCAD
 pipeline/layout/render.py      the same drawing, rasterized for a screen
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
