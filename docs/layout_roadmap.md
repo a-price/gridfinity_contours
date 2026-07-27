@@ -126,32 +126,62 @@ symmetry rather than depth, and it costs a parameter plus an energy that
 no longer matches D3. The mitigation is the solver's, hence the first two
 boxes below.
 
-- [ ] **Constructive initialization, not a jittered lattice.** Place parts
+- [x] **Constructive initialization, not a jittered lattice.** Place parts
   largest-first, each at a position where it does not overlap anything
-  already placed (bounded retries, then best-effort). A lattice can drop
-  two parts on top of each other, which starts the descent inside the
-  reversed regime — it has to climb *out* of a trap before it can begin
-  working. Starting non-overlapping leaves relaxation with only the job it
-  is actually good at: resolving shallow clearance violations. This
-  promotes what was previously the M3 fallback heuristic to the primary
-  path.
-- [ ] Abort on `EnergyResult.engulfed` (`containment >= 1.0`), restarting
+  already placed. A lattice can drop two parts on top of each other, which
+  starts the descent inside the reversed regime — it has to climb *out* of
+  a trap before it can begin working. Starting non-overlapping leaves
+  relaxation with only the job it is actually good at: resolving shallow
+  clearance violations.
+- [x] Abort on `EnergyResult.engulfed` (`containment >= 1.0`), restarting
   rather than descending. Containment is chosen over penetration depth
   deliberately: it is a *fraction*, so 1.0 means swallowed at any scale,
   with no size-dependent threshold to tune. Crossing gets no such
   treatment — overlapping parts are the ordinary midway state of a
   relaxation and resolve themselves.
-- [ ] Damped descent loop with decaying jitter; early exit on `E = 0`.
-- [ ] Restart loop, re-seeding positions *and* the orientation
+- [x] Damped descent loop with decaying jitter; early exit on `E = 0`.
+- [x] Restart loop, re-seeding positions *and* the orientation
   assignment (orientation is discrete — only restarts explore it).
-- [ ] `SolveFixedGrid(parts, n, m, params)` → `Layout | None`.
+- [x] `SolveFixedGrid(parts, n, m, params)` → `Layout | None`.
 
 **Done when:** three rectangles with a known-tight packing into a 1x3 are
 placed without overlap, repeatably; the same seed reproduces a
 byte-identical layout; a deliberately over-full bin fails cleanly rather
 than returning an overlapping layout; and a run started from deliberately
 stacked parts either separates them or reports failure — it must never
-return a layout with parts on top of each other.
+return a layout with parts on top of each other. **Met** — 29 tests in
+`pipeline/layout/solver_test.py`.
+
+Three things M3 turned up, all of which M4 inherits:
+
+- **Random placement cannot initialize a dense bin — it must be
+  bottom-left fill.** "Bounded retries at random positions" was the
+  original plan and it does not work: on four 50x30 parts in a 3x2, which
+  packs by hand as an obvious 2x2, random init succeeded **0 times in 30
+  attempts**, and raising the candidate budget sixteen-fold changed
+  nothing. Once parts fill most of the interior the feasible region is a
+  vanishing fraction of it. Sweeping *contact positions* — flush against a
+  wall or against an already-placed part, `O(n^2)` of them — took that
+  case from 3/6 seeds in 4.96s to **6/6 in 0.02s**. A random tail is kept
+  after the contact sweep, because contacts come from bounding boxes and
+  cannot express tucking one spoon's bowl into another's handle.
+- **Contacts must clear the raster's own error.** A part placed at
+  *exactly* `c_pair` measures as violating it: the field is rasterized, so
+  separation reads short by the ~0.05mm discretization error, and a
+  hand-built perfect packing prices at positive energy rather than zero.
+  Contacts are offset by two raster cells. Without that, every contact
+  looked infeasible and the sweep silently degraded into the random search
+  it was meant to replace — the bug hid as "BLF didn't help".
+- **An easy bin is now seed-independent.** Bottom-left fill is
+  deterministic and the first attempt uses it unchanged, so the seed only
+  matters once that attempt fails. Reproducibility for everyday layouts
+  comes for free; the stochastic restarts only engage on hard ones.
+
+Tuned against measurement rather than guessed: `patience` 25 (matches 50's
+solve rate everywhere, ~25% faster — restarting beats grinding), and
+orientations that cannot fit the bin are filtered before an attempt starts
+(the spoons in a 5x1 now fail in 0.00s instead of 13s, correctly, since
+the big spoon is 41.67mm across a 36.3mm interior).
 
 ## M4 — Grid size search
 

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from pipeline.layout.container import DEFAULT_INTERIOR_INSET_MM, BuildContainer, Container
 from pipeline.layout.part import Part
 
 
@@ -88,3 +89,26 @@ class Placement:
         """
         centered = np.asarray(points, dtype=np.float64).reshape(-1, 2) - self.position
         return RotatePoints(centered, -self.orientation, RotatedSize(part.size, self.orientation))
+
+
+@dataclass(frozen=True)
+class Layout:
+    """A solved arrangement: the grid size chosen and where every part
+    landed inside it.
+    """
+
+    grid: tuple[int, int]
+    placements: dict[int, Placement]
+    inset: float = DEFAULT_INTERIOR_INSET_MM
+
+    @property
+    def cells(self) -> int:
+        return self.grid[0] * self.grid[1]
+
+    def Interior(self) -> Container:
+        """The bin interior this layout was packed into."""
+        return BuildContainer(self.grid[0], self.grid[1], self.inset)
+
+    def Envelope(self) -> np.ndarray:
+        """That interior's boundary as a polygon."""
+        return self.Interior().Polygon()

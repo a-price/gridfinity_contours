@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 
 from pipeline.layout.part import BuildPart
-from pipeline.layout.placement import Placement
-from pipeline.layout.solver import Layout
+from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.verify import (
     CheckLayout,
     MinimumSeparation,

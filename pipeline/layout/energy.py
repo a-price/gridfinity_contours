@@ -42,9 +42,35 @@ class LayoutParameters:
     wall_weight: float = 1.0
     inset: float = DEFAULT_INTERIOR_INSET_MM
     max_grid: int = 6
+    seed: int = 0
+
+    # Solver budget. `patience` abandons an attempt whose best energy has
+    # not improved for that many iterations: a wedged arrangement does not
+    # come unwedged by being pushed harder, and without it a hopeless bin
+    # costs the full iteration budget on every one of its restarts.
     iterations: int = 400
     restarts: int = 24
-    seed: int = 0
+    patience: int = 25
+    # Random positions tried after the contact sweep comes up empty. Cheap
+    # in practice: an easy bin is solved by a contact and never reaches
+    # these, and only the concave nestings that bounding-box contacts
+    # cannot express spend the budget.
+    placement_tries: int = 150
+
+    # Descent shape. `step_scale` is applied to a force already divided by
+    # the part's sample count, so it means roughly "millimeters per
+    # millimeter of average violation" and does not need retuning when the
+    # raster resolution changes.
+    step_scale: float = 0.6
+    damping: float = 0.6
+    jitter: float = 0.35
+
+    # Hard cap on how far a part may move in one iteration. This is not
+    # only for stability: a part that jumps several millimeters can land
+    # more than halfway through another, which is exactly the regime where
+    # the forces reverse (see ComputeEnergy). Capping the step keeps the
+    # solver inside the range where its gradient is trustworthy.
+    max_step: float = 0.6
 
     @property
     def c_pair(self) -> float:
@@ -191,9 +217,9 @@ def ComputeEnergy(
     world_samples = {part_id: placement.SamplesToWorld(parts[part_id]) for part_id, placement in placements.items()}
 
     for part_id, samples in world_samples.items():
-        penalty, scale = _PenaltyAndScale(container.SampleDepth(samples), params.c_wall, params.wall_weight)
-        energy += float(penalty.sum())
-        forces[part_id] += (scale[:, None] * container.SampleDerivative(samples)).sum(axis=0)
+        wall_energy, wall_force = _WallTerm(samples, container, params)
+        energy += wall_energy
+        forces[part_id] += wall_force
 
     ordered = sorted(placements)
     for index, id_a in enumerate(ordered):
@@ -203,25 +229,12 @@ def ComputeEnergy(
             # where one part swallows another without either boundary
             # landing near the other's samples.
             for source, target in ((id_a, id_b), (id_b, id_a)):
-                local = placements[target].ToLocal(parts[target], world_samples[source])
-                distance = parts[target].SampleSdf(local)
-                penalty, scale = _PenaltyAndScale(distance, params.c_pair, params.pair_weight)
-                if not penalty.any():
-                    continue
-
-                # How much of this part's boundary is inside the other one.
-                # Free here - the signs are already computed - and the only
-                # scale-free way to recognize that a part has been
-                # swallowed rather than merely bumped into.
-                penetrating = distance < 0
-                if penetrating.any():
-                    deepest = max(deepest, -float(distance.min()))
-                    containment = max(containment, float(penetrating.mean()))
-                energy += float(penalty.sum())
-                # The field is the target's, so its derivative comes back in
-                # the target's frame and has to be rotated into the bin's.
-                direction = RotateVectors(parts[target].SampleDerivative(local), placements[target].orientation)
-                push = (scale[:, None] * direction).sum(axis=0)
+                pair_energy, push, pair_deepest, pair_containment = _DirectedPairTerm(
+                    world_samples[source], parts[target], placements[target], params
+                )
+                energy += pair_energy
+                deepest = max(deepest, pair_deepest)
+                containment = max(containment, pair_containment)
                 forces[source] += push
                 forces[target] -= push  # equal and opposite, which is also the exact gradient
 
@@ -231,3 +244,72 @@ def ComputeEnergy(
         deepest_penetration=max(0.0, deepest),
         containment=containment,
     )
+
+
+def PlacementEnergy(
+    part_id: int,
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+    container: Container,
+    params: LayoutParameters,
+) -> float:
+    """The energy attributable to one part: its own wall term plus its pair
+    terms against everything else placed.
+
+    The solver's constructive initialization needs to price a candidate
+    position for a single part against those already down, and doing that
+    with ComputeEnergy would re-evaluate every already-settled pair on
+    every candidate - `O(n^2)` work for an `O(n)` question, several
+    thousand times per attempt.
+    """
+    samples = placements[part_id].SamplesToWorld(parts[part_id])
+    energy, _ = _WallTerm(samples, container, params)
+
+    for other_id, other in placements.items():
+        if other_id == part_id:
+            continue
+        for source_samples, target_part, target in (
+            (samples, parts[other_id], other),
+            (other.SamplesToWorld(parts[other_id]), parts[part_id], placements[part_id]),
+        ):
+            energy += _DirectedPairTerm(source_samples, target_part, target, params)[0]
+    return energy
+
+
+def _WallTerm(samples: np.ndarray, container: Container, params: LayoutParameters) -> tuple[float, np.ndarray]:
+    """One part's penalty for crowding the bin wall, and the inward force
+    it earns.
+    """
+    penalty, scale = _PenaltyAndScale(container.SampleDepth(samples), params.c_wall, params.wall_weight)
+    return float(penalty.sum()), (scale[:, None] * container.SampleDerivative(samples)).sum(axis=0)
+
+
+def _DirectedPairTerm(
+    samples: np.ndarray,
+    target_part: Part,
+    target: Placement,
+    params: LayoutParameters,
+) -> tuple[float, np.ndarray, float, float]:
+    """One part's boundary samples measured against another part's field.
+
+    Returns the energy, the force on the sampled part, how deep the worst
+    sample got, and what fraction of the boundary ended up inside - the
+    last being how the solver recognizes a part that has been swallowed
+    rather than merely bumped into.
+    """
+    local = target.ToLocal(target_part, samples)
+    distance = target_part.SampleSdf(local)
+    penalty, scale = _PenaltyAndScale(distance, params.c_pair, params.pair_weight)
+    if not penalty.any():
+        return 0.0, np.zeros(2), 0.0, 0.0
+
+    # Free here, since the signs are already computed.
+    penetrating = distance < 0
+    deepest = -float(distance.min()) if penetrating.any() else 0.0
+    containment = float(penetrating.mean()) if penetrating.any() else 0.0
+
+    # The field is the target's, so its derivative comes back in the
+    # target's frame and has to be rotated into the bin's.
+    direction = RotateVectors(target_part.SampleDerivative(local), target.orientation)
+    push = (scale[:, None] * direction).sum(axis=0)
+    return float(penalty.sum()), push, max(0.0, deepest), containment

@@ -15,7 +15,7 @@ import numpy as np
 from matplotlib.path import Path
 
 from pipeline.layout.part import Part
-from pipeline.layout.solver import Layout
+from pipeline.layout.placement import Layout
 
 
 def _AsPath(points: np.ndarray) -> Path:
