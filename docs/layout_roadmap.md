@@ -280,6 +280,13 @@ Two smaller notes:
   footprint rather than its interior, so the sheet can be laid under a
   real bin and checked rim-to-rim.
 
+**Added in M6:** the same progress and cancellation hooks the window uses
+also drive the CLI. A live one-line display when stdout is a terminal
+(suppressed in a pipe, where a self-rewriting line is just noise, and by
+`--quiet`), and the first Ctrl-C stops the search and prints what it had
+already ruled out instead of a traceback — exiting 130, so a wrapping
+script can tell "you stopped it" from "it did not fit".
+
 **Corrected here:** the PDF writer went through `pyplot`, which selects a
 global *interactive* backend on import — every test module had been
 compensating with its own `matplotlib.use("Agg")`, which is exactly why

@@ -12,14 +12,79 @@ tying it to a live session would make it painful to run twice.
 """
 
 import argparse
+import signal
 import sys
-from typing import Sequence
+from contextlib import contextmanager
+from typing import Callable, Iterator, Sequence, TextIO
 
 from pipeline.contour_io import SaveContours
 from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, ReadContours
-from pipeline.layout.packer import Pack
+from pipeline.layout.packer import Pack, Progress
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
+
+
+def ShouldShowProgress(stream: TextIO, quiet: bool) -> bool:
+    """Whether a live progress line is worth drawing.
+
+    Off when the output is not a terminal: the line works by rewriting
+    itself with a carriage return, which is unreadable noise in a log file
+    or a pipe. Off when asked, for the same reason a script might want.
+    """
+    return not quiet and hasattr(stream, "isatty") and stream.isatty()
+
+
+class ProgressLine:
+    """One console line that rewrites itself as the search moves.
+
+    Padded back out to the widest text yet written, because a shorter
+    message would otherwise leave the tail of the previous one on screen -
+    "attempt 9/24" over "attempt 10/24" reads as "attempt 9/244".
+    """
+
+    def __init__(self, stream: TextIO) -> None:
+        self._stream = stream
+        self._width = 0
+
+    def Update(self, progress: Progress) -> None:
+        text = f"  searching {progress}"
+        self._stream.write("\r" + text.ljust(self._width))
+        self._stream.flush()
+        self._width = max(self._width, len(text))
+
+    def Clear(self) -> None:
+        """Wipe the line, so the report that follows starts clean."""
+        if self._width:
+            self._stream.write("\r" + " " * self._width + "\r")
+            self._stream.flush()
+            self._width = 0
+
+
+@contextmanager
+def Interruptible() -> Iterator[Callable[[], bool]]:
+    """Turn the first Ctrl-C into a request to stop, not a traceback.
+
+    Yields the predicate to hand `Pack` as `cancelled`. A search stopped
+    this way still returns everything it learned, so the sizes already
+    ruled out get reported instead of thrown away.
+
+    The default handler is restored immediately, so a second Ctrl-C - from
+    someone who means it - interrupts as usual rather than being swallowed
+    by a search that is between polls.
+    """
+    stopped = False
+
+    def handle(signum, frame) -> None:
+        nonlocal stopped
+        stopped = True
+        signal.signal(signal.SIGINT, previous)
+        print("\nstopping - press Ctrl-C again to quit now", flush=True)
+
+    previous = signal.signal(signal.SIGINT, handle)
+    try:
+        yield lambda: stopped
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def BuildParser() -> argparse.ArgumentParser:
@@ -38,6 +103,7 @@ def BuildParser() -> argparse.ArgumentParser:
         help="how much larger than its object each pocket is cut; sets both clearances",
     )
     parser.add_argument("--resolution", type=float, default=None, metavar="MM", help="distance field resolution")
+    parser.add_argument("--quiet", action="store_true", help="suppress the live progress line")
     return parser
 
 
@@ -66,9 +132,24 @@ def Main(argv: Sequence[str] | None = None) -> int:
     print(f"loaded {len(contours)} contours from {len(args.inputs)} file(s)")
 
     parts = BuildParts(contours, params)
-    result = Pack(parts, params)
+    line = ProgressLine(sys.stdout) if ShouldShowProgress(sys.stdout, args.quiet) else None
+
+    with Interruptible() as interrupted:
+        result = Pack(
+            parts,
+            params,
+            progress=None if line is None else line.Update,
+            cancelled=interrupted,
+        )
+    if line is not None:
+        line.Clear()
+
     print(result.Report())
 
+    if result.cancelled:
+        # 130 is the shell's convention for "killed by SIGINT", so a script
+        # wrapping this can tell "you stopped it" from "it did not fit".
+        return 130
     if result.layout is None:
         return 1
 
