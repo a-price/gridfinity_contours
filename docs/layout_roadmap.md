@@ -438,6 +438,29 @@ of them. The one-sidedness requirement carries over unchanged and is
 tested directly — measured on two 30x30 squares, which cannot gain by
 sharing, the entire local search completes with **zero** solver calls.
 
+**The local search does not scale past a handful of objects.** Found when
+the real fixture set arrived, and the sharpest reason to have one.
+`Improve` prices every move and swap between bins — quadratic in bins,
+with a pack per candidate the bound does not reject. Measured at a reduced
+solver budget (3 restarts against the default 24):
+
+| Objects | `FirstFit` | `Group` (with local search) |
+| --- | --- | --- |
+| 3 (the spoons) | under 1s | ~5s |
+| 6 | — | 49s |
+| 18 | 52s | did not finish in 10 minutes |
+
+The cost is not in the search's own bookkeeping but in the packs it asks
+for: every surviving candidate is a full stochastic solve of a set nobody
+has solved before, so the cache cannot help on first sight of it. Options,
+none taken yet: cap the search to moves between *nearby* bins, price
+candidates in parallel with best-improvement rather than first, or accept
+first-fit alone above some object count. Which of those is right depends
+on how big a real library gets, which is not yet known.
+
+For now `integration_test.py` runs first-fit on all eighteen and reserves
+the full `Group` for a four-object subset.
+
 **Not wired into a front end, and deliberately not next.** The CLI and GUI
 still pack one explicit set into one bin, which is M5 and M6's contract;
 grouping changes the shape of the output from a layout to a list of them,
@@ -445,7 +468,7 @@ and the preview, export, and solid paths all assume the former.
 
 Doing that plumbing now would mean doing it twice, because M9 changes the
 output type again — from a list of layouts to a list of layouts each with
-a drawer and a cell position, which is what a printed drawer map actually
+a drawer and a cell position, which is what a printed drawer floorplan actually
 needs. M9 is headless and needs nothing from the GUI, so it goes first and
 M10 plumbs once against the final shape. See
 [architecture.md](architecture.md#the-consequence-for-build-order).
@@ -479,6 +502,13 @@ the rest of this document uses.
   placed, so the leftovers are what genuinely would not go anywhere.
 - [x] Admissible-footprint predicate on `packer.CandidateGrids`, via
   `LayoutParameters.admissible_grids` and `packer.GridsFor`.
+- [x] The **drawer floorplan**
+  ([floorplan.py](../pipeline/layout/floorplan.py)): one true-scale PDF
+  page per drawer, showing the bins where the assignment put them and the
+  objects inside those bins. It draws `preview.LayoutShapes` rather than
+  walking the layouts itself, so the bin on the floorplan and the bin
+  whose own sheet you print cannot drift apart — the same discipline
+  `render.py` follows for the screen.
 - [ ] Wire into a front end — M10, together with grouping's output.
 
 **Done when:** a set of bins with a known-tight drawer packing is placed
@@ -497,6 +527,14 @@ stability: a bin goes only where it cannot slide one cell further left or
 down. That is complete for rectangle packing, because pushing every
 rectangle left and down terminates and never creates an overlap, so any
 packing normalizes into one made of stable positions.
+
+**The floorplan's page is the cells, not the drawer.** A `Drawer` holds
+whole grid cells and not the millimeters it was measured from, so a page
+is `42*W - 0.5` by `42*H - 0.5` — the footprint of a `W x H` block of
+bins. A real drawer is usually a little larger, and that slack does not
+appear on the sheet; lay it into a corner rather than expecting it to
+reach the far wall. Carrying the measured millimeters through `Drawer`
+would fix this and has not been done, because nothing else needs them.
 
 **Contiguity is reported, not optimized, and the design's claim about it
 was too strong.** Bottom-left stability was said to leave free space in
@@ -549,6 +587,41 @@ insertion — see the design doc), so the entropy half of every surviving
 candidate must be evaluated. If M8's search is already near its time
 budget, this is where it tips over; cache per-bin entropy keyed by the
 bin's frozenset of part ids, exactly as M8 caches packing results.
+
+## End-to-end coverage
+
+`integration_test.py` is the one test module that deliberately breaks the
+one-module-per-test-file rule: it runs the whole stack on the real
+`test_data/` captures — load, rasterize, group, assign to drawers, write
+the preview and the `.scad` — and asserts that the result is *sound*
+rather than good.
+
+Soundness is the achievable claim. Cell counts depend on clearances that
+are still derived rather than measured (M7's print) and on a stochastic
+solver; pinning one would fail on any unrelated retune. "Every object in
+exactly one bin", "exact polygon geometry clears `c_pair` and `c_wall`",
+and "no two bins share a drawer cell" are exact, and they are what a
+regression anywhere in the stack would break.
+
+**Three things the real fixture set turned up immediately**, none of which
+the three spoons could have shown:
+
+- **`max_grid = 6` is too small for a real household.** Four of the
+  eighteen objects need a seven-cell bin — huge_server at 260mm,
+  serving_spoon at 274mm, server at 251mm, and the knife at 243mm. The
+  knife is the instructive one: a six-cell interior is 246.3mm and the
+  knife needs 247.0mm with its wall clearance, so it misses by **0.7mm**.
+  Whether to raise the default is genuinely open, because a seven-cell bin
+  is 294mm long and wants a drawer to match — the right cap depends on the
+  drawers a person owns, which is exactly what M9 now knows and the
+  default cannot.
+- **Grouping's local search does not scale** — see the table under M8.
+- **`test_data/contours.svg` was not a nineteenth object.** It was
+  `SvgExportStage`'s default filename holding a second capture of the same
+  spoon as `big_spoon.svg` — matching within 0.5mm on both axes — and has
+  since been removed. The integration test still filters that name, since
+  the export default has not changed and a stray dump would silently
+  double an object and inflate every measurement.
 
 ## Risks
 

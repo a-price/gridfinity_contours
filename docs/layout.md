@@ -369,6 +369,7 @@ pipeline/layout/packer.py      choosing the bin size, with the bounds that
                                reject one without running the solver
 pipeline/layout/grouping.py    partitioning parts across several bins
 pipeline/layout/drawer.py      which bins share a drawer, in whole cells
+pipeline/layout/floorplan.py   a whole drawer at true scale, to print
 pipeline/layout/loading.py     getting parts in, from SVGs or from
                                contours you already have
 pipeline/layout/spacing.py     evening out the gaps once a layout fits
@@ -393,7 +394,8 @@ Dependencies run one way: `container` and `part` depend on nothing local,
 `placement` on `part`, `parameters` on `container` and `part`, `energy` and
 `descent` on those, `loading`, `spacing`, `solver`, `packer`, `preview`,
 `render` and `solid` above that, `grouping` on top of `packer`,
-`drawer` on top of that, and `verify` deliberately to one side.
+`drawer` on top of that, `floorplan` on top of `drawer` and `preview`,
+and `verify` deliberately to one side.
 
 `parameters` is separate from `energy` because six of the nine modules
 that need a `LayoutParameters` compute no energy at all — the loader sizes

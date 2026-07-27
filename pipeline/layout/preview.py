@@ -54,9 +54,10 @@ def OuterFootprint(n: int, m: int) -> tuple[float, float]:
     return GRID_PITCH_MM * n - BASE_GAP_MM, GRID_PITCH_MM * m - BASE_GAP_MM
 
 
-def _Closed(points: np.ndarray) -> np.ndarray:
+def ClosedRing(points: np.ndarray) -> np.ndarray:
     """A ring with its first point repeated, so it draws closed as an open
-    polyline.
+    polyline. Public because the drawer floorplan draws the same
+    annotations one level up.
 
     Annotations are written as `<polyline>` rather than `<polygon>` on
     purpose: layout.loading.LoadSvgContours reads only `<polygon>`, so a
@@ -66,7 +67,7 @@ def _Closed(points: np.ndarray) -> np.ndarray:
     return np.vstack([points, points[:1]])
 
 
-def _CellBoundaries(n: int, m: int, page: tuple[float, float]) -> list[Shape]:
+def CellBoundaries(n: int, m: int, page: tuple[float, float]) -> list[Shape]:
     """The lines between grid cells, in page coordinates.
 
     A cell boundary sits at a whole multiple of the pitch in grid
@@ -109,11 +110,11 @@ def LayoutShapes(layout: Layout, parts: dict[int, Part]) -> tuple[list[Shape], f
     inset = np.array([layout.inset, layout.inset])
 
     rim = Container(width=width, height=height, radius=OUTER_CORNER_RADIUS_MM)
-    shapes = [Shape(_Closed(rim.Polygon()), closed=False, stroke=BIN_COLOR, stroke_width=BIN_STROKE_MM)]
-    shapes.extend(_CellBoundaries(n, m, (width, height)))
+    shapes = [Shape(ClosedRing(rim.Polygon()), closed=False, stroke=BIN_COLOR, stroke_width=BIN_STROKE_MM)]
+    shapes.extend(CellBoundaries(n, m, (width, height)))
     shapes.append(
         Shape(
-            _Closed(layout.Envelope() + inset),
+            ClosedRing(layout.Envelope() + inset),
             closed=False,
             stroke=BIN_COLOR,
             stroke_width=BIN_STROKE_MM,

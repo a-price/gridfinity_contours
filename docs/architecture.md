@@ -93,8 +93,8 @@ Plumbing multi-bin output through the front ends *now* means doing it
 twice. The output currency today is one `Layout`. After grouping it
 becomes a list of layouts. After drawer assignment it becomes a list of
 layouts *with a drawer and a cell position each* — a different type again,
-and the one that the preview actually wants, because a drawer map is the
-thing you print and lay in the drawer.
+and the one that the preview actually wants, because a drawer
+floorplan is the thing you print and lay in the drawer.
 
 So the recommended order is: build the drawer level headless first, on
 top of `Grouping` as it already exists, and then plumb the front ends once
@@ -131,6 +131,14 @@ improvement, which is sequential by construction. Best-improvement
 parallelises perfectly and costs more solver calls per pass; whether that
 trade pays depends on core count, and it is a real choice rather than an
 oversight.
+
+This is now the level that actually needs it. Measured on the eighteen
+`test_data/` objects, first-fit alone takes ~52 s while the local search
+on top of it did not finish in ten minutes — the search is quadratic in
+bins and every surviving candidate is a full stochastic solve of a set the
+cache has never seen. Parallel best-improvement is the obvious lever, and
+the one place in this project where parallelism would change what is
+possible rather than merely what is fast.
 
 **Drawer assignment.** Independent subtrees, once the placement order is
 canonical.
