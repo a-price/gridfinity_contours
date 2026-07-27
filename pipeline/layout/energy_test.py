@@ -15,7 +15,7 @@ from pipeline.layout.energy import ComputeEnergy, LayoutParameters
 from pipeline.layout.part import BuildPart
 from pipeline.layout.placement import Placement
 from pipeline.layout.svg import BuildParts, LoadParts
-from pipeline.layout.verify import PolygonsOverlap
+from pipeline.layout.verify import MinimumSeparation, PolygonsOverlap
 
 
 def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
@@ -262,6 +262,37 @@ def test_containment_is_scale_free():
         )
 
         assert inside.engulfed, f"scale {scale}"
+
+
+def test_zero_energy_guarantees_the_true_clearance_not_just_the_measured_one():
+    """The stronger form of the guarantee, and the one M4's validation
+    sweep caught being false.
+
+    The solver reads separation off a rasterized field, which comes back
+    short by up to the discretization error - so stopping at a *measured*
+    c_pair left parts 3.157mm apart under a 3.200mm clearance. The energy
+    therefore drives to `c_pair_enforced`, one raster cell further, and
+    what exact geometry reports is what has to clear c_pair.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    container = BuildContainer(4, 4)
+    parts = BuildParts({0: _rectangle(30, 18), 1: _rectangle(22, 26)}, params)
+
+    rng = np.random.default_rng(11)
+    checked = 0
+    for _ in range(400):
+        placements = {
+            part_id: Placement(part_id, rng.uniform(5.0, 100.0, size=2), orientation=int(rng.integers(4)))
+            for part_id in parts
+        }
+        if not ComputeEnergy(parts, placements, container, params).feasible:
+            continue
+
+        checked += 1
+        a, b = (placements[i].ToWorld(parts[i]) for i in sorted(parts))
+        assert MinimumSeparation(a, b) >= params.c_pair, "zero energy must mean the real clearance is met"
+
+    assert checked > 20, "expected a decent number of feasible arrangements to test"
 
 
 def test_zero_energy_guarantees_no_polygons_overlap():

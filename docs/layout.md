@@ -249,17 +249,30 @@ ties toward square-ish, and return the first that yields `E = 0`.
 
 Pruned by two lower bounds, both cheap and both sound:
 
-- **Area:** `N * M * usable_cell_area >= Σ area_i` (with the parts'
-  clearance bands counted in, i.e. each part's area dilated by
-  `c_pair / 2`). Nesting never beats this.
+- **Area:** the parts' clearance bands, counted in, must fit in the
+  interior — each part's area dilated by `c_pair / 2`, summed, against the
+  interior's area. Two parts `c_pair` apart have exactly touching
+  dilations, so the dilations of a feasible layout are disjoint and
+  nesting never beats this. Dilated area is measured off each part's own
+  distance field (`sdf <= r`) rather than from a perimeter formula, which
+  would overcount a concave shape whose dilation folds into itself and
+  could then reject a size that actually fits.
 - **Extent:** the largest part's oriented bounding box must fit inside
-  the interior, in at least one of its two orientations, *with at least
-  one raster cell of slack*. The slack qualifier is not pedantry — see
-  the fixtures below, where a real part clears a 5-cell run by 0.04 mm,
-  an order of magnitude under the 0.25 mm raster resolution. Without it
-  the bound says "feasible" for a size the solver can never actually
-  achieve, and the search burns its entire restart budget before
-  stepping up.
+  the interior in at least one orientation.
+
+**No slack term on the extent bound.** An earlier draft required a raster
+cell of it, reasoning that a part clearing its run by less than the
+discretization error could never really be placed. That is wrong, and the
+fixtures disprove it: `big_spoon` has a 0.135 mm window in a 5-cell run
+and the solver seats it there reliably, with measured wall margins of
+2.064 mm and 1.972 mm against a required 1.95 mm.
+
+The distinction is worth holding onto, because it decides where margins
+are needed at all. **Part-to-wall distance is analytic** — the container
+is a rounded rectangle with a closed-form distance function (D2) — so it
+carries no raster error and needs no slack. **Part-to-part distance is
+rasterized**, so it does, which is why the solver's contact positions are
+offset by two raster cells. Same geometry, two different error regimes.
 
 Cap `N` and `M` at a configurable max (default 6, past which nothing fits
 in a normal drawer) and report failure rather than searching forever.
@@ -279,7 +292,9 @@ pipeline/layout/container.py   the bin interior, from the Gridfinity spec
 pipeline/layout/part.py        a contour and its signed distance field
 pipeline/layout/placement.py   a part positioned in a bin
 pipeline/layout/energy.py      clearance violation and the forces to fix it
-pipeline/layout/solver.py      a solved arrangement, and the search for one
+pipeline/layout/solver.py      arranging parts inside a bin of fixed size
+pipeline/layout/packer.py      choosing the bin size, with the bounds that
+                               reject one without running the solver
 pipeline/layout/svg.py         reading contours out of exported SVGs
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
@@ -448,17 +463,21 @@ Slow randomized sweeps get the existing `slow` pytest marker.
 
 | Fixture | Bbox (mm) | Verts | Area (mm²) | Solo bin | Long-axis slack |
 | --- | --- | --- | --- | --- | --- |
-| `big_spoon.svg` | 200.26 x 41.67 | 40 | 3414 | 5x2 | **0.04 mm** |
-| `medium_spoon.svg` | 162.76 x 34.89 | 39 | 2356 | 5x2 | 37.54 mm |
-| `small_spoon.svg` | 73.93 x 14.20 | 42 | 437 | 2x1 | **0.37 mm** |
+| `big_spoon.svg` | 200.26 x 41.67 | 40 | 3414 | 5x2 | **0.14 mm** |
+| `medium_spoon.svg` | 162.76 x 34.89 | 39 | 2356 | 5x2 | 37.67 mm |
+| `small_spoon.svg` | 73.93 x 14.20 | 42 | 437 | 2x1 | **0.49 mm** |
+
+(Slack against `c_wall` = 1.95 mm, the value derived from a 1 mm pocket
+offset. An earlier draft of this table assumed 2.0 mm.)
 
 They are a better test set than they look, for three reasons.
 
-**They sit on cell boundaries.** Two of the three clear their cell run by
-less than the raster resolution. `big_spoon` at 200.26 mm needs 204.26 mm
-with `c_wall` on both ends, against a 5-cell interior of 204.30 mm. This
-is the case that motivates the slack qualifier on D6's extent bound, and
-it is worth keeping precisely because a naive bound gets it wrong.
+**They sit on cell boundaries.** `big_spoon` at 200.26 mm needs 204.16 mm
+with `c_wall` on both ends, against a 5-cell interior of 204.30 mm — a
+0.14 mm window, well under the raster resolution. The solver seats it
+there reliably, which is the evidence behind D6 carrying *no* slack term:
+the wall constraint is analytic, so a sub-resolution window is real space,
+not measurement noise.
 
 To be clear about what does *not* rescue it: rotation cannot. The x-extent
 of a rotated `L x W` box is `L cos θ + W sin θ`, whose derivative at

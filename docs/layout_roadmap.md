@@ -185,17 +185,39 @@ the big spoon is 41.67mm across a 36.3mm interior).
 
 ## M4 — Grid size search
 
-- [ ] Area lower bound (part areas dilated by `c_pair / 2`) and extent
-  lower bound (largest part's oriented bbox must fit **with at least one
-  raster cell of slack** — `big_spoon` clears a 5-cell run by 0.04 mm,
-  well under the 0.25 mm resolution, and a bound without the slack term
-  will call that feasible and waste a full restart budget on it).
-- [ ] Candidate enumeration by increasing `N * M`, square-ish tiebreak,
-  capped at `max_grid`.
-- [ ] `Pack(contours, params)` → layout plus a report distinguishing
-  "provably too small" from "no arrangement found".
-- [ ] Randomized validation sweep, marked `slow`: every successful layout
-  re-verified with M1's independent overlap predicate.
+**Correction carried in from M3: the extent bound needs no slack term.**
+This roadmap previously demanded a raster cell of it, on the reasoning
+that a part clearing its run by less than the discretization error could
+never actually be placed. M3 disproves that — `big_spoon` has a 0.135 mm
+window in a 5-cell run and the solver seats it there reliably, measured
+wall margins 2.064 mm and 1.972 mm against a required 1.95 mm. Part-to-
+*wall* distance is analytic (the container has a closed-form distance
+function), so it carries no raster error; only part-to-*part* distance
+does, which is why contact positions are offset and the extent bound is
+not. Requiring slack here would reject bins that genuinely fit.
+
+- [x] Area lower bound: each part's area dilated by `c_pair / 2`, summed,
+  against the interior's area. Measure the dilated area off the part's own
+  distance field (`sdf <= r`) — a perimeter formula overcounts a concave
+  shape whose dilation folds into itself, which would make the bound
+  unsound and reject sizes that fit.
+- [x] Extent bound: largest part's oriented bbox must fit in at least one
+  orientation. `FittingOrientations` already computes exactly this and
+  already short-circuits `SolveFixedGrid`; M4 reuses it.
+- [x] Candidate enumeration by increasing `N * M`, square-ish tiebreak,
+  capped at `max_grid`. Only `n >= m` is generated: a 2x5 is a 5x2 turned
+  a quarter turn and every part can turn too, so enumerating both would
+  double the search to rediscover each answer sideways.
+- [x] `Pack(parts, params)` → layout plus a report distinguishing
+  "provably too small" from "no arrangement found". Resolved by testing
+  the bounds in `Pack` *before* dispatching to the solver, so
+  `SolveFixedGrid` keeps its `Layout | None` signature and the two
+  outcomes are separated by which code path produced them.
+- [x] **On failure at a feasible-looking size, step up and return the
+  larger bin that did work**, naming the abandoned sizes in
+  `PackResult.skipped`.
+- [x] Randomized validation sweep, marked `slow`: every successful layout
+  re-verified against exact polygon geometry.
 
 **Done when:** synthetic sets with known optimal cell counts pack to that
 count; the three `test_data/` spoons pack into a 5x2 (39% fill) and the
@@ -203,7 +225,36 @@ report cleanly explains any smaller size it rejected; the sweep finds
 zero overlaps across a few hundred random cases.
 **This is the gate for everything downstream** — if the sweep is not
 clean, the raster resolution or clearance defaults are wrong, and no
-amount of GUI work will fix that.
+amount of GUI work will fix that. **Met** — 23 tests in
+`pipeline/layout/packer_test.py`, sweep clean over 120 randomized sets.
+
+**The gate earned its place on its first run.** It failed, on exactly the
+class of defect it was written to catch: two parts came out 3.157mm apart
+under a 3.200mm clearance. Zero energy was true and the clearance was
+still violated, because the solver reads separation off a rasterized field
+that comes back short by the discretization error — so "E = 0 means every
+clearance is met", relied on since M2, was quietly false by 0.04mm.
+
+The fix is `c_pair_enforced = c_pair + one raster cell`: the energy drives
+to the larger value so that what *exact* geometry reports clears the real
+one. Costs under a tenth of the clearance it protects. Note the asymmetry
+with the wall term, which needs nothing of the sort — the container is
+analytic, so only part-to-part distance carries raster error. That is the
+same split that governs the extent bound above, and it is now pinned by a
+test over 400 randomized arrangements rather than left as reasoning.
+
+Two smaller notes:
+
+- **The bounds must be one-sided, and that is the property worth testing.**
+  A bound that wrongly rejects inflates every result it touches and nothing
+  downstream notices — the packer just returns a bigger bin and looks
+  correct. Hence measuring dilated area off the distance field rather than
+  from `area + perimeter*r + pi*r^2`, which overcounts a concave shape
+  whose dilation folds into itself.
+- **Hand-computed "known optimal" cell counts are easy to get wrong, and
+  they fail flatteringly.** The four-part synthetic case was written
+  expecting 4 cells; the packer found 3, which is genuinely better. The
+  arithmetic is now spelled out per case in the test.
 
 ## M5 — Headless CLI
 

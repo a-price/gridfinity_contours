@@ -91,16 +91,41 @@ class LayoutParameters:
         return self.pocket_offset + MIN_WALL_MM
 
     @property
+    def raster_margin(self) -> float:
+        """Extra separation the solver drives to, covering the distance
+        field's own measurement error.
+
+        Part-to-part distance is read off a rasterized field and comes back
+        short by up to the discretization error - measured at 0.04mm on a
+        layout the solver considered finished, against a 3.2mm clearance.
+        Without this the solver stops at what it *measures* as `c_pair` and
+        the true gap is a hair under, quietly falsifying the guarantee that
+        zero energy means every clearance is met.
+
+        One raster cell is comfortably above the observed error and costs
+        well under a tenth of the clearance it protects. Part-to-*wall*
+        distance needs no such thing: the container is analytic.
+        """
+        return self.resolution
+
+    @property
+    def c_pair_enforced(self) -> float:
+        """What the energy actually drives part separation to, so that the
+        separation exact geometry reports is at least `c_pair`.
+        """
+        return self.c_pair + self.raster_margin
+
+    @property
     def pad(self) -> float:
         """How far each part's distance field must reach beyond itself.
 
         A part only feels another once a sample lands inside the other's
-        raster, so a field that stops short of `c_pair` would let parts pass
-        straight through each other at exactly the distance the clearance
-        is meant to enforce. The margin is generous because the cost is a
-        few hundred kilobytes.
+        raster, so a field that stops short of the enforced clearance would
+        let parts pass straight through each other at exactly the distance
+        it is meant to protect. The margin is generous because the cost is
+        a few hundred kilobytes.
         """
-        return self.c_pair + 2.0
+        return self.c_pair_enforced + 2.0
 
 
 @dataclass
@@ -203,10 +228,11 @@ def ComputeEnergy(
     get more than about halfway through each other.
     """
     for part_id, part in parts.items():
-        if part.pad < params.c_pair:
+        if part.pad < params.c_pair_enforced:
             raise ValueError(
                 f"part {part_id}'s distance field reaches {part.pad}mm beyond it, short of the "
-                f"{params.c_pair}mm pair clearance - parts would pass through each other unnoticed"
+                f"{params.c_pair_enforced}mm enforced pair clearance - parts would pass through "
+                "each other unnoticed"
             )
 
     forces = {part_id: np.zeros(2) for part_id in placements}
@@ -299,7 +325,7 @@ def _DirectedPairTerm(
     """
     local = target.ToLocal(target_part, samples)
     distance = target_part.SampleSdf(local)
-    penalty, scale = _PenaltyAndScale(distance, params.c_pair, params.pair_weight)
+    penalty, scale = _PenaltyAndScale(distance, params.c_pair_enforced, params.pair_weight)
     if not penalty.any():
         return 0.0, np.zeros(2), 0.0, 0.0
 

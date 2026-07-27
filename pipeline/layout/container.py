@@ -75,6 +75,13 @@ class Container:
     height: float
     radius: float
 
+    @property
+    def area(self) -> float:
+        """Interior area in mm^2. The rounded corners give back
+        `(4 - pi) * r^2` from the enclosing rectangle.
+        """
+        return self.width * self.height - (4.0 - np.pi) * self.radius**2
+
     def Polygon(self, segments_per_corner: int = 8) -> np.ndarray:
         """The interior boundary as a closed polygon, for drawing and for
         the independent checks in verify.py.

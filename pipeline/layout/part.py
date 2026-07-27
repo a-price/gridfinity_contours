@@ -147,6 +147,22 @@ class Part:
         """The contour's bounding box extent (width, height) in mm."""
         return self.contour.max(axis=0) - self.contour.min(axis=0)
 
+    def DilatedArea(self, radius: float) -> float:
+        """Area in mm^2 of everything within `radius` of the part, itself
+        included - the footprint it claims once its clearance band is
+        counted in.
+
+        Measured by counting field samples rather than from the usual
+        `area + perimeter*r + pi*r^2`, which assumes convexity. That
+        formula double-counts wherever a concave shape's dilation folds
+        into itself - a spoon's bowl, say - and the overcount would make
+        the packer's area bound unsound, rejecting bins that genuinely fit.
+        Counting the field gets self-overlap right for free.
+        """
+        if radius > self.pad:
+            raise ValueError(f"dilating by {radius}mm exceeds this part's {self.pad}mm field")
+        return float((self.sdf <= radius).sum()) * self.resolution**2
+
     def _PixelCoordinates(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Map local-mm points to fractional pixel coordinates, and flag the
         ones the raster covers. Pixel (r, c) is centered at

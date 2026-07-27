@@ -120,14 +120,14 @@ def _ContactPositions(
     # margin every contact position looks infeasible and the sweep falls
     # through to its random tail - which was the whole problem BLF is here
     # to solve.
-    margin = 2.0 * params.resolution
+    margin = params.resolution
 
     axes: list[list[float]] = [[params.c_wall + margin], [params.c_wall + margin]]
     for other_id, placement in placements.items():
         low_edge, high_edge = _Bounds(parts[other_id], placement)
         for axis in range(2):
-            axes[axis].append(high_edge[axis] + params.c_pair + margin)  # just past it
-            axes[axis].append(low_edge[axis] - size[axis] - params.c_pair - margin)  # just before it
+            axes[axis].append(high_edge[axis] + params.c_pair_enforced + margin)  # just past it
+            axes[axis].append(low_edge[axis] - size[axis] - params.c_pair_enforced - margin)  # just before it
 
     # Clamp into the legal range and drop duplicates, which are common once
     # several parts share an edge.
@@ -154,7 +154,7 @@ def _NearbyPlacements(
         other_id: placement
         for other_id, placement in placements.items()
         for other_low, other_high in [_Bounds(parts[other_id], placement)]
-        if (low - params.c_pair < other_high).all() and (high + params.c_pair > other_low).all()
+        if (low - params.c_pair_enforced < other_high).all() and (high + params.c_pair_enforced > other_low).all()
     }
 
 
