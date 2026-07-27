@@ -1,0 +1,77 @@
+// The optimization loop hierarchy: what calls what, and how often.
+// Render with `make docs`. The companion diagram is pipeline.dot, which
+// shows data flow; this one shows nesting and cost.
+//
+// Each box is a search. A box drawn inside another runs once per
+// iteration of the one containing it, so the cost multiplies down the
+// stack - which is the point of the diagram. Reading outward from the
+// centre also reads the stack from continuous to discrete: the innermost
+// loops move floats, the outermost only ever moves integers, and only the
+// outermost can prove that no answer exists.
+
+digraph loops {
+  graph [fontname="Helvetica", fontsize=11, bgcolor="transparent",
+         ranksep=0.15, nodesep=0.15];
+  node  [fontname="Helvetica", fontsize=9.5, shape=box, style="rounded,filled",
+         color="#00000000", fillcolor="#00000000", margin="0.06,0.03"];
+
+  subgraph cluster_drawer {
+    label = "drawer assignment  —  which bins share a drawer";
+    fontsize = 12;
+    style = "rounded";
+    color = "#33475e";
+    fontcolor = "#33475e";
+    labeljust = "l";
+
+    d_note [label="integers only, exhaustive, no tuning parameters\lthe only level where \"does not fit\" is decidable\lproposed — not built\l",
+            fontcolor="#33475e"];
+
+    subgraph cluster_group {
+      label = "grouping  —  which parts share a bin  (M8)";
+      fontsize = 11;
+      style = "rounded";
+      color = "#4a6fa5";
+      fontcolor = "#4a6fa5";
+      labeljust = "l";
+
+      g_note [label="first-fit, then move/swap while it helps\lterminates: every accepted change lowers a non-negative integer\lcandidate moves are independent — parallelisable as best-improvement\l",
+              fontcolor="#4a6fa5"];
+
+      subgraph cluster_grid {
+        label = "grid size search  —  which n×m  (M4)";
+        fontsize = 11;
+        style = "rounded";
+        color = "#6f8fbf";
+        fontcolor = "#6f8fbf";
+        labeljust = "l";
+
+        r_note [label="smallest area first, first success wins\larea and extent bounds reject most sizes without the solver\l",
+                fontcolor="#6f8fbf"];
+
+        subgraph cluster_restart {
+          label = "restart loop  —  which starting arrangement  (M3)";
+          fontsize = 11;
+          style = "rounded";
+          color = "#b08060";
+          fontcolor = "#b08060";
+          labeljust = "l";
+
+          s_note [label="orientation is discrete, so only restarts explore it\lseeded per attempt for reproducibility — which also makes\lthe attempts independent, and the loop parallelisable for free\l",
+                  fontcolor="#b08060"];
+
+          subgraph cluster_relax {
+            label = "relaxation, then spacing  —  where exactly  (M3, M7)";
+            fontsize = 11;
+            style = "rounded";
+            color = "#c4756a";
+            fontcolor = "#c4756a";
+            labeljust = "l";
+
+            c_note [label="continuous: damped descent on a penalty energy\lpositions are floats; the only loop that moves them\l",
+                    fontcolor="#c4756a"];
+          }
+        }
+      }
+    }
+  }
+}

@@ -648,7 +648,7 @@ rather than a vague "fewer".
 **They are the entropy example.** Three different-size spoons is
 literally the case
 [Semantic coherence](#semantic-coherence-much-later) is specified
-against, so M9's measure can be validated on real embeddings of real
+against, so M10's measure can be validated on real embeddings of real
 objects from day one.
 
 One trap. These files are 1:1 mm (`viewBox` units == mm), while the

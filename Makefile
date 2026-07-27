@@ -1,6 +1,8 @@
 PYTHON := .venv/bin/python3
 PY_FILES := $(wildcard *.py) $(wildcard pipeline/*.py) $(wildcard pipeline/*/*.py)
 MD_FILES := $(wildcard *.md) $(wildcard docs/*.md)
+DOT_FILES := $(wildcard docs/*.dot)
+DOT_SVGS := $(DOT_FILES:.dot=.svg)
 
 # Test workers. Measured on a 16-core box: serial 111s, 8 workers 55s, 16
 # workers 58s - past 8 the per-worker cost of importing torch and cv2
@@ -8,7 +10,7 @@ MD_FILES := $(wildcard *.md) $(wildcard docs/*.md)
 # `make test JOBS=4`.
 JOBS ?= 8
 
-.PHONY: format format-check lint typecheck test check check-serial requirements
+.PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check
 
 format:
 	$(PYTHON) -m black $(PY_FILES)
@@ -43,3 +45,16 @@ check-serial: format-check lint typecheck
 
 requirements:
 	$(PYTHON) -m piptools compile requirements.in --output-file requirements.txt
+
+# The rendered SVGs are committed so the docs read on GitHub without a
+# graphviz install, which is also why they can go stale - hence docs-check.
+docs: $(DOT_SVGS)
+
+%.svg: %.dot
+	dot -Tsvg $< -o $@
+
+# Not part of `check`: graphviz is not in requirements.in and a machine
+# without it should still be able to run the tests.
+docs-check: docs
+	@git diff --quiet -- $(DOT_SVGS) || \
+		{ echo "docs/*.svg are stale - commit the re-rendered files"; exit 1; }

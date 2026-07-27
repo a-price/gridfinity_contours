@@ -102,11 +102,14 @@ python3 postprocess_gcode_for_prusa_i3.py path/to/file.gcode [height_mm]
 
 ## Design docs
 
+- [docs/architecture.md](docs/architecture.md) - the view from above: the
+  four cardinality levels (photo, bin, bin set, drawer), where the
+  parallelism is, and how the optimization loops nest. Start here.
 - [docs/layout.md](docs/layout.md) - packing several contours into the
   smallest practical number of Gridfinity cells, via a repulsive-force
-  relaxation. Not yet implemented;
+  relaxation, and grouping contours across bins.
   [docs/layout_roadmap.md](docs/layout_roadmap.md) is the implementation
-  plan.
+  plan; built through M8, with drawer assignment proposed as M9.
 
 ## Installation
 

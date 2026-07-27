@@ -20,7 +20,7 @@ to stop.
 
 No new dependencies were needed through M8: SDFs use `opencv-python` and
 `numpy`, the test oracle uses `matplotlib`, and the SVG loader uses the
-standard library — all already in `requirements.in`. Only M9's embedding
+standard library — all already in `requirements.in`. Only M10's embedding
 provider might add one, and only if CLIP beats the alternatives. If a
 milestone seems to need a new package, that is a signal to re-read the
 design rather than to add it.
@@ -399,7 +399,7 @@ See [Grouping](layout.md#grouping).
 - [x] Cache keyed by (frozenset of part ids, grid size); prune candidate
   moves with the area bound before ever calling the solver.
 - [x] Local search: move/swap parts between bins, keep improvements.
-- [ ] Wire into a front end — see below.
+- [ ] Wire into a front end — deferred to M10 on purpose, see below.
 
 **Done when:** the three `test_data/` spoons group from 22 cells
 (one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
@@ -438,13 +438,59 @@ of them. The one-sidedness requirement carries over unchanged and is
 tested directly — measured on two 30x30 squares, which cannot gain by
 sharing, the entire local search completes with **zero** solver calls.
 
-**Not wired into a front end.** The CLI and GUI still pack one explicit
-set into one bin, which is M5 and M6's contract; grouping changes the
-shape of the output from a layout to a list of them, and the preview,
-export, and solid paths all assume the former. That is a milestone's worth
-of work on its own rather than a loose end of this one.
+**Not wired into a front end, and deliberately not next.** The CLI and GUI
+still pack one explicit set into one bin, which is M5 and M6's contract;
+grouping changes the shape of the output from a layout to a list of them,
+and the preview, export, and solid paths all assume the former.
 
-## M9 — Semantic coherence
+Doing that plumbing now would mean doing it twice, because M9 changes the
+output type again — from a list of layouts to a list of layouts each with
+a drawer and a cell position, which is what a printed drawer map actually
+needs. M9 is headless and needs nothing from the GUI, so it goes first and
+M10 plumbs once against the final shape. See
+[architecture.md](architecture.md#the-consequence-for-build-order).
+
+## M9 — Drawer assignment
+
+Which bins share a drawer. See
+[architecture.md](architecture.md#the-drawer-level) for the design; this
+is the first milestone above the layout subsystem, and the first whose
+answers are exact.
+
+**Renumbering note:** semantic coherence was M9 and is now M10. Drawer
+assignment depends only on M8, does not depend on semantic coherence, and
+is the nearer-term of the two — the numbering follows the dependency order
+the rest of this document uses.
+
+- [ ] `Drawer` as an integer `W x H` of grid cells, and a bitmask
+  occupancy over it. Python integers are arbitrary precision, so one
+  integer holds a drawer of any size; "does this bin fit here" is a shift
+  and an AND.
+- [ ] Exact assignment search: bins into drawers, quarter turns allowed,
+  canonical placement at the lowest-index free cell so the search does not
+  re-derive every permutation of one packing.
+- [ ] One-sided area bound in front of it — total bin cells against total
+  drawer cells — with the same soundness requirement M4 and M8 record. An
+  over-eager bound here silently reports "buy another drawer".
+- [ ] On failure, name the footprints that could not be placed, so
+  grouping can be re-run with them excluded.
+- [ ] Admissible-footprint predicate on `packer.CandidateGrids`, so a
+  drawer-aware grouping never proposes a bin no drawer can hold.
+
+**Done when:** a set of bins with a known-tight drawer packing is placed
+exactly, a set one cell too large is reported infeasible *as a fact*
+rather than as a failed search, and the three spoons' single 5x2 places
+into a realistic drawer with the free space left contiguous.
+
+**Why this level is exact, and no other one is.** Every quantity is an
+integer count of cells. There are no clearances: `OuterFootprint` is
+`42*n - 0.5`, and that half millimeter is already inside each bin's
+footprint, so bins abut exactly on the lattice with nothing between them.
+Nothing to tune, nothing to measure against a print, no raster error to
+leave margin for. This is the only level where "does not fit" is
+decidable, which is also what lets its failures instruct the level below.
+
+## M10 — Semantic coherence
 
 Much later, and only on top of a working M8 — see
 [Semantic coherence](layout.md#semantic-coherence-much-later). The
@@ -492,7 +538,7 @@ bin's frozenset of part ids, exactly as M8 caches packing results.
   first physical print at M7 is the real test; expect to revise it.
 - **Scope creep into grouping.** M8 is genuinely valuable and genuinely
   tempting to start early. It is worthless on an unreliable oracle.
-- **Entropy as a standalone objective.** M9's term is a regularizer on a
+- **Entropy as a standalone objective.** M10's term is a regularizer on a
   cell-count objective that opposes it. Optimized on its own it prefers
   one object per bin, since a singleton bin has entropy 0. If a future
   change ever makes entropy the primary term, that degeneracy is what
