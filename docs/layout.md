@@ -287,6 +287,13 @@ pipeline/layout_stage.py       Stage subclass, group box, Qt
 layout_cli.py                  headless entry point
 ```
 
+One test module per source module, strictly — a test lives beside the
+module it exercises, not beside the one that happens to call it. Tests for
+the container, for a part's field derivative, and for vector rotation had
+all accumulated in `energy_test.py` simply because the energy code is what
+consumes them; the cost is that changing `container.py` gives no hint that
+its tests live somewhere else entirely.
+
 Dependencies run one way: `container` and `part` depend on nothing local,
 `placement` on `part`, `energy` on all three, `svg` and `solver` above
 that, and `verify` deliberately to one side. Nothing in the package

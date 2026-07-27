@@ -1,6 +1,5 @@
 """Tests for SVG contour loading, and for the test_data fixtures."""
 
-import numpy as np
 import pytest
 
 from pipeline.layout.container import InteriorEnvelope, InteriorSpan
@@ -8,23 +7,6 @@ from pipeline.layout.part import BuildPart, PolygonArea
 from pipeline.layout.svg import LoadParts, LoadSvgContours
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
-
-
-def _l_shape() -> np.ndarray:
-    """A 30x30 L with a 20x20 bite taken out of the top right corner."""
-    return np.array([[0, 0], [30, 0], [30, 10], [10, 10], [10, 30], [0, 30]], dtype=np.float64)
-
-
-def _u_shape() -> np.ndarray:
-    """A 30x30 U with a 10-wide, 20-deep notch - the concavity another part
-    can nest into, which is the whole reason the packer bothers with
-    non-convex shapes.
-    """
-    return np.array([[0, 0], [30, 0], [30, 30], [20, 30], [20, 10], [10, 10], [10, 30], [0, 30]], dtype=np.float64)
 
 
 # ---------------------------------------------------------------- fixtures

@@ -1,27 +1,21 @@
-"""Tests for the Gridfinity bin interior."""
+"""Tests for the Gridfinity bin interior: the spec-derived spans, the
+envelope polygon, and the analytic distance function into it."""
 
 import numpy as np
 import pytest
 
-from pipeline.layout.container import GRID_PITCH_MM, BASE_GAP_MM, InteriorEnvelope, InteriorSpan
-from pipeline.layout.verify import PolygonInside
+from pipeline.layout.container import (
+    BASE_GAP_MM,
+    GRID_PITCH_MM,
+    BuildContainer,
+    InteriorEnvelope,
+    InteriorSpan,
+)
+from pipeline.layout.verify import DistanceToBoundary, PolygonInside
 
 
 def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
     return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
-
-
-def _l_shape() -> np.ndarray:
-    """A 30x30 L with a 20x20 bite taken out of the top right corner."""
-    return np.array([[0, 0], [30, 0], [30, 10], [10, 10], [10, 30], [0, 30]], dtype=np.float64)
-
-
-def _u_shape() -> np.ndarray:
-    """A 30x30 U with a 10-wide, 20-deep notch - the concavity another part
-    can nest into, which is the whole reason the packer bothers with
-    non-convex shapes.
-    """
-    return np.array([[0, 0], [30, 0], [30, 30], [20, 30], [20, 10], [10, 10], [10, 30], [0, 30]], dtype=np.float64)
 
 
 def test_interior_span_matches_the_gridfinity_spec():
@@ -57,3 +51,67 @@ def test_interior_envelope_corners_are_rounded_inward():
 def test_interior_envelope_rejects_a_degenerate_grid():
     with pytest.raises(ValueError):
         InteriorEnvelope(0, 3)
+
+
+# ------------------------------------------------- distance to the wall
+
+# -------------------------------------------------------------- container
+
+
+def test_container_depth_is_positive_inside_and_negative_outside():
+    container = BuildContainer(2, 2)
+
+    assert container.SampleDepth(np.array([[container.width / 2, container.height / 2]]))[0] > 0
+    assert container.SampleDepth(np.array([[-5.0, container.height / 2]]))[0] < 0
+
+
+def test_container_depth_measures_distance_to_the_wall():
+    container = BuildContainer(3, 2)
+
+    # 4mm in from the left wall, and 4mm out past it.
+    assert container.SampleDepth(np.array([[4.0, container.height / 2]]))[0] == pytest.approx(4.0, abs=0.01)
+    assert container.SampleDepth(np.array([[-4.0, container.height / 2]]))[0] == pytest.approx(-4.0, abs=0.01)
+
+
+def test_container_depth_agrees_with_its_own_polygon():
+    """The analytic rounded-rectangle distance against an exact measurement
+    from the tessellated boundary - two unrelated routes to the same number.
+    """
+    container = BuildContainer(3, 2)
+    polygon = container.Polygon(segments_per_corner=64)
+    x = np.linspace(2.0, container.width - 2.0, 25)
+    y = np.linspace(2.0, container.height - 2.0, 15)
+    query = np.stack(np.meshgrid(x, y), axis=-1).reshape(-1, 2)
+
+    assert container.SampleDepth(query) == pytest.approx(DistanceToBoundary(query, polygon), abs=0.02)
+
+
+def test_container_derivative_points_inward_from_every_wall():
+    container = BuildContainer(3, 2)
+    width, height = container.width, container.height
+
+    assert container.SampleDerivative(np.array([[2.0, height / 2]]))[0] == pytest.approx([1.0, 0.0], abs=1e-6)
+    assert container.SampleDerivative(np.array([[width - 2.0, height / 2]]))[0] == pytest.approx([-1.0, 0.0], abs=1e-6)
+    assert container.SampleDerivative(np.array([[width / 2, 2.0]]))[0] == pytest.approx([0.0, 1.0], abs=1e-6)
+    assert container.SampleDerivative(np.array([[width / 2, height - 2.0]]))[0] == pytest.approx([0.0, -1.0], abs=1e-6)
+
+
+def test_container_derivative_matches_finite_differences():
+    container = BuildContainer(3, 2)
+    rng = np.random.default_rng(0)
+    query = rng.uniform([-5.0, -5.0], [container.width + 5.0, container.height + 5.0], size=(200, 2))
+    step = 1e-6
+
+    for axis in range(2):
+        offset = np.zeros(2)
+        offset[axis] = step
+        numeric = (container.SampleDepth(query + offset) - container.SampleDepth(query - offset)) / (2 * step)
+
+        assert container.SampleDerivative(query)[:, axis] == pytest.approx(numeric, abs=1e-4)
+
+
+def test_container_span_matches_the_layout_it_reports():
+    container = BuildContainer(5, 2)
+
+    assert container.width == pytest.approx(InteriorSpan(5))
+    assert container.height == pytest.approx(InteriorSpan(2))
