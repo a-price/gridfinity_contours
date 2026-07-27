@@ -45,15 +45,14 @@ Output is a `Layout`: the chosen grid size plus, per contour, a rigid
 placement (translation + one of four orientations) into bin-local mm
 coordinates whose origin is the bin's interior corner.
 
-Note that the existing writers cannot consume this as-is. Both `WriteSvg`
-and `WritePdf` route through `AlignContoursToPca`
-([svg_writer.py:22](../pipeline/svg_writer.py#L22)), which re-aligns
-*each contour into its own local frame* — correct for exporting one
-shape, fatally wrong for a layout, since it would move every part back
-onto its own origin and discard the arrangement. Emitting a layout
-preview therefore requires factoring the writers into an
-align-then-write wrapper over a write-these-coordinates core, and using
-the core. See M5.
+Note that the existing writers could not consume this as-is. Both
+`WriteSvg` and `WritePdf` routed through `AlignContoursToPca`, which
+re-aligns *each contour into its own local frame* — correct for exporting
+one shape, fatally wrong for a layout, since it would move every part
+back onto its own origin and discard the arrangement. M5 factored both
+into an align-then-write wrapper over a write-these-coordinates core
+(`WriteShapesSvg`/`WriteShapesPdf`, taking a `Shape`
+([svg_writer.py](../pipeline/svg_writer.py))); the preview uses the core.
 
 Deliberately *not* an output: the `.scad` itself. Layout stays a geometry
 module; solid generation remains `solid.py`'s job, extended to accept
@@ -296,6 +295,7 @@ pipeline/layout/solver.py      arranging parts inside a bin of fixed size
 pipeline/layout/packer.py      choosing the bin size, with the bounds that
                                reject one without running the solver
 pipeline/layout/svg.py         reading contours out of exported SVGs
+pipeline/layout/preview.py     drawing a solved layout at true scale
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
 pipeline/layout_stage.py       Stage subclass, group box, Qt
@@ -320,10 +320,26 @@ The stage stays outside the package, mirroring the existing pattern
 thin adapter that owns a `LayoutParameters` and builds its group box via
 `CreateGroupBox`, keeping the geometry free of the GUI.
 
-The CLI reads contours from a file and writes a layout preview SVG, so
-the packer can be iterated on without launching the GUI or re-running
-SAM2 — important, because tuning a stochastic solver through a Qt event
-loop is miserable.
+The CLI reads contours from a file and writes a layout preview, so the
+packer can be iterated on without launching the GUI or re-running SAM2 —
+important, because tuning a stochastic solver through a Qt event loop is
+miserable. Its inputs are either an SVG this project wrote or a JSON
+contour dump ([contour_io.py](../pipeline/contour_io.py)); the SVG export
+stage writes the dump alongside its other outputs, since the SVG itself
+is a *picture* of the contours — PCA-aligned per shape and rounded for
+drawing — rather than the contours.
+
+The preview is drawn on the bin's **outer footprint**, not its interior,
+so the printed sheet can be checked against a real bin rim-to-rim. Only
+part outlines are written as `<polygon>`; the rim, interior, and cell
+grid are `<polyline>`. Since `LoadSvgContours` reads only `<polygon>`, a
+preview reads back as exactly the parts in it, with no annotation to
+filter out. Nothing in the drawing path flips a coordinate: the layout
+frame is whatever frame the contours arrived in, and a flip would mirror
+every part relative to an export already checked against real objects.
+A mirrored outline is the one error a printed template cannot survive —
+it measures correctly and still will not fit, because a reflected tool
+sits upside down in its pocket (D1).
 
 The stage is registered downstream of contour selection/rectification in
 `SVGGui`'s pipeline, but — like SVG export — runs only when explicitly

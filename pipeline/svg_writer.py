@@ -1,6 +1,42 @@
+"""Writing millimeter geometry out as SVG.
+
+Two layers, deliberately separate. `WriteShapesSvg` writes coordinates
+that are already in the frame they should be drawn in; `WriteSvg` is the
+contour export on top of it, PCA-aligning each contour into its own frame
+first.
+
+The split is what lets a *layout* be drawn at all. Aligning each contour
+into its own local frame is right for a cut sheet of unrelated outlines
+and catastrophic for an arrangement, whose entire content is where the
+parts sit relative to each other - align them individually and they all
+stack back onto the origin.
+"""
+
+from dataclasses import dataclass, field
+from typing import Sequence
+
 import numpy as np
 
 from pipeline.contour_extraction import PCABox
+
+
+@dataclass(frozen=True)
+class Shape:
+    """One outline to draw, in millimeters, already in page coordinates
+    (origin top-left, y increasing downward - what both SVG and PDF use).
+
+    `closed` is not only cosmetic. Closed shapes are written as `<polygon>`
+    and open ones as `<polyline>`, and layout.svg.LoadSvgContours reads
+    only `<polygon>`. Drawing annotations - a bin outline, a cell boundary
+    - open therefore means a written file reads back as exactly the object
+    contours in it, with nothing to filter out afterwards.
+    """
+
+    points: np.ndarray  # (N, 2) mm
+    closed: bool = True
+    stroke: str = "black"
+    stroke_width: float = 0.1  # mm
+    dashes: tuple[float, ...] = field(default=())  # mm on/off run lengths; empty for solid
 
 
 def AlignContoursToPca(contours: dict[int, np.ndarray]) -> tuple[dict[int, np.ndarray], float, float]:
@@ -42,33 +78,63 @@ def _FormatPoints(points: np.ndarray) -> str:
 _SVG_USER_UNITS_PER_MM = 96.0 / 25.4
 
 
-def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
-    """Writes `contours` (real-world mm coordinates, e.g. Rectify.contours)
-    to an SVG file: one closed <polygon> per contour, PCA-aligned (see
-    AlignContoursToPca). The `width`/`height` attributes are the true
-    physical size in mm; the viewBox and path coordinates are scaled by
-    _SVG_USER_UNITS_PER_MM to also import correctly in tools that ignore
-    those attributes' units (see the comment above). Not every SVG
-    viewer/print path even honors physical print size though - see
-    WritePdf for a print-safe alternative.
-    """
-    aligned, width, height = AlignContoursToPca(contours)
-    scale = _SVG_USER_UNITS_PER_MM
+def _FormatShape(shape: Shape, scale: float) -> str:
+    """One shape as an SVG element, with every length pre-scaled.
 
-    polygons = "\n".join(
-        f'  <polygon points="{_FormatPoints(points * scale)}" '
-        f'fill="none" stroke="black" stroke-width="{0.1 * scale:.4f}" />'
-        for points in aligned.values()
+    Stroke width and dash lengths are scaled along with the coordinates.
+    They are specified in mm like everything else here, and a user unit is
+    not a millimeter, so leaving either unscaled would draw a hairline on
+    a preview whose geometry is 3.78x larger.
+    """
+    element = "polygon" if shape.closed else "polyline"
+    dasharray = ""
+    if shape.dashes:
+        pattern = ",".join(f"{length * scale:.4f}" for length in shape.dashes)
+        dasharray = f' stroke-dasharray="{pattern}"'
+    return (
+        f'  <{element} points="{_FormatPoints(np.asarray(shape.points) * scale)}" '
+        f'fill="none" stroke="{shape.stroke}" '
+        f'stroke-width="{shape.stroke_width * scale:.4f}"{dasharray} />'
     )
+
+
+def WriteShapesSvg(path: str, shapes: Sequence[Shape], width: float, height: float) -> None:
+    """Write shapes already in page coordinates to an SVG `width` x `height`
+    millimeters.
+
+    The `width`/`height` attributes are the true physical size in mm; the
+    viewBox and all coordinates are scaled by _SVG_USER_UNITS_PER_MM so the
+    file also imports correctly in tools that ignore those attributes'
+    units (see the comment above). Not every SVG viewer/print path even
+    honors physical print size though - see pdf_writer for a print-safe
+    alternative.
+    """
+    if not shapes:
+        raise ValueError("no shapes to write")
+    if width <= 0 or height <= 0:
+        raise ValueError(f"canvas must be positive, got {width}x{height}mm")
+
+    scale = _SVG_USER_UNITS_PER_MM
+    body = "\n".join(_FormatShape(shape, scale) for shape in shapes)
 
     svg = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{width:.4f}mm" height="{height:.4f}mm" '
         f'viewBox="0 0 {width * scale:.4f} {height * scale:.4f}">\n'
-        f"{polygons}\n"
+        f"{body}\n"
         "</svg>\n"
     )
 
     with open(path, "w") as f:
         f.write(svg)
+
+
+def WriteSvg(path: str, contours: dict[int, np.ndarray]) -> None:
+    """Writes `contours` (real-world mm coordinates, e.g. Rectify.contours)
+    to an SVG file: one closed `<polygon>` per contour, PCA-aligned (see
+    AlignContoursToPca), on a canvas sized to the largest of them.
+    """
+    aligned, width, height = AlignContoursToPca(contours)
+    shapes = [Shape(points) for points in aligned.values()]
+    WriteShapesSvg(path, shapes, width, height)

@@ -4,6 +4,7 @@ from typing import Callable
 import numpy as np
 from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
+from pipeline.contour_io import SaveContours
 from pipeline.core import CreateGroupBox, Stage
 from pipeline.pdf_writer import WritePdf
 from pipeline.svg_writer import WriteSvg
@@ -27,6 +28,13 @@ class SvgExportStage(Stage):
     SVG viewer/print path honors the SVG's embedded physical units, while
     a PDF's page size is unambiguous - print that one if a printed SVG
     comes out the wrong size.
+
+    And a contour dump (`<filename>.json`), which is what layout_cli.py
+    reads. The SVG cannot serve that purpose: it PCA-aligns each contour
+    into its own frame and rounds to four decimals for drawing, so it is a
+    picture of the contours rather than the contours. Exporting the dump
+    here rather than behind its own button is what makes the packer usable
+    without re-clicking a photo every time.
     """
 
     def __init__(self) -> None:
@@ -37,6 +45,7 @@ class SvgExportStage(Stage):
             return
         WriteSvg(self.parameters.filename, contours)
         WritePdf(f"{self.parameters.filename}.pdf", contours)
+        SaveContours(f"{self.parameters.filename}.json", contours)
 
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
         widget, layout = CreateGroupBox("SVG Export")

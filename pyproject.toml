@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 markers = [
-    "slow: exercises the SAM2 model end-to-end; slower, downloads/loads real weights",
+    "slow: end-to-end work that costs seconds to minutes - loading real SAM2 weights, or running the layout search over real contours",
 ]
 # gridfinity-rebuilt-openscad is a separate project vendored in as a
 # submodule, not part of this one - don't collect its tests.

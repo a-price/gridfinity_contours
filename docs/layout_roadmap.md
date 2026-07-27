@@ -258,22 +258,37 @@ Two smaller notes:
 
 ## M5 — Headless CLI
 
-- [ ] `layout_cli.py`: read contours (JSON of the pipeline's
-  `dict[int, ndarray]`), pack, write a preview SVG.
-- [ ] Contour serialization helpers shared with the GUI, so a session's
-  contours can be dumped once and iterated on offline.
-- [ ] **Refactor the writers first.** `WriteSvg` and `WritePdf` both call
-  `AlignContoursToPca`, which re-aligns each contour into its own frame
-  and would destroy the arrangement. Split each into an
-  align-then-write wrapper (existing behavior, existing tests unchanged)
-  over a write-these-coordinates core.
-- [ ] Preview SVG on top of that core: one polygon per placed part plus
-  the bin outline and cell grid, at true mm scale, keeping
-  [svg_writer.py](../pipeline/svg_writer.py)'s unit conventions (the
-  96/25.4 pre-scaling in particular).
+- [x] `layout_cli.py`: read contours (JSON dumps or any SVG this project
+  wrote), pack, write a preview. Flags override `LayoutParameters` only
+  where actually passed, so the tuned defaults are not restated where
+  they would drift.
+- [x] Contour serialization helpers shared with the GUI
+  ([contour_io.py](../pipeline/contour_io.py)), so a session's contours
+  can be dumped once and iterated on offline. `SvgExportStage` writes
+  `<filename>.json` alongside the SVG and PDF — without a producer the
+  format has no source, and the SVG cannot serve as one (it is
+  per-shape PCA-aligned and rounded to four decimals for drawing).
+- [x] **Refactor the writers first.** Split each into an align-then-write
+  wrapper over a write-these-coordinates core (`WriteShapesSvg`,
+  `WriteShapesPdf`, taking a `Shape` carrying geometry plus stroke).
+  Existing tests unchanged and passing.
+- [x] Preview ([preview.py](../pipeline/layout/preview.py)) on top of that
+  core, as both SVG and PDF: one polygon per placed part, plus the rim,
+  interior outline, and cell grid as polylines. Drawn on the bin's outer
+  footprint rather than its interior, so the sheet can be laid under a
+  real bin and checked rim-to-rim.
+
+**Corrected here:** the PDF writer went through `pyplot`, which selects a
+global *interactive* backend on import — every test module had been
+compensating with its own `matplotlib.use("Agg")`, which is exactly why
+the suite passed while a real headless CLI run aborted trying to open a
+Qt display. Now built on `Figure` + an explicit PDF canvas, which needs
+no backend and no global state.
 
 **Done when:** a real captured contour set packs from the command line
 and the printed preview measures correctly against a physical bin.
+The three spoons pack to 5x2 in ~4s from the command line; measuring the
+print against a physical bin is Andrew's check.
 
 ## M6 — GUI stage
 
