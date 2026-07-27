@@ -28,11 +28,16 @@ that can only be run through a Qt event loop is untunable.
 - [ ] Exact, independent overlap predicate for tests — polygon-based, not
   SDF-based. This is the oracle M4 is validated against, so it must not
   share code with the solver.
+- [ ] SVG contour loader for `test_data/`, deriving scale as
+  `viewBox_width / width_mm`. **Do not hardcode 96/25.4** — the existing
+  fixtures are 1:1 mm and predate that change, so a hardcoded factor
+  breaks one format or the other by 3.78x.
 
 **Done when:** SDF sign/magnitude match hand-computed values for a
 rectangle and an L-shape; rotating a part 90° gives a field equal to the
 field of the rotated polygon; the independent overlap predicate agrees
-with hand-checked cases.
+with hand-checked cases; the three `test_data/` spoons load at their
+measured sizes (200.26, 162.76, 73.93 mm long).
 
 ## M2 — Energy and forces
 
@@ -68,7 +73,10 @@ than returning an overlapping layout.
 ## M4 — Grid size search
 
 - [ ] Area lower bound (part areas dilated by `c_pair / 2`) and extent
-  lower bound (largest part's oriented bbox must fit).
+  lower bound (largest part's oriented bbox must fit **with at least one
+  raster cell of slack** — `big_spoon` clears a 5-cell run by 0.04 mm,
+  well under the 0.25 mm resolution, and a bound without the slack term
+  will call that feasible and waste a full restart budget on it).
 - [ ] Candidate enumeration by increasing `N * M`, square-ish tiebreak,
   capped at `max_grid`.
 - [ ] `Pack(contours, params)` → layout plus a report distinguishing
@@ -77,7 +85,9 @@ than returning an overlapping layout.
   re-verified with M1's independent overlap predicate.
 
 **Done when:** synthetic sets with known optimal cell counts pack to that
-count; the sweep finds zero overlaps across a few hundred random cases.
+count; the three `test_data/` spoons pack into a 5x2 (39% fill) and the
+report cleanly explains any smaller size it rejected; the sweep finds
+zero overlaps across a few hundred random cases.
 **This is the gate for everything downstream** — if the sweep is not
 clean, the raster resolution or clearance defaults are wrong, and no
 amount of GUI work will fix that.
@@ -133,9 +143,9 @@ print — see [Grouping](layout.md#grouping-future-work).
   moves with the area bound before ever calling the solver.
 - [ ] Local search: move/swap parts between bins, keep improvements.
 
-**Done when:** a realistic drawer's worth of contours groups into fewer
-total cells than one-part-per-bin, with every resulting bin passing the
-independent overlap check.
+**Done when:** the three `test_data/` spoons group from 22 cells
+(one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
+passing the independent overlap check.
 
 ## M9 — Semantic coherence
 
@@ -147,6 +157,9 @@ spoons beats a bin holding a spoon, a hammer, and a camera lens.
 - [ ] `BinEntropy(embeddings)` — von Neumann entropy of the normalized
   cosine Gram matrix. Pure function, no packing dependency, testable on
   synthetic vectors before any real embedding provider exists.
+- [ ] Validate on `test_data/`: three different-size spoons is exactly
+  the motivating case, so their embeddings must score well below a
+  spoon-plus-unlike-object bin on real data, not just synthetic vectors.
 - [ ] Embedding provider behind a narrow interface; layout takes
   `dict[int, np.ndarray]` and stays agnostic. Bake-off between CLIP on
   the masked crop, pooled SAM2 encoder features, and contour shape

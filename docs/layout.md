@@ -245,7 +245,13 @@ Pruned by two lower bounds, both cheap and both sound:
   clearance bands counted in, i.e. each part's area dilated by
   `c_pair / 2`). Nesting never beats this.
 - **Extent:** the largest part's oriented bounding box must fit inside
-  the interior, in at least one of its two orientations.
+  the interior, in at least one of its two orientations, *with at least
+  one raster cell of slack*. The slack qualifier is not pedantry — see
+  the fixtures below, where a real part clears a 5-cell run by 0.04 mm,
+  an order of magnitude under the 0.25 mm raster resolution. Without it
+  the bound says "feasible" for a size the solver can never actually
+  achieve, and the search burns its entire restart budget before
+  stepping up.
 
 Cap `N` and `M` at a configurable max (default 6, past which nothing fits
 in a normal drawer) and report failure rather than searching forever.
@@ -398,11 +404,54 @@ determinism rather than exact coordinates:
 - **Determinism.** Same input + same seed = byte-identical layout.
 - **Bounds.** Every placed part is inside the interior envelope with
   `c_wall` to spare.
-- **Regression.** The spoon contour plus a couple of synthetic shapes,
-  packed, with the resulting cell count asserted — flags a density
-  regression from a solver change.
+- **Regression.** The `test_data/` fixtures, packed, with the resulting
+  cell count asserted — flags a density regression from a solver change.
 
 Slow randomized sweeps get the existing `slow` pytest marker.
+
+### Fixtures
+
+`test_data/` holds three real exported spoon contours. Measured:
+
+| Fixture | Bbox (mm) | Verts | Area (mm²) | Solo bin | Long-axis slack |
+| --- | --- | --- | --- | --- | --- |
+| `big_spoon.svg` | 200.26 x 41.67 | 40 | 3414 | 5x2 | **0.04 mm** |
+| `medium_spoon.svg` | 162.76 x 34.89 | 39 | 2356 | 5x2 | 37.54 mm |
+| `small_spoon.svg` | 73.93 x 14.20 | 42 | 437 | 2x1 | **0.37 mm** |
+
+They are a better test set than they look, for three reasons.
+
+**They sit on cell boundaries.** Two of the three clear their cell run by
+less than the raster resolution. `big_spoon` at 200.26 mm needs 204.26 mm
+with `c_wall` on both ends, against a 5-cell interior of 204.30 mm. This
+is the case that motivates the slack qualifier on D6's extent bound, and
+it is worth keeping precisely because a naive bound gets it wrong.
+
+To be clear about what does *not* rescue it: rotation cannot. The x-extent
+of a rotated `L x W` box is `L cos θ + W sin θ`, whose derivative at
+θ = 0 is `W > 0` — so any rotation off-axis makes the long-axis fit
+*worse*, not better. This is a point in favor of D1's rejection of
+continuous rotation rather than against it.
+
+**Grouping has real headroom here.** One-per-bin costs 22 cells
+(10 + 10 + 2 — note `big_spoon` is 41.67 mm wide, over a 1-cell
+interior's 36.3 mm, so it needs two rows). All three share a 5x2 at 39%
+fill, and a 5x1 is not obviously out of reach at 84% fill. So M8 should
+turn 22 cells into 10, or 5 if nesting goes well — a concrete target
+rather than a vague "fewer".
+
+**They are the entropy example.** Three different-size spoons is
+literally the case
+[Semantic coherence](#semantic-coherence-much-later) is specified
+against, so M9's measure can be validated on real embeddings of real
+objects from day one.
+
+One trap. These files are 1:1 mm (`viewBox` units == mm), while the
+current writer pre-scales by 96/25.4 = 3.7795
+([svg_writer.py:42](../pipeline/svg_writer.py#L42)) — they predate
+`d3c08a3`. **The loader must derive the scale as
+`viewBox_width / width_mm`, not hardcode either constant**, or one of the
+two formats silently comes in 3.78x wrong.
 
 ## Open questions
 
