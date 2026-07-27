@@ -1,6 +1,6 @@
 """Independent geometric checks on a layout.
 
-Deliberately shares no code with layout.py. The solver measures overlap
+Deliberately shares no code with the solver. It measures overlap
 with rasterized distance fields, which are approximate by construction; if
 the same fields were used to confirm the result, a raster artifact would
 confirm itself and the first sign of trouble would be a failed print. So
@@ -14,7 +14,8 @@ Used by the tests, and by the CLI to self-check before writing a preview.
 import numpy as np
 from matplotlib.path import Path
 
-from pipeline.layout import Layout, Part
+from pipeline.layout.part import Part
+from pipeline.layout.solver import Layout
 
 
 def _AsPath(points: np.ndarray) -> Path:

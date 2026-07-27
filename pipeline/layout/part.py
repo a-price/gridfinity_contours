@@ -1,0 +1,297 @@
+"""A contour turned into something the solver can measure overlap with.
+
+A Part is a contour in a canonical local frame plus the signed distance
+field used to detect and resolve collisions. See docs/layout.md for why
+distance fields rather than no-fit polygons or convex decomposition.
+"""
+
+from dataclasses import dataclass
+
+import cv2
+import numpy as np
+
+from pipeline.contour_extraction import PCABox
+
+# Raster resolution for the signed distance fields, in mm per pixel. Fine
+# enough that discretization error stays well under the millimeter-scale
+# clearances of D5, coarse enough that a 200mm part is only ~800px across.
+DEFAULT_RESOLUTION_MM = 0.25
+
+# How far beyond a part's own bounding box its distance field extends.
+# Queries outside this margin report DISTANT_MM instead, so it must exceed
+# the largest clearance the solver will ask about (c_pair, 3.2mm by D5).
+DEFAULT_PAD_MM = 5.0
+
+# Reported for queries that fall outside a part's rasterized field. Any
+# value comfortably past every clearance works; this is not an infinity so
+# that arithmetic on it stays finite.
+DISTANT_MM = 1.0e6
+
+
+def PolygonArea(points: np.ndarray) -> float:
+    """Unsigned area of a closed polygon, by the shoelace formula. Winding
+    order is not assumed - contours arrive in either.
+    """
+    x, y = points[:, 0], points[:, 1]
+    return 0.5 * float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+
+
+def ResampleBoundary(points: np.ndarray, spacing: float) -> np.ndarray:
+    """The polygon's vertices plus points interpolated along every edge at
+    no more than `spacing` apart.
+
+    Vertices alone are not enough to collide with: a simplified contour has
+    edges tens of millimeters long, and a part could slide clean through a
+    thin feature between two of them without any vertex ever registering a
+    penetration.
+    """
+    if spacing <= 0:
+        raise ValueError(f"spacing must be positive, got {spacing}")
+
+    closed = np.vstack([points, points[:1]])
+    segments = []
+    for start, end in zip(closed[:-1], closed[1:]):
+        length = float(np.linalg.norm(end - start))
+        steps = max(1, int(np.ceil(length / spacing)))
+        # Drop the endpoint; the next edge contributes it as its start.
+        t = np.linspace(0.0, 1.0, steps, endpoint=False).reshape(-1, 1)
+        segments.append(start + t * (end - start))
+    return np.concatenate(segments)
+
+
+# Below this normalized third moment a shape is treated as symmetric about
+# the axis, and the 180-degree tiebreak in _AlignToLocalFrame falls through
+# to the other axis. Symmetric shapes look identical either way up, so
+# which branch wins genuinely does not matter for them.
+_SKEW_TOLERANCE = 1e-6
+
+
+def _AlignToLocalFrame(points: np.ndarray) -> np.ndarray:
+    """PCA-align a contour into a canonical local frame: principal axis
+    along x, origin at the bounding box's minimum corner.
+
+    PCABox.ToLocal does most of the work, but its basis comes from
+    cv2.PCACompute2, whose eigenvector signs are arbitrary. Both resulting
+    ambiguities have to be pinned down, or the "same" object photographed
+    twice yields two different Parts:
+
+    * A sign flip on one axis alone is a *reflection*, which would silently
+      mirror the part. D1 rejects mirroring - a flipped tool sits upside
+      down in its pocket - so a left-handed basis is corrected by flipping
+      y, restoring handedness without disturbing the bounding box.
+    * Flipping both axes is a proper 180-degree rotation, so handedness
+      cannot detect it. It is resolved by the shape's own skew: the
+      contour is oriented so its third central moment about each axis is
+      positive, which for an asymmetric object (a spoon's bowl against its
+      handle) is a stable property of the object rather than of the photo.
+    """
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    box = PCABox(points.astype(np.float32))
+    local = box.ToLocal(points).astype(np.float64)
+    extent = local.max(axis=0)
+
+    # The 2D cross product, spelled out: np.cross dropped 2-vector support
+    # in NumPy 2.
+    if box.pc1[0] * box.pc2[1] - box.pc1[1] * box.pc2[0] < 0:
+        local[:, 1] = extent[1] - local[:, 1]
+
+    if _IsSkewNegative(local):
+        local = extent - local  # 180 degrees, preserving handedness
+    return local
+
+
+def _IsSkewNegative(local: np.ndarray) -> bool:
+    """Whether a contour leans toward -x (or -y, for a shape symmetric in
+    x), by its normalized third central moments.
+    """
+    # cv2.moments reports signed moments, so winding order would otherwise
+    # flip the answer.
+    x, y = local[:, 0], local[:, 1]
+    if np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)) < 0:
+        local = local[::-1]
+
+    moments = cv2.moments(local.astype(np.float32))
+    if abs(moments["nu30"]) > _SKEW_TOLERANCE:
+        return moments["nu30"] < 0
+    if abs(moments["nu03"]) > _SKEW_TOLERANCE:
+        return moments["nu03"] < 0
+    return False
+
+
+@dataclass(frozen=True)
+class Part:
+    """A contour in a canonical local frame, plus the raster fields the
+    solver reads to measure and resolve overlap.
+
+    `contour` is PCA-aligned with its bounding box's minimum corner at the
+    origin, so two photos of the same object produce the same Part
+    regardless of how it happened to sit in frame.
+
+    `sdf` is negative inside the part and positive outside, in mm, sampled
+    on a grid that extends `pad` beyond the contour's bounding box on every
+    side. Its spatial derivative is computed on demand from the same
+    bilinear interpolant SampleSdf reads, rather than stored as a second
+    raster - see SampleDerivative for why that consistency matters.
+    """
+
+    contour: np.ndarray  # (K, 2) local mm
+    samples: np.ndarray  # (S, 2) local mm, boundary points to collide with
+    sdf: np.ndarray  # (H, W) float32 mm, negative inside
+    origin: np.ndarray  # (2,) local mm coordinate of the raster's corner
+    resolution: float  # mm per pixel
+    pad: float  # mm the field reaches beyond the contour's bounding box
+    area: float  # mm^2
+
+    @property
+    def size(self) -> np.ndarray:
+        """The contour's bounding box extent (width, height) in mm."""
+        return self.contour.max(axis=0) - self.contour.min(axis=0)
+
+    def _PixelCoordinates(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Map local-mm points to fractional pixel coordinates, and flag the
+        ones the raster covers. Pixel (r, c) is centered at
+        `origin + (c + 0.5, r + 0.5) * resolution`.
+        """
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        pixels = (points - self.origin) / self.resolution - 0.5
+        height, width = self.sdf.shape
+        inside = (pixels[:, 0] >= 0) & (pixels[:, 0] <= width - 1) & (pixels[:, 1] >= 0) & (pixels[:, 1] <= height - 1)
+        return pixels, inside
+
+    def _Corners(self, points: np.ndarray) -> tuple:
+        """The four surrounding samples and the fractional offsets into
+        their cell, for every point the raster covers.
+        """
+        pixels, covered = self._PixelCoordinates(points)
+        x, y = pixels[covered, 0], pixels[covered, 1]
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+        x1 = np.minimum(x0 + 1, self.sdf.shape[1] - 1)
+        y1 = np.minimum(y0 + 1, self.sdf.shape[0] - 1)
+
+        field = self.sdf.astype(np.float64)
+        return covered, field[y0, x0], field[y0, x1], field[y1, x0], field[y1, x1], x - x0, y - y0
+
+    def SampleSdf(self, points: np.ndarray) -> np.ndarray:
+        """Signed distance in mm at each local-mm point: negative inside the
+        part, positive outside, DISTANT_MM beyond the rasterized field.
+        """
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        result = np.full(len(points), DISTANT_MM)
+        covered, f00, f10, f01, f11, fx, fy = self._Corners(points)
+        if not covered.any():
+            return result
+
+        top = f00 * (1 - fx) + f10 * fx
+        bottom = f01 * (1 - fx) + f11 * fx
+        result[covered] = top * (1 - fy) + bottom * fy
+        return result
+
+    def SampleDerivative(self, points: np.ndarray) -> np.ndarray:
+        """The gradient of SampleSdf, in mm per mm - the exact derivative of
+        the bilinear interpolant, not of the underlying continuous field.
+
+        The distinction is what makes gradient descent sound. The solver's
+        energy is a function of SampleSdf's output, so its true gradient is
+        the derivative of *that* interpolant. Differencing the raster
+        separately and normalizing gives a slightly different vector, and a
+        force that is not quite the gradient of the energy it claims to
+        minimize can push uphill near a crease and stall the solver. Taking
+        both from the same interpolant keeps them consistent by
+        construction, which the finite-difference test pins down.
+
+        Magnitude is ~1 wherever the field is a well-resolved distance,
+        falling off across creases; use SampleGradient for a pure direction.
+        """
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        result = np.zeros((len(points), 2))
+        covered, f00, f10, f01, f11, fx, fy = self._Corners(points)
+        if not covered.any():
+            return result
+
+        result[covered, 0] = ((f10 - f00) * (1 - fy) + (f11 - f01) * fy) / self.resolution
+        result[covered, 1] = ((f01 - f00) * (1 - fx) + (f11 - f10) * fx) / self.resolution
+        return result
+
+    def SampleGradient(self, points: np.ndarray) -> np.ndarray:
+        """Unit vectors pointing away from the part's interior at each
+        local-mm point - the direction that separates a colliding sample.
+        Zero beyond the rasterized field, where there is nothing to push
+        away from.
+        """
+        derivative = self.SampleDerivative(points)
+        norms = np.linalg.norm(derivative, axis=-1, keepdims=True)
+        return np.divide(derivative, norms, out=np.zeros_like(derivative), where=norms > 1e-9)
+
+
+def _RasterizePolygon(pixels: np.ndarray, height: int, width: int) -> np.ndarray:
+    """A boolean mask of which pixel centers fall inside a polygon given in
+    pixel coordinates, where pixel (r, c)'s center is at (c, r).
+
+    This is a crossing-number test rather than cv2.fillPoly, which rounds
+    the polygon's coordinates to whole pixels and fills inclusively - so an
+    edge landing on a half-pixel (the common case, since a bounding box
+    corner maps to one exactly) gains an extra row or column on the high
+    side but not the low side. That asymmetric half-pixel is invisible in a
+    mask and shows up later as a distance field that disagrees with the
+    geometry by more at one end of a part than the other.
+    """
+    grid_x, grid_y = np.meshgrid(np.arange(width, dtype=np.float64), np.arange(height, dtype=np.float64))
+    x, y = grid_x.ravel(), grid_y.ravel()
+
+    inside = np.zeros(x.shape, dtype=bool)
+    starts = pixels
+    ends = np.roll(pixels, -1, axis=0)
+    for (x0, y0), (x1, y1) in zip(starts, ends):
+        if y0 == y1:
+            continue  # horizontal edges cross no horizontal ray
+        straddles = (y0 > y) != (y1 > y)
+        crossing_x = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
+        inside ^= straddles & (x < crossing_x)
+
+    return inside.reshape(height, width)
+
+
+def BuildPart(
+    contour: np.ndarray,
+    resolution: float = DEFAULT_RESOLUTION_MM,
+    pad: float = DEFAULT_PAD_MM,
+) -> Part:
+    """Rasterize a millimeter contour into a Part: PCA-align it, then build
+    its signed distance field, that field's gradient, and its boundary
+    sample points.
+    """
+    if resolution <= 0:
+        raise ValueError(f"resolution must be positive, got {resolution}")
+    if pad < 0:
+        raise ValueError(f"pad must be non-negative, got {pad}")
+
+    local = _AlignToLocalFrame(contour)
+    if len(local) < 3:
+        raise ValueError(f"a contour needs at least 3 points, got {len(local)}")
+
+    extent = local.max(axis=0)
+    origin = np.array([-pad, -pad])
+    width = int(np.ceil((extent[0] + 2 * pad) / resolution))
+    height = int(np.ceil((extent[1] + 2 * pad) / resolution))
+
+    mask = _RasterizePolygon((local - origin) / resolution - 0.5, height, width)
+
+    # distanceTransform measures to the nearest pixel of opposite state, so
+    # a pixel one step inside the boundary reports 1.0 where the true
+    # distance to the edge between them is 0.5. Subtracting that half pixel
+    # from both sides puts the zero level set on the polygon boundary
+    # instead of half a pixel outside it.
+    filled = mask.astype(np.uint8) * 255
+    inside = cv2.distanceTransform(filled, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    outside = cv2.distanceTransform(255 - filled, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    sdf = (np.where(mask, -(inside - 0.5), outside - 0.5) * resolution).astype(np.float32)
+
+    return Part(
+        contour=local,
+        samples=ResampleBoundary(local, resolution),
+        sdf=sdf,
+        origin=origin,
+        resolution=resolution,
+        pad=pad,
+        area=PolygonArea(local),
+    )

@@ -27,7 +27,7 @@ design rather than to add it.
 
 ## M1 — Geometry primitives
 
-`pipeline/layout.py`, no solver yet.
+`pipeline/layout/`, no solver yet.
 
 - [x] Gridfinity constants: pitch, interior inset, corner radius, wall
   and divider minimums, sourced from
@@ -55,8 +55,8 @@ design rather than to add it.
 rectangle and an L-shape; rotating a part 90° gives a field equal to the
 field of the rotated polygon; the independent overlap predicate agrees
 with hand-checked cases; the three `test_data/` spoons load at their
-measured sizes (200.26, 162.76, 73.93 mm long). **Met** — 46 tests in
-`pipeline/layout_test.py`.
+measured sizes (200.26, 162.76, 73.93 mm long). **Met** — 46 tests across
+`pipeline/layout/{container,part,svg,verify}_test.py`.
 
 Two things M1 turned up that later milestones inherit:
 
@@ -78,25 +78,69 @@ Two things M1 turned up that later milestones inherit:
 
 ## M2 — Energy and forces
 
-- [ ] `LayoutParameters` dataclass: `pocket_offset`, `c_pair`, `c_wall`
+- [x] `LayoutParameters` dataclass: `pocket_offset`, `c_pair`, `c_wall`
   (both derived from `pocket_offset` by default), `raster_resolution`,
   iteration/restart budgets, `seed`, `max_grid`.
-- [ ] Pair term: sample `∂i` against `sdf_j` and `∂j` against `sdf_i`,
+- [x] Pair term: sample `∂i` against `sdf_j` and `∂j` against `sdf_i`,
   quadratic in penetration depth, forces applied equal and opposite.
-- [ ] Wall term: sample every part against the container field.
-- [ ] `Energy(placements)` returning total energy and per-part force,
+- [x] Wall term: sample every part against the container field.
+- [x] `Energy(placements)` returning total energy and per-part force,
   vectorized over sample points.
 
 **Done when:** two identical squares at increasing separation give
 energy that is positive-and-decreasing, then exactly zero past `c_pair`;
 force directions point along the separating axis; a part straddling the
 wall is pushed inward. Finite-difference check: numerical gradient of
-`Energy` matches the returned forces.
+`Energy` matches the returned forces. **Met** — 39 tests in
+`pipeline/layout/energy_test.py`.
+
+Notes for later milestones:
+
+- **The container is analytic, not rasterized.** A rounded rectangle has
+  a closed-form distance function, so it costs no memory, has no
+  resolution to tune, and stays meaningful arbitrarily far outside the
+  bin — which matters because a part that escapes during relaxation has
+  to be pulled back from wherever it went, and a raster would simply end.
+- **Forces come from the derivative of the interpolant**, not from a
+  separately smoothed gradient raster. M1 stored a normalized `gradient`
+  field; M2 dropped it, because a force that is not exactly the gradient
+  of the energy it claims to minimize can push uphill near a crease and
+  stall the solver. Both now come from the same bilinear interpolant, the
+  finite-difference tests hold them together, and each part is ~1.3MB
+  lighter.
+- **Deep overlap reverses the push — this constrains M3.** See below.
 
 ## M3 — Solver
 
-- [ ] Deterministic seeded initialization: parts placed largest-first on
-  a jittered lattice.
+**Read this first: the forces are only trustworthy for shallow overlap.**
+A distance field points toward the nearest way out, so once a sample
+penetrates past the other part's medial axis, the nearest exit is out the
+*far* side and the force flips from separating to attracting. Measured on
+two 10mm squares: correct to ~50% overlap, reversed beyond it, and total
+energy *falls* toward full overlap — so coincident parts are a spurious
+minimum that a descent solver can settle into and report as converged.
+This is inherent to penalty methods on distance fields, not a bug to fix
+in M2. Clamping the trusted depth band was measured and rejected: it
+repairs the mid-range but not near-coincidence, where the failure is
+symmetry rather than depth, and it costs a parameter plus an energy that
+no longer matches D3. The mitigation is the solver's, hence the first two
+boxes below.
+
+- [ ] **Constructive initialization, not a jittered lattice.** Place parts
+  largest-first, each at a position where it does not overlap anything
+  already placed (bounded retries, then best-effort). A lattice can drop
+  two parts on top of each other, which starts the descent inside the
+  reversed regime — it has to climb *out* of a trap before it can begin
+  working. Starting non-overlapping leaves relaxation with only the job it
+  is actually good at: resolving shallow clearance violations. This
+  promotes what was previously the M3 fallback heuristic to the primary
+  path.
+- [ ] Abort on `EnergyResult.engulfed` (`containment >= 1.0`), restarting
+  rather than descending. Containment is chosen over penetration depth
+  deliberately: it is a *fraction*, so 1.0 means swallowed at any scale,
+  with no size-dependent threshold to tune. Crossing gets no such
+  treatment — overlapping parts are the ordinary midway state of a
+  relaxation and resolve themselves.
 - [ ] Damped descent loop with decaying jitter; early exit on `E = 0`.
 - [ ] Restart loop, re-seeding positions *and* the orientation
   assignment (orientation is discrete — only restarts explore it).
@@ -105,7 +149,9 @@ wall is pushed inward. Finite-difference check: numerical gradient of
 **Done when:** three rectangles with a known-tight packing into a 1x3 are
 placed without overlap, repeatably; the same seed reproduces a
 byte-identical layout; a deliberately over-full bin fails cleanly rather
-than returning an overlapping layout.
+than returning an overlapping layout; and a run started from deliberately
+stacked parts either separates them or reports failure — it must never
+return a layout with parts on top of each other.
 
 ## M4 — Grid size search
 
@@ -225,10 +271,10 @@ bin's frozenset of part ids, exactly as M8 caches packing results.
 
 ## Risks
 
-- **Local minima.** If the annealed restarts routinely fail on
-  feasible-looking sets, the fallback is a bottom-left-fill construction
-  heuristic to seed the relaxation instead of a jittered lattice. Decide
-  at M3; do not build both up front.
+- **Local minima.** The construction heuristic that was this risk's
+  fallback is now M3's primary initialization, for the deep-overlap reason
+  above. If annealed restarts still fail routinely on feasible-looking
+  sets, the next lever is the jitter schedule, not another initializer.
 - **Raster resolution vs. speed.** 0.25 mm/px is a guess. If pair
   evaluation dominates runtime, drop to 0.5 mm/px and widen clearances to
   compensate — but only with M4's sweep confirming zero overlaps at the

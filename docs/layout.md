@@ -268,21 +268,35 @@ unlucky — so a size is only rejected after its full restart budget, and
 the report distinguishes "provably too small" (bound violated) from
 "could not find an arrangement".
 
-### D7: Module, CLI, and GUI stage
+### D7: Package, CLI, and GUI stage
+
+Layout is a package rather than a module — it is a subsystem with several
+distinct concerns, and one file holding all of them passed 800 lines
+before the solver was even written, against a house style of 100-375.
 
 ```
-pipeline/layout.py           geometry + solver, no Qt import
-pipeline/layout_test.py      unit tests
-pipeline/layout_stage.py     Stage subclass, group box, Qt
-layout_cli.py                headless entry point
+pipeline/layout/container.py   the bin interior, from the Gridfinity spec
+pipeline/layout/part.py        a contour and its signed distance field
+pipeline/layout/placement.py   a part positioned in a bin
+pipeline/layout/energy.py      clearance violation and the forces to fix it
+pipeline/layout/solver.py      a solved arrangement, and the search for one
+pipeline/layout/svg.py         reading contours out of exported SVGs
+pipeline/layout/verify.py      independent checks, no code shared with above
+pipeline/layout/*_test.py      one test module per source module
+pipeline/layout_stage.py       Stage subclass, group box, Qt
+layout_cli.py                  headless entry point
 ```
 
-The split mirrors the existing pattern
+Dependencies run one way: `container` and `part` depend on nothing local,
+`placement` on `part`, `energy` on all three, `svg` and `solver` above
+that, and `verify` deliberately to one side. Nothing in the package
+imports Qt, so all of it is unit-testable without a display.
+
+The stage stays outside the package, mirroring the existing pattern
 ([contour_extraction.py](../pipeline/contour_extraction.py) vs.
-[contour_selection_stage.py](../pipeline/contour_selection_stage.py)):
-the core module is pure geometry and is unit-testable without a display,
-and the stage is a thin adapter that owns a `LayoutParameters` dataclass
-and builds its group box via `CreateGroupBox`.
+[contour_selection_stage.py](../pipeline/contour_selection_stage.py)): a
+thin adapter that owns a `LayoutParameters` and builds its group box via
+`CreateGroupBox`, keeping the geometry free of the GUI.
 
 The CLI reads contours from a file and writes a layout preview SVG, so
 the packer can be iterated on without launching the GUI or re-running
