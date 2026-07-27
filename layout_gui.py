@@ -20,8 +20,8 @@ import os
 import sys
 
 import numpy as np
-from PyQt5.QtCore import QLibraryInfo, Qt
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtCore import QLibraryInfo, Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QCloseEvent, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -34,7 +34,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from pipeline.core import CreateGroupBox, Pipeline
+from pipeline.core import CreateGroupBox
 from pipeline.layout.loading import ReadContours
 from pipeline.layout_stage import LayoutStage
 
@@ -42,6 +42,39 @@ from pipeline.layout_stage import LayoutStage
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
 
 CONTOUR_FILE_FILTER = "Contours (*.json *.svg);;Contour dumps (*.json);;SVG files (*.svg)"
+
+
+class PackWorker(QThread):
+    """Runs a pack off the UI thread.
+
+    Worth the thread rather than pumping the event loop between restarts:
+    pumping re-enters every widget mid-computation, so the panel has to be
+    disabled to stay safe, and the window still cannot repaint or resize.
+    The packer touches no Qt and shares nothing but the stage it was handed,
+    which the main thread agrees not to read until `packed` arrives.
+    """
+
+    progressed = pyqtSignal(object)  # packer.Progress
+    packed = pyqtSignal()
+
+    def __init__(self, stage: LayoutStage, contours: dict[int, np.ndarray]) -> None:
+        super().__init__()
+        self._stage = stage
+        self._contours = contours
+        self._cancelled = False
+
+    def Cancel(self) -> None:
+        """Ask the search to stop at its next restart.
+
+        A plain flag rather than a lock: one thread only ever writes it and
+        one only ever reads it, and a poll that misses by one restart costs
+        a fraction of a second.
+        """
+        self._cancelled = True
+
+    def run(self) -> None:
+        self._stage.Run(self._contours, progress=self.progressed.emit, cancelled=lambda: self._cancelled)
+        self.packed.emit()
 
 
 class LayoutGui(QMainWindow):
@@ -58,9 +91,12 @@ class LayoutGui(QMainWindow):
         self.sources: list[str] = []
         self.layout_stage = LayoutStage()
 
-        self.pipeline = Pipeline()
-        self.pipeline.Register("layout", self.pack, downstream=["display"])
-        self.pipeline.Register("display", self.update_display)
+        # No `Pipeline` here, unlike the capture window. Its stages run
+        # downstream targets as soon as the stage returns, which is exactly
+        # wrong for work that finishes on another thread - "display" would
+        # fire while the pack was still going. The finished signal is what
+        # sequences this instead.
+        self._worker: PackWorker | None = None
 
         self.init_ui()
 
@@ -73,13 +109,18 @@ class LayoutGui(QMainWindow):
         control_layout = QVBoxLayout(control_panel)
         control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        control_layout.addWidget(self._CreateSourceWidget())
+        # Held so a running pack can freeze the things that would change
+        # what it is packing, or export a result that does not exist yet.
+        # The Layout box itself stays live - that is where Cancel is.
+        self.source_group = self._CreateSourceWidget()
+        control_layout.addWidget(self.source_group)
 
         # Packing runs on the Pack button inside this group box, never on a
         # parameter edit - see LayoutStage.
-        control_layout.addWidget(self.layout_stage.CreateWidget(on_change=lambda: self.pipeline.RunFrom("layout")))
+        control_layout.addWidget(self.layout_stage.CreateWidget(on_change=self.pack, on_cancel=self.cancel_pack))
 
-        control_layout.addWidget(self._CreateExportWidget())
+        self.export_group = self._CreateExportWidget()
+        control_layout.addWidget(self.export_group)
         control_layout.addStretch(1)
 
         self.image_label = QLabel()
@@ -176,7 +217,65 @@ class LayoutGui(QMainWindow):
     # ------------------------------------------------------------- packing
 
     def pack(self) -> None:
-        self.layout_stage.Run(self.contours)
+        """Start a pack on a worker thread. Returns immediately."""
+        if self._worker is not None:
+            return
+
+        # A snapshot, so loading more contours mid-pack cannot change the
+        # set underneath the search.
+        self._worker = PackWorker(self.layout_stage, dict(self.contours))
+        self._worker.progressed.connect(self._OnProgress)
+        self._worker.packed.connect(self._OnPacked)
+        self.layout_stage.SetBusy(True)
+        self.layout_stage.SetStatus(f"Layout: packing {len(self.contours)} contours...")
+        self._SetSourcesEditable(False)
+        self._worker.start()
+
+    def cancel_pack(self) -> None:
+        worker = self._worker
+        if worker is not None:
+            worker.Cancel()
+            self.layout_stage.SetStatus("Layout: stopping...")
+
+    def _OnProgress(self, progress) -> None:
+        self.layout_stage.SetStatus(f"Layout: packing... {progress}")
+
+    def _OnPacked(self) -> None:
+        self._worker = None
+        self.layout_stage.SetBusy(False)
+        self._SetSourcesEditable(True)
+        self.layout_stage.RefreshStatus()
+        self.update_display()
+
+    def _SetSourcesEditable(self, editable: bool) -> None:
+        self.source_group.setEnabled(editable)
+        self.export_group.setEnabled(editable)
+
+    def WaitForPack(self, timeout_ms: int = 120000) -> None:
+        """Block until any running pack has finished and its signals have
+        been delivered.
+
+        Needed on the way out - a QThread still running when its window is
+        destroyed terminates the process - and it is how a test drives an
+        asynchronous pack without an event loop of its own.
+        """
+        worker = self._worker
+        if worker is None:
+            return
+        worker.wait(timeout_ms)
+        QApplication.processEvents()
+
+    # Parameter named `a0` to match PyQt5's own stub, which declares it
+    # that way - anything else reads as an incompatible override.
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
+        """Stop and join any running pack before the window goes away.
+
+        A QThread still running when its object is destroyed terminates the
+        process, so this is not merely tidy.
+        """
+        self.cancel_pack()
+        self.WaitForPack()
+        super().closeEvent(a0)
 
     # ------------------------------------------------------------- display
 

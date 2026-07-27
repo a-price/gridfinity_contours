@@ -15,6 +15,7 @@ from an unavoidable one.
 """
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from pipeline.layout.container import BuildContainer, Container
 from pipeline.layout.energy import LayoutParameters
@@ -25,6 +26,27 @@ from pipeline.layout.solver import FittingOrientations, SolveFixedGrid
 PACKED = "packed"
 TOO_SMALL = "too small"
 NOT_FOUND = "not found"
+CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class Progress:
+    """Where the search has got to, for a caller that wants to show it.
+
+    Reported per restart rather than per grid size, because the sizes that
+    are cheap to reject are rejected instantly and the one that is not can
+    take the entire restart budget. A per-grid report would sit unchanged
+    for exactly the stretch a user most needs to see something moving.
+    """
+
+    grid: tuple[int, int]
+    attempt: int  # zero-based restart within this grid
+    restarts: int
+    grids_tried: int  # candidate sizes considered so far, this one included
+
+    def __str__(self) -> str:
+        n, m = self.grid
+        return f"{n}x{m}, attempt {self.attempt + 1}/{self.restarts} ({self.grids_tried} sizes tried)"
 
 
 @dataclass(frozen=True)
@@ -70,9 +92,20 @@ class PackResult:
         """
         return [attempt for attempt in self.attempts if attempt.outcome == NOT_FOUND]
 
+    @property
+    def cancelled(self) -> bool:
+        """Whether the search was stopped rather than finished.
+
+        Kept distinct from failure: a cancelled search says nothing about
+        whether the parts fit, so nothing may conclude from it.
+        """
+        return any(attempt.outcome == CANCELLED for attempt in self.attempts)
+
     def Report(self) -> str:
         lines = [str(attempt) for attempt in self.attempts]
-        if self.layout is None:
+        if self.cancelled:
+            lines.append("search cancelled - larger sizes were never tried")
+        elif self.layout is None:
             lines.append("no grid size up to the configured maximum could hold these parts")
         elif self.skipped:
             smaller = ", ".join(f"{a.grid[0]}x{a.grid[1]}" for a in self.skipped)
@@ -131,7 +164,29 @@ def ProvablyTooSmall(parts: dict[int, Part], container: Container, params: Layou
     return None
 
 
-def Pack(parts: dict[int, Part], params: LayoutParameters | None = None) -> PackResult:
+def _AttemptReporter(
+    progress: Callable[[Progress], None] | None,
+    grid: tuple[int, int],
+    restarts: int,
+    grids_tried: int,
+) -> Callable[[int], None] | None:
+    """Bind one grid size's context onto a progress callback.
+
+    A factory rather than a closure written in the loop, so each grid's
+    values are bound by argument passing instead of by whatever the loop
+    variables happen to hold when the callback fires.
+    """
+    if progress is None:
+        return None
+    return lambda attempt: progress(Progress(grid, attempt, restarts, grids_tried))
+
+
+def Pack(
+    parts: dict[int, Part],
+    params: LayoutParameters | None = None,
+    progress: Callable[[Progress], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
+) -> PackResult:
     """Fit every part into the smallest grid that will take them.
 
     Candidates are tried smallest-area first and the first success is
@@ -140,13 +195,25 @@ def Pack(parts: dict[int, Part], params: LayoutParameters | None = None) -> Pack
     bounds-feasible size fails, the search steps up rather than giving up:
     a usable bin beats none, and `PackResult.skipped` records what was left
     behind so an oversized result stays traceable.
+
+    `progress`, if given, is called as the search moves - see `Progress`.
+    `cancelled` is polled between and during grid sizes; a search stopped
+    that way is recorded as CANCELLED rather than NOT_FOUND, because "you
+    stopped me" is not evidence about the bin and must not be read as
+    "this size might have worked".
     """
     params = params or LayoutParameters()
     if not parts:
         raise ValueError("nothing to pack")
 
+    stopped = cancelled if cancelled is not None else lambda: False
+
     attempts: list[GridAttempt] = []
     for n, m in CandidateGrids(params.max_grid):
+        if stopped():
+            attempts.append(GridAttempt((n, m), CANCELLED, "stopped before this size was tried"))
+            break
+
         container = BuildContainer(n, m, params.inset)
 
         reason = ProvablyTooSmall(parts, container, params)
@@ -154,8 +221,12 @@ def Pack(parts: dict[int, Part], params: LayoutParameters | None = None) -> Pack
             attempts.append(GridAttempt((n, m), TOO_SMALL, reason))
             continue
 
-        layout = SolveFixedGrid(parts, n, m, params)
+        reporter = _AttemptReporter(progress, (n, m), params.restarts, len(attempts) + 1)
+        layout = SolveFixedGrid(parts, n, m, params, reporter, cancelled)
         if layout is None:
+            if stopped():
+                attempts.append(GridAttempt((n, m), CANCELLED, "stopped while searching this size"))
+                break
             attempts.append(GridAttempt((n, m), NOT_FOUND, f"no arrangement in {params.restarts} attempts"))
             continue
 

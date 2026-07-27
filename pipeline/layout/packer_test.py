@@ -13,11 +13,13 @@ from pipeline.layout.container import BuildContainer, InteriorSpan
 from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.packer import (
+    CANCELLED,
     NOT_FOUND,
     PACKED,
     TOO_SMALL,
     CandidateGrids,
     Pack,
+    Progress,
     ProvablyTooSmall,
     RequiredArea,
 )
@@ -337,3 +339,114 @@ def test_random_part_sets_never_produce_an_overlapping_layout(chunk):
     # Most trials must actually produce something to check, or the sweep
     # is passing by not testing anything.
     assert checked >= 0.8 * len(trials), f"only {checked} of {len(trials)} trials produced a layout to check"
+
+
+# --------------------------------------------------------------- progress
+
+
+def test_progress_carries_the_restart_budget_it_is_counting_against():
+    """ "attempt 3" means nothing without the total. Whether more than one
+    attempt is actually needed is stochastic, so the per-restart cadence
+    itself is pinned in solver_test against a bin nothing can pack.
+    """
+    params = _quick(restarts=3, iterations=40, max_grid=2)
+    parts = BuildParts({i: _rectangle(30, 25) for i in range(2)}, params)
+    seen = []
+
+    Pack(parts, params, progress=seen.append)
+
+    assert seen, "expected progress from a search that reached the solver"
+    assert all(report.restarts == 3 for report in seen)
+    assert all(0 <= report.attempt < 3 for report in seen)
+
+
+def test_progress_reports_the_grid_being_tried():
+    params = _quick(restarts=2, iterations=40, max_grid=2)
+    parts = BuildParts({0: _rectangle(60, 25)}, params)
+    seen = []
+
+    Pack(parts, params, progress=seen.append)
+
+    # 1x1 is rejected by the extent bound without reaching the solver, so
+    # the only grid reported is the one actually searched.
+    assert {report.grid for report in seen} == {(2, 1)}
+
+
+def test_progress_counts_the_sizes_already_ruled_out():
+    params = _quick(restarts=1, iterations=40, max_grid=2)
+    parts = BuildParts({0: _rectangle(60, 25)}, params)
+    seen = []
+
+    Pack(parts, params, progress=seen.append)
+
+    # 1x1 was tried and rejected, 2x1 is being searched: two sizes.
+    assert seen[0].grids_tried == 2
+
+
+def test_progress_renders_as_something_readable():
+    report = Progress((3, 2), attempt=4, restarts=24, grids_tried=7)
+
+    assert str(report) == "3x2, attempt 5/24 (7 sizes tried)"
+
+
+def test_packing_without_a_progress_callback_still_works():
+    params = _quick(restarts=2, iterations=40, max_grid=2)
+    parts = BuildParts({0: _rectangle(30, 25)}, params)
+
+    assert Pack(parts, params).layout is not None
+
+
+# ------------------------------------------------------------- cancellation
+
+
+def test_a_cancelled_search_is_not_recorded_as_a_failure():
+    """ "You stopped me" is not evidence about the bin. Recorded as
+    NOT_FOUND it would land in `skipped` and claim a tighter packing might
+    exist at a size that was never actually searched.
+    """
+    params = _quick(restarts=4, iterations=40, max_grid=3)
+    parts = BuildParts({0: _rectangle(30, 25)}, params)
+
+    result = Pack(parts, params, cancelled=lambda: True)
+
+    assert result.layout is None
+    assert result.cancelled
+    assert result.skipped == [], "a cancelled size must not read as one the search merely lost"
+    assert "cancelled" in result.Report()
+
+
+def test_cancelling_stops_the_sweep_early():
+    params = _quick(restarts=2, iterations=40, max_grid=4)
+    parts = BuildParts({0: _rectangle(30, 25)}, params)
+
+    result = Pack(parts, params, cancelled=lambda: True)
+
+    assert len(result.attempts) == 1, "nothing after the first size should have been tried"
+    assert result.attempts[0].outcome == CANCELLED
+
+
+def test_a_search_that_is_never_cancelled_behaves_as_before():
+    params = _quick(restarts=2, iterations=60)
+    parts = BuildParts({0: _rectangle(30, 25)}, params)
+
+    result = Pack(parts, params, cancelled=lambda: False)
+
+    assert result.layout is not None
+    assert not result.cancelled
+
+
+def test_cancelling_partway_keeps_what_was_already_learned():
+    """The sizes ruled out before the stop are still facts, and a rerun
+    should not have to rediscover them from the report.
+    """
+    params = _quick(restarts=2, iterations=40, max_grid=4)
+    parts = BuildParts({0: _rectangle(60, 25)}, params)
+    calls = []
+
+    def cancelled() -> bool:
+        calls.append(1)
+        return len(calls) > 3
+
+    result = Pack(parts, params, cancelled=cancelled)
+
+    assert any(attempt.outcome == TOO_SMALL for attempt in result.attempts)

@@ -36,6 +36,26 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
     return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
 
 
+def _slow() -> LayoutParameters:
+    """A budget big enough that a search is certainly still running when
+    the call to start it returns.
+    """
+    return LayoutParameters(restarts=400, iterations=400, patience=200, max_grid=5)
+
+
+def _unpackable() -> dict:
+    """Parts that keep the solver busy: each fits a cell, together they
+    defeat every size the search will reach before being stopped.
+    """
+    return {index: _rectangle(34.0, 34.0) for index in range(6)}
+
+
+def _pack(gui) -> None:
+    """Start a pack and wait for it, since packing is asynchronous now."""
+    gui.pack()
+    gui.WaitForPack()
+
+
 def _dump(tmp_path, name, contours) -> str:
     path = str(tmp_path / name)
     SaveContours(path, contours)
@@ -109,7 +129,7 @@ def test_loading_more_contours_drops_a_stale_layout(gui, tmp_path):
     makes the picture on screen a lie.
     """
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
-    gui.pipeline.RunFrom("layout")
+    _pack(gui)
     assert gui.layout_stage.layout is not None
 
     gui.load_contours([_dump(tmp_path, "b.json", {0: _rectangle(18.0, 12.0)})])
@@ -120,18 +140,18 @@ def test_loading_more_contours_drops_a_stale_layout(gui, tmp_path):
 # ------------------------------------------------------------------ packing
 
 
-def test_packing_runs_only_from_the_pipeline_trigger(gui, tmp_path):
+def test_packing_runs_only_when_triggered(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
 
     assert gui.layout_stage.layout is None, "loading must not pack"
 
-    gui.pipeline.RunFrom("layout")
+    _pack(gui)
 
     assert gui.layout_stage.layout is not None
 
 
 def test_packing_with_nothing_loaded_says_so(gui):
-    gui.pipeline.RunFrom("layout")
+    _pack(gui)
 
     assert gui.layout_stage.layout is None
     assert "no contours" in gui.layout_stage.Summary().lower()
@@ -140,7 +160,7 @@ def test_packing_with_nothing_loaded_says_so(gui):
 def test_a_packed_layout_reaches_the_image_view(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
 
-    gui.pipeline.RunFrom("layout")
+    _pack(gui)
 
     pixmap = gui.image_label.pixmap()
     assert pixmap is not None and not pixmap.isNull()
@@ -157,7 +177,7 @@ def test_the_view_prompts_before_anything_is_packed(gui):
 
 def test_exporting_writes_both_files(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
-    gui.pipeline.RunFrom("layout")
+    _pack(gui)
     gui.export_edit.setText(str(tmp_path / "out"))
 
     gui.export_layout()
@@ -182,11 +202,102 @@ def test_a_chosen_svg_filename_does_not_become_svg_svg(gui, tmp_path):
     gui.export_edit.setText(base if extension.lower() in (".svg", ".pdf") else gui.export_edit.text())
 
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
-    gui.pipeline.RunFrom("layout")
+    _pack(gui)
     gui.export_layout()
 
     assert (tmp_path / "layout.svg").exists()
     assert not (tmp_path / "layout.svg.svg").exists()
+
+
+# --------------------------------------------------------- off the ui thread
+
+
+def test_a_pack_runs_on_a_worker_thread(gui, tmp_path):
+    """pack() must come straight back with the search still going, or none
+    of the rest of this matters - a thread that is joined immediately is
+    just a slow function call.
+
+    Given a search long enough that it cannot plausibly have finished in
+    the time it takes to return.
+    """
+    gui.layout_stage.parameters = _slow()
+    gui.load_contours([_dump(tmp_path, "a.json", _unpackable())])
+
+    gui.pack()
+
+    assert gui._worker is not None
+    assert gui._worker.isRunning(), "pack() returned only after the search finished"
+    assert gui.layout_stage.result is None, "no result should exist yet"
+
+    gui.cancel_pack()
+    gui.WaitForPack()
+    assert gui._worker is None, "the worker should be cleared once it reports back"
+
+
+def test_progress_reaches_the_panel_while_packing(gui, tmp_path):
+    gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(60.0, 25.0)})])
+    seen = []
+    gui.layout_stage.SetStatus = lambda text: seen.append(text)
+
+    _pack(gui)
+
+    assert any("packing" in text for text in seen)
+
+
+def test_cancelling_stops_the_search_without_claiming_failure(gui, tmp_path):
+    """A cancelled search says nothing about whether the parts fit, so the
+    panel must not read as though the bin were too small.
+    """
+    gui.layout_stage.parameters = _slow()
+    gui.load_contours([_dump(tmp_path, "a.json", _unpackable())])
+
+    gui.pack()
+    gui.cancel_pack()
+    gui.WaitForPack()
+
+    result = gui.layout_stage.result
+    assert result is not None and result.cancelled
+    assert result.layout is None
+    assert "cancelled" in gui.layout_stage.Summary().lower()
+    assert "no fit" not in gui.layout_stage.Summary()
+
+
+def test_a_second_pack_is_ignored_while_one_is_running(gui, tmp_path):
+    gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
+
+    gui.pack()
+    first = gui._worker
+    gui.pack()
+
+    assert gui._worker is first, "a second Pack must not start a competing search"
+    gui.WaitForPack()
+
+
+def test_the_sources_are_frozen_while_a_pack_runs(gui, tmp_path):
+    """The search holds a snapshot, but letting the panel be edited would
+    still leave the on-screen file list describing a different set than the
+    result about to arrive.
+    """
+    gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
+
+    gui.pack()
+    assert not gui.source_group.isEnabled()
+    assert not gui.export_group.isEnabled()
+
+    gui.WaitForPack()
+    assert gui.source_group.isEnabled()
+    assert gui.export_group.isEnabled()
+
+
+def test_closing_the_window_does_not_leave_a_thread_running(gui, tmp_path):
+    # A QThread still running when its window is destroyed takes the
+    # process down with it.
+    gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
+    gui.pack()
+
+    gui.close()
+
+    assert gui._worker is None or not gui._worker.isRunning()
 
 
 # ----------------------------------------------------------------- the real thing
@@ -202,7 +313,7 @@ def test_the_three_spoon_captures_pack_in_the_window(qapp):
 
     assert len(window.contours) == 3
 
-    window.pipeline.RunFrom("layout")
+    _pack(window)
 
     layout = window.layout_stage.layout
     assert layout is not None

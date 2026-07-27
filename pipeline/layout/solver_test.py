@@ -411,3 +411,28 @@ def test_interior_spans_used_by_these_tests_are_what_we_think():
     assert InteriorSpan(1) == pytest.approx(36.3)
     assert InteriorSpan(3) == pytest.approx(120.3)
     assert InteriorSpan(5) == pytest.approx(204.3)
+
+
+def test_every_restart_is_reported():
+    """The progress hook fires once per restart, which is what lets a GUI
+    show motion during the one grid size that takes real time.
+
+    Checked against a bin nothing can pack, so the full budget runs and the
+    count is deterministic - a solvable case stops at whichever attempt
+    happens to work.
+    """
+    params = _quick(restarts=5, iterations=40)
+    parts = BuildParts({i: _rectangle(30, 30) for i in range(4)}, params)
+    seen = []
+
+    layout = SolveFixedGrid(parts, 2, 1, params, on_attempt=seen.append)
+
+    assert layout is None, "this bin should defeat the search, or the count below is not the budget"
+    assert seen == [0, 1, 2, 3, 4]
+
+
+def test_the_progress_hook_is_optional():
+    params = _quick(restarts=2, iterations=40)
+    parts = BuildParts({0: _rectangle(30, 25)}, params)
+
+    assert SolveFixedGrid(parts, 1, 1, params) is not None

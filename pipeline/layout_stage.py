@@ -10,12 +10,12 @@ parameter moved".
 from typing import Callable
 
 import numpy as np
-from PyQt5.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
 from pipeline.layout.energy import LayoutParameters
 from pipeline.layout.loading import BuildParts
-from pipeline.layout.packer import Pack, PackResult
+from pipeline.layout.packer import Pack, PackResult, Progress
 from pipeline.layout.part import Part
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
 from pipeline.layout.render import DEFAULT_PIXELS_PER_MM, RenderLayout
@@ -36,28 +36,31 @@ class LayoutStage(Stage):
         self.parts: dict[int, Part] = {}
         self._status_label: QLabel | None = None
         self._pack_button: QPushButton | None = None
+        self._cancel_button: QPushButton | None = None
 
-    def Run(self, contours: dict[int, np.ndarray]) -> None:
+    def Run(
+        self,
+        contours: dict[int, np.ndarray],
+        progress: Callable[[Progress], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> None:
         """Pack `contours` (real-world mm, e.g. Rectify.contours).
 
-        Called from the Pack button, never from a parameter edit.
+        Touches no widgets, so it is safe to call from a worker thread -
+        which is how the window runs it. Progress arrives through the
+        callback rather than being written to the status label here,
+        because a label written from the wrong thread is undefined
+        behavior in Qt, not merely bad practice.
         """
         self.Clear()
         if not contours:
             # Packed nothing, having tried nothing - which Summary tells
             # apart from never having been asked.
             self.result = PackResult(None, [])
-            self._SetStatus(self.Summary())
             return
 
-        self._SetStatus(f"Layout: packing {len(contours)} contours...")
-        self._SetBusy(True)
-        try:
-            self.parts = BuildParts(contours, self.parameters)
-            self.result = Pack(self.parts, self.parameters)
-        finally:
-            self._SetBusy(False)
-        self._SetStatus(self.Summary())
+        self.parts = BuildParts(contours, self.parameters)
+        self.result = Pack(self.parts, self.parameters, progress=progress, cancelled=cancelled)
 
     def Clear(self) -> None:
         """Drop the current layout, so the image view goes back to showing
@@ -115,6 +118,10 @@ class LayoutStage(Stage):
             attempts = self.result.attempts
             if not attempts:
                 return "Layout: no contours selected"
+            if self.result.cancelled:
+                # Deliberately not phrased as a failure: nothing was
+                # learned about whether these parts fit.
+                return f"Layout: cancelled after {len(attempts)} sizes"
             reason = attempts[-1].detail
             return f"Layout: no fit up to {self.parameters.max_grid}x{self.parameters.max_grid} - {reason}"
 
@@ -125,26 +132,29 @@ class LayoutStage(Stage):
             summary += f"\n{smaller} was not ruled out - a tighter packing may exist"
         return summary
 
-    def _SetStatus(self, text: str) -> None:
+    def SetStatus(self, text: str) -> None:
+        """Put arbitrary text in the panel - progress, while a pack runs.
+
+        Called from the main thread only; the window marshals the worker's
+        progress onto it through a signal.
+        """
         if self._status_label is not None:
             self._status_label.setText(text)
-            # Repaint now: the pack that follows blocks the event loop for
-            # seconds, and a "packing..." label that only appears once the
-            # packing has finished is worse than none.
-            QApplication.processEvents()
 
-    def _SetBusy(self, busy: bool) -> None:
-        """Disable Pack while a pack is running.
-
-        Necessary because _SetStatus pumps the event loop, which would
-        otherwise let a second click re-enter Run in the middle of the
-        first.
+    def RefreshStatus(self) -> None:
+        """Put the current state back in the panel, once progress text has
+        served its purpose.
         """
+        self.SetStatus(self.Summary())
+
+    def SetBusy(self, busy: bool) -> None:
+        """Swap the panel between "can start a pack" and "can stop one"."""
         if self._pack_button is not None:
             self._pack_button.setEnabled(not busy)
-            QApplication.processEvents()
+        if self._cancel_button is not None:
+            self._cancel_button.setEnabled(busy)
 
-    def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
+    def CreateWidget(self, on_change: Callable[[], None], on_cancel: Callable[[], None] | None = None) -> QWidget:
         widget, layout = CreateGroupBox("Layout")
 
         clearances = QLabel()
@@ -206,6 +216,16 @@ class LayoutStage(Stage):
         self._pack_button = QPushButton("Pack")
         self._pack_button.clicked.connect(on_change)
         layout.addWidget(self._pack_button)
+
+        # Only useful to a host that runs the pack somewhere it can be
+        # interrupted, so it stays hidden unless one is offered.
+        self._cancel_button = QPushButton("Cancel")
+        self._cancel_button.setEnabled(False)
+        if on_cancel is None:
+            self._cancel_button.setVisible(False)
+        else:
+            self._cancel_button.clicked.connect(on_cancel)
+        layout.addWidget(self._cancel_button)
 
         self._status_label = QLabel(self.Summary())
         self._status_label.setWordWrap(True)

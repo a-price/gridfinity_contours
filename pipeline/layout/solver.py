@@ -20,6 +20,8 @@ gives the same bin twice; a layout that did not reproduce would not match
 the sheet printed alongside it.
 """
 
+from typing import Callable
+
 import numpy as np
 
 from pipeline.layout.container import BuildContainer, Container
@@ -296,6 +298,8 @@ def SolveFixedGrid(
     n: int,
     m: int,
     params: LayoutParameters | None = None,
+    on_attempt: Callable[[int], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> Layout | None:
     """Arrange every part inside an `n x m` bin, or return None if this many
     attempts could not.
@@ -303,6 +307,15 @@ def SolveFixedGrid(
     None means "not found", not "impossible" - the search is stochastic, so
     a failure here is only evidence. M4's bounds are what establish that a
     grid size is genuinely too small.
+
+    `on_attempt` is called with each restart's index before it runs. The
+    restart loop is where essentially all the time goes, so it is the only
+    hook frequent enough to be worth reporting - and reporting it is the
+    difference between a window that is busy and a window that looks hung.
+
+    `cancelled` is polled at the same point. A cancelled search returns
+    None like an exhausted one; telling the two apart is `Pack`'s job,
+    since only it knows whether to step up to a larger bin or stop.
     """
     params = params or LayoutParameters()
     container = BuildContainer(n, m, params.inset)
@@ -315,6 +328,11 @@ def SolveFixedGrid(
         return None
 
     for attempt in range(params.restarts):
+        if cancelled is not None and cancelled():
+            return None
+        if on_attempt is not None:
+            on_attempt(attempt)
+
         # Seeded per attempt rather than drawn from one long stream, so an
         # attempt reproduces on its own and raising the restart budget does
         # not renumber the attempts that came before it.

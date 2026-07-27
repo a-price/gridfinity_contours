@@ -44,6 +44,11 @@ def _labels(widget) -> str:
     return "\n".join(label.text() for label in _widgets(widget, QLabel))
 
 
+def _button(widget, text: str) -> QPushButton:
+    (found,) = [button for button in _widgets(widget, QPushButton) if button.text() == text]
+    return found
+
+
 # --------------------------------------------------------- explicit trigger
 
 
@@ -65,8 +70,7 @@ def test_the_pack_button_is_what_triggers(qapp):
     packs = []
     widget = stage.CreateWidget(on_change=lambda: packs.append(1))
 
-    (button,) = _widgets(widget, QPushButton)
-    button.click()
+    _button(widget, "Pack").click()
 
     assert packs == [1]
 
@@ -117,6 +121,7 @@ def test_packing_nothing_reports_it_rather_than_raising(qapp):
     widget = stage.CreateWidget(on_change=lambda: None)
 
     stage.Run({})
+    stage.RefreshStatus()
 
     assert stage.layout is None
     assert "no contours selected" in _labels(widget)
@@ -127,6 +132,7 @@ def test_a_successful_pack_reports_the_grid_size(qapp):
     widget = stage.CreateWidget(on_change=lambda: None)
 
     stage.Run({0: _rectangle(20.0, 10.0)})
+    stage.RefreshStatus()
 
     assert "1x1" in _labels(widget)
     assert "1 cells" in _labels(widget)
@@ -140,6 +146,7 @@ def test_a_failure_reports_why_rather_than_just_failing(qapp):
     widget = stage.CreateWidget(on_change=lambda: None)
 
     stage.Run({0: _rectangle(200.0, 30.0)})
+    stage.RefreshStatus()
 
     text = _labels(widget)
     assert "no fit" in text
@@ -218,26 +225,67 @@ def test_clearing_takes_the_view_back_to_the_photo(qapp):
     assert stage.layout is None
 
 
-# -------------------------------------------------------------- reentrancy
+# ------------------------------------------------------ off the ui thread
 
 
-def test_pack_is_disabled_while_packing(qapp):
-    """The status label pumps the event loop so "packing..." actually
-    paints, which would otherwise let a second click re-enter Run.
+def test_running_a_pack_touches_no_widgets(qapp):
+    """Run executes on a worker thread, and a widget written from the wrong
+    thread is undefined behavior in Qt rather than merely poor style. So
+    the label must still say what it said before the pack.
     """
     stage = LayoutStage(_quick())
     widget = stage.CreateWidget(on_change=lambda: None)
-    (button,) = _widgets(widget, QPushButton)
-    seen = []
+    before = _labels(widget)
 
-    original = stage._SetBusy
-
-    def record(busy: bool) -> None:
-        seen.append((busy, button.isEnabled()))
-        original(busy)
-
-    stage._SetBusy = record
     stage.Run({0: _rectangle(20.0, 10.0)})
 
-    assert [busy for busy, _ in seen] == [True, False]
-    assert button.isEnabled(), "the button has to come back afterwards"
+    assert _labels(widget) == before
+    assert stage.layout is not None, "the pack itself should still have happened"
+
+
+def test_busy_swaps_which_button_is_live(qapp):
+    stage = LayoutStage(_quick())
+    widget = stage.CreateWidget(on_change=lambda: None, on_cancel=lambda: None)
+    pack, cancel = _button(widget, "Pack"), _button(widget, "Cancel")
+
+    assert pack.isEnabled() and not cancel.isEnabled()
+
+    stage.SetBusy(True)
+    assert not pack.isEnabled() and cancel.isEnabled()
+
+    stage.SetBusy(False)
+    assert pack.isEnabled() and not cancel.isEnabled()
+
+
+def test_cancel_is_hidden_from_a_host_that_cannot_offer_it(qapp):
+    """The CLI-ish case: a host running the pack inline has nothing to
+    interrupt, and a dead button is worse than no button.
+    """
+    stage = LayoutStage(_quick())
+    widget = stage.CreateWidget(on_change=lambda: None)
+
+    assert not _button(widget, "Cancel").isVisible()
+
+
+def test_progress_is_forwarded_to_the_caller(qapp):
+    stage = LayoutStage(_quick(max_grid=2))
+    seen = []
+
+    stage.Run({0: _rectangle(60.0, 25.0)}, progress=seen.append)
+
+    assert seen, "expected the stage to pass the packer's progress on"
+    assert all(report.restarts == stage.parameters.restarts for report in seen)
+
+
+def test_a_cancelled_pack_says_so_rather_than_claiming_failure(qapp):
+    """ "I stopped you" is not evidence that the parts do not fit, and the
+    panel must not read as though it were.
+    """
+    stage = LayoutStage(_quick(max_grid=3))
+
+    stage.Run({0: _rectangle(30.0, 25.0)}, cancelled=lambda: True)
+
+    assert stage.layout is None
+    assert stage.result is not None and stage.result.cancelled
+    assert "cancelled" in stage.Summary().lower()
+    assert "no fit" not in stage.Summary()

@@ -307,6 +307,8 @@ print against a physical bin is Andrew's check.
   the image view, so the screen and the printed sheet cannot drift apart.
 - [x] Report grid size, any failure reason, and whether a smaller size was
   skipped, in the panel.
+- [x] Run the pack on a worker thread, reporting progress per restart and
+  offering Cancel. See below.
 
 **Changed here — the stage does not go in `SVGGui`.** The plan was to
 register it downstream of rectification; building it showed that
@@ -317,6 +319,24 @@ button there could only pack the current frame. It lives in its own
 window, [layout_gui.py](../layout_gui.py), which loads dumps and SVGs and
 accumulates them across files. A common entry point over both may come
 later, once that workflow is understood.
+
+**Threading, not event-loop pumping.** The first version ran the pack
+inline and called `QApplication.processEvents()` between restarts to keep
+the progress label painting. It worked, but it needed two re-entrancy
+guards (disable Pack, then disable the whole panel) precisely because
+pumping makes every widget live again mid-computation, and the window
+still could not repaint or resize. The packer touches no Qt, so it moved
+to a `QThread` (`PackWorker`) that reports progress by signal; `pack()`
+now returns in well under a millisecond. That in turn made Cancel
+possible, which matters when the spoons take ~8 seconds. A cancelled
+search is recorded as `CANCELLED`, never `NOT_FOUND` — "you stopped me"
+is not evidence about the bin, and must not land in `skipped` claiming a
+tighter packing might exist at a size never actually searched.
+
+`LayoutStage.Run` touches no widgets as a result: progress arrives through
+a callback the window marshals onto the UI thread, because a label written
+from a worker thread is undefined behavior in Qt rather than merely poor
+style.
 
 **Done when:** a full contours-to-layout run works in the GUI and the
 stage never blocks on an upstream parameter change. The three spoon
