@@ -43,9 +43,17 @@ into.
 
 Output is a `Layout`: the chosen grid size plus, per contour, a rigid
 placement (translation + one of four orientations) into bin-local mm
-coordinates whose origin is the bin's interior corner. The placed
-polygons are then consumable by the existing SVG/PDF writers (for a
-printed check sheet) and by a bin generator for the `.scad`.
+coordinates whose origin is the bin's interior corner.
+
+Note that the existing writers cannot consume this as-is. Both `WriteSvg`
+and `WritePdf` route through `AlignContoursToPca`
+([svg_writer.py:22](../pipeline/svg_writer.py#L22)), which re-aligns
+*each contour into its own local frame* — correct for exporting one
+shape, fatally wrong for a layout, since it would move every part back
+onto its own origin and discard the arrangement. Emitting a layout
+preview therefore requires factoring the writers into an
+align-then-write wrapper over a write-these-coordinates core, and using
+the core. See M5.
 
 Deliberately *not* an output: the `.scad` itself. Layout stays a geometry
 module; solid generation remains `solid.py`'s job, extended to accept
@@ -398,9 +406,13 @@ determinism rather than exact coordinates:
 - **Feasibility.** For a synthetic set (rectangles with known optimal
   packing), the packer finds the known-optimal grid size.
 - **No overlap.** For randomized part sets, every successful layout is
-  re-checked with an independent, exact Shapely-style polygon test — not
-  the SDF the solver itself used. This is the important one: it catches
-  the raster approximation lying.
+  re-checked with an independent, exact polygon test — not the SDF the
+  solver itself used. This is the important one: it catches the raster
+  approximation lying. `matplotlib.path.Path.intersects_path(..., filled=True)` serves, and matplotlib is already a dependency, so this
+  costs nothing; verified to handle both full containment and the
+  non-convex case that matters (a bar nested in a U's notch reads as
+  *not* overlapping). It reports exact edge contact as overlapping, which
+  is harmless given `c_pair` is millimeters.
 - **Determinism.** Same input + same seed = byte-identical layout.
 - **Bounds.** Every placed part is inside the interior envelope with
   `c_wall` to spare.

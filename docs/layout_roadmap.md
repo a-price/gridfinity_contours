@@ -9,26 +9,44 @@ headless path before the GUI. A stochastic optimizer whose correctness
 check shares code with the optimizer itself is untrustworthy, and one
 that can only be run through a Qt event loop is untunable.
 
+## Working agreement
+
+Work stops at the end of each milestone, once it is functional and its
+tests pass — not partway through, and not rolling on into the next one.
+Each milestone should leave `make check` green and stand as one
+reviewable commit, made by hand after inspection. The "Done when" clause
+on each milestone is the completion criterion; meeting it is the signal
+to stop.
+
+No new dependencies are needed through M8: SDFs use `opencv-python` and
+`numpy`, the test oracle uses `matplotlib`, and the SVG loader uses the
+standard library — all already in `requirements.in`. Only M9's embedding
+provider might add one, and only if CLIP beats the alternatives. If a
+milestone seems to need a new package, that is a signal to re-read the
+design rather than to add it.
+
 ## M1 — Geometry primitives
 
 `pipeline/layout.py`, no solver yet.
 
-- [ ] Gridfinity constants: pitch, interior inset, corner radius, wall
+- [x] Gridfinity constants: pitch, interior inset, corner radius, wall
   and divider minimums, sourced from
   [standard.scad](../gridfinity-rebuilt-openscad/src/core/standard.scad)
   and cited in comments.
-- [ ] `InteriorEnvelope(n, m, inset)` → rounded-rect polygon for an
+- [x] `InteriorEnvelope(n, m, inset)` → rounded-rect polygon for an
   `N x M` bin's usable interior.
-- [ ] `Part`: a contour plus its precomputed raster fields — occupancy
+- [x] `Part`: a contour plus its precomputed raster fields — occupancy
   mask, SDF (negative inside), SDF gradient, boundary sample points
   (vertices plus edge resampling at ~1 raster cell), area, local frame
   origin.
-- [ ] `Placement`: part id, translation, orientation index (0-3), and
+- [x] `Placement`: part id, translation, orientation index (0-3), and
   `ToWorld()` returning the placed polygon in bin coordinates.
-- [ ] Exact, independent overlap predicate for tests — polygon-based, not
-  SDF-based. This is the oracle M4 is validated against, so it must not
-  share code with the solver.
-- [ ] SVG contour loader for `test_data/`, deriving scale as
+- [x] Exact, independent overlap predicate for tests, via
+  `matplotlib.path.Path.intersects_path(..., filled=True)` plus a
+  containment check (matplotlib is already a dependency; verified to
+  handle non-convex nesting and full containment). This is the oracle M4
+  is validated against, so it must not share code with the solver.
+- [x] SVG contour loader for `test_data/`, deriving scale as
   `viewBox_width / width_mm`. **Do not hardcode 96/25.4** — the existing
   fixtures are 1:1 mm and predate that change, so a hardcoded factor
   breaks one format or the other by 3.78x.
@@ -37,7 +55,26 @@ that can only be run through a Qt event loop is untunable.
 rectangle and an L-shape; rotating a part 90° gives a field equal to the
 field of the rotated polygon; the independent overlap predicate agrees
 with hand-checked cases; the three `test_data/` spoons load at their
-measured sizes (200.26, 162.76, 73.93 mm long).
+measured sizes (200.26, 162.76, 73.93 mm long). **Met** — 46 tests in
+`pipeline/layout_test.py`.
+
+Two things M1 turned up that later milestones inherit:
+
+- **`cv2.fillPoly` cannot rasterize these masks.** It rounds polygon
+  coordinates to whole pixels and fills inclusively, so an edge landing on
+  a half-pixel — which a bounding-box corner always does — gains a row or
+  column on the high side but not the low side. That asymmetric half pixel
+  is invisible in the mask and surfaced as a distance field disagreeing
+  with exact geometry by 0.42 mm at one corner and 0.05 mm at the
+  opposite one. `_RasterizePolygon` does a crossing-number test at pixel
+  centers instead; error is now 0.05 mm everywhere, uniformly.
+- **PCA alignment is canonical only up to a 180° rotation.** Handedness
+  correction fixes reflection (D1 forbids mirroring) but cannot see a
+  double sign flip, so the same object photographed at two angles produced
+  two Parts differing by half a turn. Resolved with a third-moment skew
+  tiebreak, which is stable for asymmetric objects and irrelevant for
+  symmetric ones. Worth knowing at M8, where caching keyed on a part's
+  identity assumes a part is a function of the object and not the photo.
 
 ## M2 — Energy and forces
 
@@ -98,8 +135,13 @@ amount of GUI work will fix that.
   `dict[int, ndarray]`), pack, write a preview SVG.
 - [ ] Contour serialization helpers shared with the GUI, so a session's
   contours can be dumped once and iterated on offline.
-- [ ] Preview SVG: one polygon per placed part plus the bin outline and
-  cell grid, at true mm scale, reusing
+- [ ] **Refactor the writers first.** `WriteSvg` and `WritePdf` both call
+  `AlignContoursToPca`, which re-aligns each contour into its own frame
+  and would destroy the arrangement. Split each into an
+  align-then-write wrapper (existing behavior, existing tests unchanged)
+  over a write-these-coordinates core.
+- [ ] Preview SVG on top of that core: one polygon per placed part plus
+  the bin outline and cell grid, at true mm scale, keeping
   [svg_writer.py](../pipeline/svg_writer.py)'s unit conventions (the
   96/25.4 pre-scaling in particular).
 
