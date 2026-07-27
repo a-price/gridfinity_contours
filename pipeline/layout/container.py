@@ -41,23 +41,6 @@ def InteriorSpan(cells: int, inset: float = DEFAULT_INTERIOR_INSET_MM) -> float:
     return GRID_PITCH_MM * cells - BASE_GAP_MM - 2.0 * inset
 
 
-def InteriorEnvelope(
-    n: int,
-    m: int,
-    inset: float = DEFAULT_INTERIOR_INSET_MM,
-    segments_per_corner: int = 8,
-) -> np.ndarray:
-    """The usable interior of an `n x m` bin as a closed polygon, origin at
-    its minimum corner.
-
-    A rounded rectangle: the bin's outer corners carry BASE_TOP_RADIUS, and
-    the wall inset shrinks that to `max(0, radius - inset)` - essentially
-    square on a standard bin, but the term is kept so a lipless or
-    thin-walled bin rounds correctly.
-    """
-    return BuildContainer(n, m, inset).Polygon(segments_per_corner)
-
-
 @dataclass(frozen=True)
 class Container:
     """The bin interior a layout has to stay inside: a rounded rectangle

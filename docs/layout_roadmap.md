@@ -33,8 +33,10 @@ design rather than to add it.
   and divider minimums, sourced from
   [standard.scad](../gridfinity-rebuilt-openscad/src/core/standard.scad)
   and cited in comments.
-- [x] `InteriorEnvelope(n, m, inset)` → rounded-rect polygon for an
-  `N x M` bin's usable interior.
+- [x] `BuildContainer(n, m, inset).Polygon()` → rounded-rect polygon for
+  an `N x M` bin's usable interior. (Originally a free `InteriorEnvelope`
+  function; removed in M5's cleanup once nothing but its own tests called
+  it, since `Container` is what production actually goes through.)
 - [x] `Part`: a contour plus its precomputed raster fields — occupancy
   mask, SDF (negative inside), SDF gradient, boundary sample points
   (vertices plus edge resampling at ~1 raster cell), area, local frame

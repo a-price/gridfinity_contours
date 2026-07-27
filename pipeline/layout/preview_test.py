@@ -15,6 +15,7 @@ matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
 
 from pipeline.layout.container import BASE_GAP_MM, GRID_PITCH_MM, InteriorSpan
 from pipeline.layout.energy import LayoutParameters
+from pipeline.layout.loading import BuildParts, LoadSvgContours
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.preview import (
     LayoutShapes,
@@ -22,11 +23,10 @@ from pipeline.layout.preview import (
     WriteLayoutPdf,
     WriteLayoutSvg,
 )
-from pipeline.layout.svg import BuildParts, LoadSvgContours
 
 
-def _rectangle(width: float, height: float) -> np.ndarray:
-    return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
+def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
+    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
 
 
 def _parts(**shapes) -> dict:

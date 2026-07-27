@@ -16,6 +16,7 @@ import pytest
 
 from pipeline.layout.container import BuildContainer, InteriorSpan
 from pipeline.layout.energy import ComputeEnergy, LayoutParameters, PlacementEnergy
+from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.placement import Placement
 from pipeline.layout.solver import (
     FittingOrientations,
@@ -25,14 +26,13 @@ from pipeline.layout.solver import (
     _ChooseOrientations,
     _ConstructiveInit,
 )
-from pipeline.layout.svg import BuildParts, LoadParts
 from pipeline.layout.verify import CheckLayout, PolygonsOverlap
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
 
 
-def _rectangle(width: float, height: float) -> np.ndarray:
-    return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
+def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
+    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
 
 
 def _quick(**overrides) -> LayoutParameters:

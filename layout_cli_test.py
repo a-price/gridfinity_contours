@@ -14,13 +14,13 @@ matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
 from layout_cli import BuildParser, Main, ParametersFrom, ReadContours
 from pipeline.contour_io import LoadContours, SaveContours
 from pipeline.layout.energy import LayoutParameters
-from pipeline.layout.svg import LoadSvgContours
+from pipeline.layout.loading import LoadSvgContours
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
 
 
-def _rectangle(width: float, height: float) -> np.ndarray:
-    return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
+def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
+    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
 
 
 # ------------------------------------------------------------------ inputs

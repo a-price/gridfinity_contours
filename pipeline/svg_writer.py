@@ -12,7 +12,7 @@ parts sit relative to each other - align them individually and they all
 stack back onto the origin.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
@@ -26,7 +26,7 @@ class Shape:
     (origin top-left, y increasing downward - what both SVG and PDF use).
 
     `closed` is not only cosmetic. Closed shapes are written as `<polygon>`
-    and open ones as `<polyline>`, and layout.svg.LoadSvgContours reads
+    and open ones as `<polyline>`, and layout.loading.LoadSvgContours reads
     only `<polygon>`. Drawing annotations - a bin outline, a cell boundary
     - open therefore means a written file reads back as exactly the object
     contours in it, with nothing to filter out afterwards.
@@ -36,7 +36,7 @@ class Shape:
     closed: bool = True
     stroke: str = "black"
     stroke_width: float = 0.1  # mm
-    dashes: tuple[float, ...] = field(default=())  # mm on/off run lengths; empty for solid
+    dashes: tuple[float, ...] = ()  # mm on/off run lengths; empty for solid
 
 
 def AlignContoursToPca(contours: dict[int, np.ndarray]) -> tuple[dict[int, np.ndarray], float, float]:

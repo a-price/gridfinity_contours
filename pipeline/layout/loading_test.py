@@ -2,9 +2,9 @@
 
 import pytest
 
-from pipeline.layout.container import InteriorEnvelope, InteriorSpan
+from pipeline.layout.container import BuildContainer, InteriorSpan
+from pipeline.layout.loading import LoadParts, LoadSvgContours
 from pipeline.layout.part import BuildPart, PolygonArea
-from pipeline.layout.svg import LoadParts, LoadSvgContours
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
 
@@ -111,7 +111,7 @@ def test_spoons_fit_a_five_by_two_with_room_to_spare():
     solver's doing and not an impossible bin.
     """
     parts = LoadParts(SPOONS)
-    envelope = InteriorEnvelope(5, 2)
+    envelope = BuildContainer(5, 2).Polygon()
     interior_area = PolygonArea(envelope)
 
     assert sum(part.area for part in parts.values()) < 0.5 * interior_area

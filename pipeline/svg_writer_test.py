@@ -103,7 +103,7 @@ def test_write_shapes_svg_draws_coordinates_as_given(tmp_path):
 
 
 def test_closed_shapes_are_polygons_and_open_ones_are_polylines(tmp_path):
-    # layout.svg.LoadSvgContours reads only <polygon>, so this is what
+    # layout.loading.LoadSvgContours reads only <polygon>, so this is what
     # keeps a preview's bin outline from reading back as another object to
     # pack.
     path = tmp_path / "mixed.svg"

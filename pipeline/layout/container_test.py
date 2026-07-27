@@ -8,7 +8,6 @@ from pipeline.layout.container import (
     BASE_GAP_MM,
     GRID_PITCH_MM,
     BuildContainer,
-    InteriorEnvelope,
     InteriorSpan,
 )
 from pipeline.layout.verify import DistanceToBoundary, PolygonInside
@@ -35,22 +34,22 @@ def test_interior_span_without_a_lip_gives_back_the_intrusion():
 
 
 def test_interior_envelope_spans_the_usable_interior():
-    envelope = InteriorEnvelope(5, 2)
+    envelope = BuildContainer(5, 2).Polygon()
 
     assert envelope.min(axis=0) == pytest.approx([0.0, 0.0])
     assert envelope.max(axis=0) == pytest.approx([InteriorSpan(5), InteriorSpan(2)])
 
 
 def test_interior_envelope_corners_are_rounded_inward():
-    envelope = InteriorEnvelope(2, 2)
+    envelope = BuildContainer(2, 2).Polygon()
 
     # A rounded rectangle excludes its own bounding box corners.
     assert not PolygonInside(_rectangle(0.2, 0.2, -0.05, -0.05), envelope)
 
 
-def test_interior_envelope_rejects_a_degenerate_grid():
+def test_building_a_container_rejects_a_degenerate_grid():
     with pytest.raises(ValueError):
-        InteriorEnvelope(0, 3)
+        BuildContainer(0, 3)
 
 
 # ------------------------------------------------- distance to the wall

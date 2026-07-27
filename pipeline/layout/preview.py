@@ -59,7 +59,7 @@ def _Closed(points: np.ndarray) -> np.ndarray:
     polyline.
 
     Annotations are written as `<polyline>` rather than `<polygon>` on
-    purpose: layout.svg.LoadSvgContours reads only `<polygon>`, so a
+    purpose: layout.loading.LoadSvgContours reads only `<polygon>`, so a
     preview reads back as exactly the parts in it, with the bin and its
     grid ignored rather than mistaken for two more objects to pack.
     """

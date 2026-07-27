@@ -294,7 +294,8 @@ pipeline/layout/energy.py      clearance violation and the forces to fix it
 pipeline/layout/solver.py      arranging parts inside a bin of fixed size
 pipeline/layout/packer.py      choosing the bin size, with the bounds that
                                reject one without running the solver
-pipeline/layout/svg.py         reading contours out of exported SVGs
+pipeline/layout/loading.py     getting parts in, from SVGs or from
+                               contours you already have
 pipeline/layout/preview.py     drawing a solved layout at true scale
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module

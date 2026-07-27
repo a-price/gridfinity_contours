@@ -19,9 +19,9 @@ import numpy as np
 
 from pipeline.contour_io import LoadContours, SaveContours
 from pipeline.layout.energy import LayoutParameters
+from pipeline.layout.loading import BuildParts, LoadSvgContours
 from pipeline.layout.packer import Pack
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
-from pipeline.layout.svg import BuildParts, LoadSvgContours
 
 
 def ReadContours(paths: Sequence[str]) -> dict[int, np.ndarray]:

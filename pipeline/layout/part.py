@@ -17,9 +17,13 @@ from pipeline.contour_extraction import PCABox
 # clearances of D5, coarse enough that a 200mm part is only ~800px across.
 DEFAULT_RESOLUTION_MM = 0.25
 
-# How far beyond a part's own bounding box its distance field extends.
+# How far beyond a part's own bounding box its distance field extends,
+# when a caller builds a Part without a LayoutParameters to size it from.
 # Queries outside this margin report DISTANT_MM instead, so it must exceed
-# the largest clearance the solver will ask about (c_pair, 3.2mm by D5).
+# the largest separation the solver asks about - which is
+# LayoutParameters.c_pair_enforced, not c_pair, since the solver drives to
+# the wider of the two. Anything packing through the packer gets
+# `params.pad` instead and never sees this.
 DEFAULT_PAD_MM = 5.0
 
 # Reported for queries that fall outside a part's rasterized field. Any
