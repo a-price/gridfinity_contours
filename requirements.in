@@ -13,6 +13,7 @@ transformers==5.13.0
 
 # Dev tooling (see Makefile)
 pytest==9.1.1
+pytest-xdist==3.8.0
 black==26.5.1
 pyflakes==3.4.0
 pyright==1.1.411

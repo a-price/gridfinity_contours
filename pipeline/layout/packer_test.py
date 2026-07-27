@@ -294,8 +294,19 @@ def test_the_three_spoons_pack_into_a_five_by_two():
     assert all("does not fit" in a.detail for a in rejected)
 
 
+# The validation sweep, split into chunks that run as separate tests.
+# Sizes are drawn per trial rather than from one long stream, so a chunk
+# reproduces on its own: it is the difference between "rerun the failing
+# case" and "rerun the whole sweep and hope trial 87 comes out the same".
+# The chunking exists to let the suite parallelize - the sweep was 60% of
+# its runtime as a single indivisible test.
+SWEEP_TRIALS = 120
+SWEEP_CHUNKS = 12
+
+
 @pytest.mark.slow
-def test_random_part_sets_never_produce_an_overlapping_layout():
+@pytest.mark.parametrize("chunk", range(SWEEP_CHUNKS))
+def test_random_part_sets_never_produce_an_overlapping_layout(chunk):
     """The M4 validation sweep, and the gate for everything downstream.
 
     Every layout the packer returns is re-checked against exact polygon
@@ -303,11 +314,12 @@ def test_random_part_sets_never_produce_an_overlapping_layout():
     raster artifact that confirmed itself would surface first as a printed
     bin that does not hold its objects.
     """
-    rng = np.random.default_rng(0)
+    trials = range(chunk, SWEEP_TRIALS, SWEEP_CHUNKS)
     checked = 0
 
-    for trial in range(120):
+    for trial in trials:
         params = _quick(restarts=2, iterations=80, seed=trial)
+        rng = np.random.default_rng([0, trial])
         count = int(rng.integers(2, 6))
         parts = BuildParts(
             {i: _rectangle(float(rng.uniform(15, 55)), float(rng.uniform(10, 35))) for i in range(count)},
@@ -322,4 +334,6 @@ def test_random_part_sets_never_produce_an_overlapping_layout():
         problems = CheckLayout(result.layout, parts, pair_clearance=params.c_pair, wall_clearance=params.c_wall)
         assert problems == [], f"trial {trial}: {problems}\n{result.Report()}"
 
-    assert checked > 100, f"only {checked} trials produced a layout to check"
+    # Most trials must actually produce something to check, or the sweep
+    # is passing by not testing anything.
+    assert checked >= 0.8 * len(trials), f"only {checked} of {len(trials)} trials produced a layout to check"

@@ -28,6 +28,8 @@ cuda-toolkit[cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,
     # via torch
 cycler==0.12.1
     # via matplotlib
+execnet==2.1.2
+    # via pytest-xdist
 filelock==3.29.5
     # via
     #   huggingface-hub
@@ -177,6 +179,10 @@ pyqt5-sip==12.18.0
 pyright==1.1.411
     # via -r requirements.in
 pytest==9.1.1
+    # via
+    #   -r requirements.in
+    #   pytest-xdist
+pytest-xdist==3.8.0
     # via -r requirements.in
 python-dateutil==2.9.0.post0
     # via matplotlib
