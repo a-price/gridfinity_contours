@@ -109,20 +109,20 @@ def _DrawShape(image: np.ndarray, shape: Shape, pixels_per_mm: float, offset: fl
         cv2.polylines(image, [pixels], isClosed=False, color=color, thickness=thickness, lineType=cv2.LINE_AA)
 
 
-def RenderLayout(
-    layout: Layout,
-    parts: dict[int, Part],
+def RenderShapes(
+    shapes: Sequence[Shape],
+    width: float,
+    height: float,
     pixels_per_mm: float = DEFAULT_PIXELS_PER_MM,
 ) -> np.ndarray:
-    """A solved layout as a BGR image, at `pixels_per_mm`.
+    """A page of shapes as a BGR image, at `pixels_per_mm`.
 
-    Same shapes as the printed sheet, at a scale chosen for a screen
-    instead of a page.
+    Takes a page rather than a layout so that anything with a `Page`'s
+    shape can be rasterized - a bin sheet, or a whole drawer floorplan -
+    without a second copy of the drawing loop.
     """
     if pixels_per_mm <= 0:
         raise ValueError(f"pixels_per_mm must be positive, got {pixels_per_mm}")
-
-    shapes, width, height = LayoutShapes(layout, parts)
 
     size = (
         int(round((height + 2 * MARGIN_MM) * pixels_per_mm)),
@@ -134,3 +134,16 @@ def RenderLayout(
     for shape in shapes:
         _DrawShape(image, shape, pixels_per_mm, MARGIN_MM)
     return image
+
+
+def RenderLayout(
+    layout: Layout,
+    parts: dict[int, Part],
+    pixels_per_mm: float = DEFAULT_PIXELS_PER_MM,
+) -> np.ndarray:
+    """A solved layout as a BGR image, at `pixels_per_mm`.
+
+    Same shapes as the printed sheet, at a scale chosen for a screen
+    instead of a page.
+    """
+    return RenderShapes(*LayoutShapes(layout, parts), pixels_per_mm)

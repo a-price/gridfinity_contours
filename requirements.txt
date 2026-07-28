@@ -155,6 +155,7 @@ pathspec==1.1.1
     # via black
 pillow==12.3.0
     # via
+    #   -r requirements.in
     #   imageio
     #   matplotlib
     #   scikit-image

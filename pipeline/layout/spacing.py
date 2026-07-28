@@ -39,7 +39,7 @@ from dataclasses import replace
 import numpy as np
 
 from pipeline.layout.container import Container
-from pipeline.layout.descent import Descent
+from pipeline.layout.descent import Descent, Reporter
 from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
@@ -106,6 +106,7 @@ def Spread(
     placements: dict[int, Placement],
     container: Container,
     params: LayoutParameters,
+    on_step: Reporter | None = None,
 ) -> dict[int, Placement]:
     """Even out the gaps in an already-feasible arrangement.
 
@@ -121,6 +122,11 @@ def Spread(
     feasible arrangement and is looking for the nearest balanced one, not
     exploring. Noise here would risk walking out of a good nesting to no
     purpose.
+
+    `on_step` sees every candidate, including the ones this then declines
+    to keep. That is the pass as it actually runs, and the alternative -
+    reporting only improvements - would show a smooth march that never
+    happened.
     """
     if params.spacing_iterations <= 0:
         return dict(placements)
@@ -132,9 +138,12 @@ def Spread(
     best_energy = ComputeEnergy(parts, placements, container, springs).energy
     stalled = 0
 
-    for _ in range(params.spacing_iterations):
+    for iteration in range(params.spacing_iterations):
         current = descent.Placements()
         result = ComputeEnergy(parts, current, container, springs)
+
+        if on_step is not None:
+            on_step(iteration, current, result.energy)
 
         # Keep it only if the true clearances still hold. The springs push
         # strictly further than the real constraints ask, so this is a

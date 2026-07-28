@@ -12,13 +12,75 @@ several millimeters can land more than halfway through another, which is
 exactly where a distance field's forces reverse (see energy.ComputeEnergy).
 Capping the step keeps both passes inside the range where the gradient they
 are following can be trusted.
+
+Watching a descent lives here too, for the same reason: both passes take
+the same step, so both are observed the same way.
 """
+
+from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Placement
+
+RELAXING = "relaxing"
+SPREADING = "spreading"
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """One iteration of one descent, for a caller that wants to see the
+    arrangement move rather than only hear that it is busy.
+
+    `packer.Progress` says which attempt has started; this says what that
+    attempt is doing. It carries the placements themselves, so a consumer
+    can draw the bin through `preview.LayoutShapes` exactly as the printed
+    sheet is drawn - an animation assembled any other way would be a second
+    drawing of the same layout, free to disagree with the first.
+
+    `energy` means something different in each phase, which is why `phase`
+    is here to say which. Relaxing drives the real clearances to zero, so
+    zero is feasible; spreading drives the inflated spring clearances, which
+    never reach zero and are not a feasibility test at all.
+
+    The placements are a fresh snapshot per iteration - `Descent.Placements`
+    builds new objects and the descent rebinds rather than mutates - so a
+    consumer may keep them.
+    """
+
+    grid: tuple[int, int]
+    attempt: int
+    phase: str
+    iteration: int
+    placements: dict[int, Placement]
+    energy: float
+
+    def __str__(self) -> str:
+        n, m = self.grid
+        return f"{n}x{m} attempt {self.attempt + 1}, {self.phase} {self.iteration}, energy {self.energy:.3f}"
+
+
+# What an observer is handed, and what a descent pass can report. The pass
+# knows only its own iteration; everything else is context the caller
+# already had, bound on by `Reporting`.
+Observer = Callable[[Snapshot], None]
+Reporter = Callable[[int, dict[int, Placement], float], None]
+
+
+def Reporting(observer: Observer | None, grid: tuple[int, int], attempt: int, phase: str) -> Reporter | None:
+    """Bind one pass's context onto a snapshot observer.
+
+    A factory rather than a closure written at the call site, so each
+    pass's values are bound by argument passing instead of by whatever the
+    enclosing variables happen to hold when the callback fires - the same
+    reason `packer._AttemptReporter` exists.
+    """
+    if observer is None:
+        return None
+    return lambda iteration, placements, energy: observer(Snapshot(grid, attempt, phase, iteration, placements, energy))
 
 
 class Descent:

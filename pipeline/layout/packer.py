@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Collection
 
 from pipeline.layout.container import BuildContainer, Container
+from pipeline.layout.descent import Observer
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
@@ -205,6 +206,7 @@ def Pack(
     params: LayoutParameters | None = None,
     progress: Callable[[Progress], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
+    observer: Observer | None = None,
 ) -> PackResult:
     """Fit every part into the smallest grid that will take them.
 
@@ -216,6 +218,11 @@ def Pack(
     behind so an oversized result stays traceable.
 
     `progress`, if given, is called as the search moves - see `Progress`.
+    `observer` is the same idea at the other end of the frequency scale:
+    one call per solver iteration, carrying the arrangement itself, for a
+    caller drawing the search rather than reporting on it (see
+    `descent.Snapshot`).
+
     `cancelled` is polled between and during grid sizes; a search stopped
     that way is recorded as CANCELLED rather than NOT_FOUND, because "you
     stopped me" is not evidence about the bin and must not be read as
@@ -241,7 +248,7 @@ def Pack(
             continue
 
         reporter = _AttemptReporter(progress, (n, m), params.restarts, len(attempts) + 1)
-        layout = SolveFixedGrid(parts, n, m, params, reporter, cancelled)
+        layout = SolveFixedGrid(parts, n, m, params, reporter, cancelled, observer)
         if layout is None:
             if stopped():
                 attempts.append(GridAttempt((n, m), CANCELLED, "stopped while searching this size"))

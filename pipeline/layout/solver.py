@@ -25,7 +25,7 @@ from typing import Callable
 import numpy as np
 
 from pipeline.layout.container import BuildContainer, Container
-from pipeline.layout.descent import Descent
+from pipeline.layout.descent import RELAXING, SPREADING, Descent, Observer, Reporter, Reporting
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
@@ -238,6 +238,7 @@ def Relax(
     container: Container,
     params: LayoutParameters,
     rng: np.random.Generator,
+    on_step: Reporter | None = None,
 ) -> dict[int, Placement] | None:
     """Damped descent with decaying noise, from a given starting
     arrangement. Returns the settled placements, or None if the attempt ran
@@ -246,6 +247,10 @@ def Relax(
     Exposed rather than private so a test can start it from a deliberately
     bad arrangement - stacked parts, say - and confirm it either fixes them
     or gives up, and never calls them done.
+
+    `on_step` sees every iteration, reported before the outcome is decided
+    so that the arrangement it settles on is the last thing reported rather
+    than one step short of it.
     """
     descent = Descent(parts, placements, params)
     best_energy = np.inf
@@ -254,6 +259,9 @@ def Relax(
     for iteration in range(params.iterations):
         current = descent.Placements()
         result = ComputeEnergy(parts, current, container, params)
+
+        if on_step is not None:
+            on_step(iteration, current, result.energy)
 
         if result.feasible:
             return current
@@ -287,6 +295,7 @@ def SolveFixedGrid(
     params: LayoutParameters | None = None,
     on_attempt: Callable[[int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
+    observer: Observer | None = None,
 ) -> Layout | None:
     """Arrange every part inside an `n x m` bin, or return None if this many
     attempts could not.
@@ -303,6 +312,11 @@ def SolveFixedGrid(
     `cancelled` is polled at the same point. A cancelled search returns
     None like an exhausted one; telling the two apart is `Pack`'s job,
     since only it knows whether to step up to a larger bin or stop.
+
+    `observer`, if given, sees every iteration of both descent passes -
+    orders of magnitude more events than `on_attempt`, and the level a
+    caller drawing the search needs. This is where the grid size and
+    attempt number get bound onto it, since neither pass knows them.
     """
     params = params or LayoutParameters()
     container = BuildContainer(n, m, params.inset)
@@ -332,6 +346,7 @@ def SolveFixedGrid(
             container,
             params,
             rng,
+            Reporting(observer, (n, m), attempt, RELAXING),
         )
         if settled is None:
             continue
@@ -347,7 +362,8 @@ def SolveFixedGrid(
 
         # Feasible, but the solver stopped at the first arrangement that
         # was - so the gaps are arbitrary. Even them out before returning.
-        balanced = Layout(grid=(n, m), placements=Spread(parts, settled, container, params), inset=params.inset)
+        spread = Spread(parts, settled, container, params, Reporting(observer, (n, m), attempt, SPREADING))
+        balanced = Layout(grid=(n, m), placements=spread, inset=params.inset)
         return balanced if not CheckLayout(balanced, parts) else layout
 
     return None
