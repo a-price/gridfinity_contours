@@ -32,6 +32,12 @@ MARGIN_MM = 2.0
 
 PAGE_COLOR = (255, 255, 255)
 
+# The mark that says "this is the page being asked about". Mid gray, so it
+# reads against the white page without competing with the black outlines
+# that are the subject.
+MARK_VALUE = 96
+MARK_WIDTH_PX = 3
+
 
 def _ToBgr(color: str) -> tuple[int, int, int]:
     """A `Shape` stroke color as OpenCV BGR.
@@ -109,6 +115,45 @@ def _DrawShape(image: np.ndarray, shape: Shape, pixels_per_mm: float, offset: fl
         cv2.polylines(image, [pixels], isClosed=False, color=color, thickness=thickness, lineType=cv2.LINE_AA)
 
 
+def Stacked(images: Sequence[np.ndarray], gap: int = 0) -> np.ndarray:
+    """Several rendered pages in one image, top to bottom.
+
+    The vertical mirror of `SideBySide`, and the other half of laying out a
+    row of pages that has got too long to read. Aligned at the left edge,
+    narrower rows padded on the right.
+    """
+    if not images:
+        raise ValueError("nothing to compose")
+    if gap < 0:
+        raise ValueError(f"gap must not be negative, got {gap}")
+
+    width = max(image.shape[1] for image in images)
+    height = sum(image.shape[0] for image in images) + gap * (len(images) - 1)
+
+    canvas = np.full((height, width, 3), PAGE_COLOR, dtype=np.uint8)
+    y = 0
+    for image in images:
+        canvas[y : y + image.shape[0], : image.shape[1]] = image
+        y += image.shape[0] + gap
+    return canvas
+
+
+def InRows(images: Sequence[np.ndarray], columns: int, gap: int = 0) -> np.ndarray:
+    """Pages wrapped into rows of at most `columns`.
+
+    A single row of eight bins is 10:1 and unreadable once a browser has
+    scaled it to fit; wrapping trades that for something closer to square.
+    The column count is the caller's rather than derived from how many
+    pages there are, so that a page does not jump to a different row when
+    its neighbour disappears.
+    """
+    if columns < 1:
+        raise ValueError(f"a row holds at least one page, got {columns}")
+
+    rows = [images[start : start + columns] for start in range(0, len(images), columns)]
+    return Stacked([SideBySide(row, gap) for row in rows], gap)
+
+
 def RenderShapes(
     shapes: Sequence[Shape],
     width: float,
@@ -134,6 +179,26 @@ def RenderShapes(
     for shape in shapes:
         _DrawShape(image, shape, pixels_per_mm, MARGIN_MM)
     return image
+
+
+def Bordered(image: np.ndarray, value: int = MARK_VALUE, width: int = MARK_WIDTH_PX) -> np.ndarray:
+    """A copy of `image` with a border drawn round its edge.
+
+    For marking one page among several - the bin a search is asking about.
+    A border rather than a tint or a fill, for two reasons: it leaves the
+    drawing underneath completely legible, and it keeps the frame neutral,
+    which is what lets `gif_writer` use an exact gray ramp instead of an
+    adaptive palette.
+    """
+    if width < 1:
+        raise ValueError(f"a border needs at least one pixel, got {width}")
+    if 2 * width > min(image.shape[:2]):
+        raise ValueError(f"a {width}px border does not fit a {image.shape[1]}x{image.shape[0]} image")
+
+    marked = image.copy()
+    marked[:width, :] = marked[-width:, :] = value
+    marked[:, :width] = marked[:, -width:] = value
+    return marked
 
 
 def SideBySide(images: Sequence[np.ndarray], gap: int = 0) -> np.ndarray:

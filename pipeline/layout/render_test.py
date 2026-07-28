@@ -17,9 +17,12 @@ from pipeline.layout.render import (
     DEFAULT_PIXELS_PER_MM,
     MARGIN_MM,
     PAGE_COLOR,
+    Bordered,
     DashRuns,
+    InRows,
     RenderLayout,
     SideBySide,
+    Stacked,
     _ToBgr,
 )
 
@@ -233,3 +236,75 @@ def test_a_shorter_page_is_padded_rather_than_stretched():
 def test_composing_nothing_is_refused():
     with pytest.raises(ValueError, match="nothing to compose"):
         SideBySide([])
+
+
+def test_a_marked_page_keeps_its_drawing():
+    """The mark is a border rather than a tint, so what it draws attention
+    to stays legible underneath it.
+    """
+    image = np.full((20, 30, 3), 200, dtype=np.uint8)
+
+    marked = Bordered(image, value=96, width=2)
+
+    assert (marked[2:-2, 2:-2] == 200).all()
+    assert (marked[:2, :] == 96).all() and (marked[-2:, :] == 96).all()
+    assert (marked[:, :2] == 96).all() and (marked[:, -2:] == 96).all()
+
+
+def test_marking_leaves_the_original_alone():
+    image = np.full((20, 30, 3), 200, dtype=np.uint8)
+    Bordered(image)
+
+    assert (image == 200).all()
+
+
+def test_a_mark_stays_neutral():
+    """Frames have to stay gray for the GIF writer's exact ramp to apply."""
+    marked = Bordered(np.full((20, 30, 3), 200, dtype=np.uint8))
+
+    assert (marked[..., 0] == marked[..., 1]).all() and (marked[..., 1] == marked[..., 2]).all()
+
+
+def test_a_border_too_big_for_its_page_is_refused():
+    with pytest.raises(ValueError, match="does not fit"):
+        Bordered(np.zeros((4, 30, 3), dtype=np.uint8), width=3)
+
+
+def test_pages_wrap_into_rows():
+    """A single row of many bins is unreadable once a browser scales it to
+    fit, so they wrap.
+    """
+    pages = [np.zeros((10, 20, 3), dtype=np.uint8) for _ in range(5)]
+
+    wrapped = InRows(pages, columns=3)
+
+    # Two rows: three pages then two, so the canvas is the wider row.
+    assert wrapped.shape == (20, 60, 3)
+    assert (wrapped[10:, 40:] == PAGE_COLOR).all(), "the short row should be padded, not stretched"
+
+
+def test_the_column_count_is_the_callers():
+    """It must not follow the page count: bins vanish as the search merges
+    them, and a derived column count would reflow the survivors into
+    different rows every time one went.
+    """
+    pages = [np.zeros((10, 20, 3), dtype=np.uint8) for _ in range(3)]
+
+    assert InRows(pages, columns=3).shape == (10, 60, 3)
+    assert InRows(pages[:2], columns=3).shape == (10, 40, 3)
+
+
+def test_pages_compose_top_to_bottom():
+    top = np.zeros((6, 20, 3), dtype=np.uint8)
+    bottom = np.zeros((10, 30, 3), dtype=np.uint8)
+
+    composed = Stacked([top, bottom], gap=2)
+
+    assert composed.shape == (18, 30, 3)
+    assert (composed[6:8, :] == PAGE_COLOR).all()
+    assert (composed[:6, 20:] == PAGE_COLOR).all()
+
+
+def test_a_row_of_no_pages_is_refused():
+    with pytest.raises(ValueError, match="a row holds at least one page"):
+        InRows([np.zeros((4, 4, 3), dtype=np.uint8)], columns=0)

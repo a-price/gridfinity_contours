@@ -17,11 +17,14 @@ import pytest
 
 from pipeline.layout.drawer import AdmissibleFootprints, Drawer
 from pipeline.layout.grouping import (
+    FILLING,
+    IMPROVING,
     FirstFit,
     Group,
     Grouping,
     Improve,
     OnePerBin,
+    Step,
     _Improve,
     _OnePerBin,
     _Oracle,
@@ -368,3 +371,65 @@ def test_the_local_search_alone_collapses_the_spoons():
 
     assert improved.Contents() == [frozenset({0, 1, 2})]
     assert improved.cells == 10
+
+
+def _watched(parts: dict[int, Part], params: LayoutParameters) -> list[Step]:
+    steps: list[Step] = []
+    Group(parts, params, observer=steps.append)
+    return steps
+
+
+def test_the_observer_sees_both_phases():
+    params = _quick()
+    parts = _parts([(30.0, 20.0), (30.0, 20.0), (25.0, 15.0)], params)
+
+    phases = {step.phase for step in _watched(parts, params)}
+
+    assert phases == {FILLING, IMPROVING}
+
+
+def test_a_step_indexes_the_bins_it_reports():
+    """`asking` is drawn as a mark on one of `bins`, so an index outside
+    that list would mark the wrong bin or none at all.
+    """
+    params = _quick()
+    parts = _parts([(30.0, 20.0), (30.0, 20.0), (25.0, 15.0)], params)
+
+    for step in _watched(parts, params):
+        assert all(0 <= index < len(step.bins) for index in step.asking), f"{step} indexes a bin it did not report"
+
+
+def test_an_accepted_step_asks_nothing():
+    """Applying a change can empty a bin and drop it, renumbering the rest,
+    so an index bound to the old list would point at the wrong bin.
+    """
+    params = _quick()
+    parts = _parts([(30.0, 20.0), (30.0, 20.0), (25.0, 15.0)], params)
+
+    assert all(not step.asking for step in _watched(parts, params) if step.accepted)
+
+
+def test_candidates_are_reported_before_they_are_priced():
+    """Which is the only way a rejected one can be drawn at all: the bound
+    turns most of them away without ever packing them, so there is no
+    layout of the rejected arrangement to show.
+    """
+    params = _quick()
+    parts = _parts([(30.0, 20.0), (30.0, 20.0), (25.0, 15.0)], params)
+
+    steps = _watched(parts, params)
+    considered = [step for step in steps if not step.accepted]
+
+    assert len(considered) > sum(1 for step in steps if step.accepted)
+
+
+def test_an_accepted_step_never_costs_more_than_the_one_before_it():
+    """The search only ever takes strictly improving changes, so the cell
+    count a frame shows must never go up.
+    """
+    params = _quick()
+    parts = _parts([(40.0, 20.0), (40.0, 20.0), (20.0, 15.0), (20.0, 15.0)], params)
+
+    improving = [step.cells for step in _watched(parts, params) if step.accepted and step.phase == IMPROVING]
+
+    assert improving == sorted(improving, reverse=True)

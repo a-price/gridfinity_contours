@@ -28,6 +28,21 @@ smallest that exists. The solver is stochastic, so failing at 5x2 is no
 proof that 5x2 is impossible, and the run reports it as "not found" rather
 than "too small".
 
+Six objects deciding which of them should share a bin at all:
+
+![six bins each holding one object, with a border marking the pair being considered, merging down to two bins](docs/media/group.gif)
+
+Each object starts in a bin of its own - 44 cells across six bins. The
+border marks the bins whose contents the search is pricing. Most of what
+it tries is rejected, so the picture holds still for long stretches and
+then jumps when a move is worth taking, which is what a first-improvement
+local search looks like from outside. It ends on two bins and 25 cells.
+
+The bordered bins move far more often than the arrangement does because
+pricing a candidate is cheap and packing one is not: a lower bound on the
+cell count rejects most candidates without ever running the solver. That
+gap is the only reason this search is affordable at all.
+
 Ten kitchen objects, grouped into six bins, going into two drawers:
 
 ![bins of cutlery appearing in two drawer outlines, some withdrawn and replaced, until all six sit without overlapping](docs/media/drawer.gif)
@@ -47,6 +62,12 @@ with:
     test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
     --out docs/media/pack.gif --restarts 3 --every 4
 
+.venv/bin/python3 layout_demo.py group \
+    test_data/big_spoon.svg test_data/small_spoon.svg test_data/screwdriver.svg \
+    test_data/spreader.svg test_data/big_measure.svg test_data/small_measure.svg \
+    --start one-per-bin --restarts 6 --every 1 \
+    --out docs/media/group.gif
+
 .venv/bin/python3 layout_demo.py drawer \
     test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
     test_data/small_fork.svg test_data/medium_fork.svg test_data/big_fork.svg \
@@ -56,9 +77,15 @@ with:
     --out docs/media/drawer.gif
 ```
 
-The two runs take about 15 and 30 seconds. `--drawer` is a drawer's
-interior in millimeters and can be repeated. `--restarts` is lowered here
-just to keep them short.
+The three runs take about 15 seconds, 2 minutes, and 30 seconds.
+`--drawer` is a drawer's interior in millimeters and can be repeated.
+`--restarts` is lowered just to keep them short.
+
+Grouping is the slow one because every candidate that survives its bound
+costs a full stochastic pack, and the search is quadratic in the number of
+bins. `--start one-per-bin` gives the local search the most to find;
+`--start first-fit` is what `Group` does, and on this set the two reach
+the same two bins and 25 cells.
 
 ## Tools
 

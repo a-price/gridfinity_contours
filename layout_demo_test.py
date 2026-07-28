@@ -10,7 +10,7 @@ import pytest
 from PIL import Image, ImageSequence
 
 import layout_demo
-from layout_demo import DrawerRecorder, PackRecorder, ParseDrawer, Recording
+from layout_demo import DrawerRecorder, GroupRecorder, PackRecorder, ParseDrawer, Recording
 from pipeline.layout.descent import RELAXING, Snapshot
 from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot, Trial
 from pipeline.layout.loading import BuildParts, ReadContours
@@ -191,3 +191,50 @@ def test_a_drawer_is_given_in_millimeters():
 def test_an_unusable_drawer_is_refused(text):
     with pytest.raises(Exception, match="drawer"):
         ParseDrawer(text)
+
+
+def test_the_group_command_writes_a_playable_gif(tmp_path):
+    out = tmp_path / "group.gif"
+    code = layout_demo.Main(
+        ["group", *SPOONS, "--out", str(out), "--restarts", "2", "--every", "1", "--pixels-per-mm", "0.6"]
+    )
+
+    assert code == 0
+    assert _frames(out) > 1
+
+
+def test_a_group_frame_marks_only_the_bins_being_asked_about():
+    """The mark is the whole point of the grouping animation: the
+    arrangement changes on the rare accepted move, so without it the frames
+    would be identical for long stretches with nothing to show for the
+    hundreds of candidates priced.
+    """
+    parts, params = _parts()
+    layouts = [Layout(grid=(2, 1), placements={}, inset=params.inset) for _ in range(2)]
+
+    recorder = GroupRecorder(parts, columns=2, pixels_per_mm=1.0, every=1)
+    recorder.Draw(layouts)
+    recorder.Draw(layouts, asking=frozenset([1]))
+
+    plain, marked = recorder.frames
+    assert plain.shape == marked.shape
+    assert not np.array_equal(plain, marked)
+    # Only the second bin is marked, so the left half is untouched.
+    half = plain.shape[1] // 2
+    assert np.array_equal(plain[:, :half], marked[:, :half])
+
+
+def test_group_columns_stay_fixed_as_bins_disappear():
+    """A column count that followed the bin count would reflow the
+    survivors into different rows every time one was merged away.
+    """
+    parts, params = _parts()
+    layouts = [Layout(grid=(2, 1), placements={}, inset=params.inset) for _ in range(4)]
+
+    recorder = GroupRecorder(parts, columns=2, pixels_per_mm=1.0, every=1)
+    recorder.Draw(layouts)
+    recorder.Draw(layouts[:2])
+
+    four, two = recorder.frames
+    assert four.shape[1] == two.shape[1], "two bins should still fill one row of two"
+    assert four.shape[0] > two.shape[0], "and drop from two rows to one"

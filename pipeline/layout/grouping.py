@@ -38,6 +38,7 @@ already priced.
 
 from dataclasses import dataclass
 from itertools import combinations, permutations
+from typing import Callable
 
 from pipeline.layout.container import BuildContainer
 from pipeline.layout.packer import GridsFor, ProvablyTooSmall
@@ -81,6 +82,50 @@ class Grouping:
             lines.append(f"bin {index}: {n}x{m} ({layout.cells} cells) holding {contents}")
         lines.append(f"{len(self.bins)} bins, {self.cells} cells total")
         return "\n".join(lines)
+
+
+FILLING = "filling"
+IMPROVING = "improving"
+
+
+@dataclass(frozen=True)
+class Step:
+    """One step of the grouping search, for a caller that wants to watch it.
+
+    `bins` is the grouping as it stands *at this moment*, and `asking`
+    indexes into it - the bins whose contents the search is about to price.
+    Reported before the pricing rather than after, which is what makes a
+    rejected candidate drawable at all: most are turned away by the bound
+    without ever being packed, so there are no layouts of the rejected
+    arrangement to show. What can honestly be drawn is the grouping that
+    exists and the question being asked about it.
+
+    `accepted` marks the steps where the grouping actually changed. Those
+    carry an empty `asking`, because applying a change can empty a bin and
+    drop it, renumbering everything after it - an index bound to the old
+    list would point at the wrong bin in the new one.
+    """
+
+    phase: str
+    bins: tuple[Layout, ...]
+    asking: frozenset[int]
+    accepted: bool
+
+    @property
+    def cells(self) -> int:
+        return sum(layout.cells for layout in self.bins)
+
+    def __str__(self) -> str:
+        mark = "took" if self.accepted else "tried"
+        return f"{self.phase}: {mark} {sorted(self.asking)}, {len(self.bins)} bins / {self.cells} cells"
+
+
+Observer = Callable[[Step], None]
+
+
+def _Report(observer: Observer | None, phase: str, bins: list[Layout], asking, accepted: bool) -> None:
+    if observer is not None:
+        observer(Step(phase, tuple(bins), frozenset(asking), accepted))
 
 
 class _Oracle:
@@ -216,7 +261,7 @@ def _OnePerBin(oracle: _Oracle, part_ids: list[int]) -> list[Layout]:
     return bins
 
 
-def _FirstFit(oracle: _Oracle, parts: dict[int, Part]) -> list[Layout]:
+def _FirstFit(oracle: _Oracle, parts: dict[int, Part], observer: Observer | None = None) -> list[Layout]:
     """Parts largest-first, each into the first open bin that still packs
     at that bin's current size.
 
@@ -226,15 +271,18 @@ def _FirstFit(oracle: _Oracle, parts: dict[int, Part]) -> list[Layout]:
     bins: list[Layout] = []
     for part_id in sorted(parts, key=lambda i: -parts[i].area):
         for index, layout in enumerate(bins):
+            _Report(observer, FILLING, bins, [index], accepted=False)
             grown = oracle.FitsIn(frozenset(layout.placements) | {part_id}, layout.grid)
             if grown is not None:
                 bins[index] = grown
+                _Report(observer, FILLING, bins, [], accepted=True)
                 break
         else:
             opened = oracle.Smallest(frozenset([part_id]))
             if opened is None:
                 raise oracle.Unfittable(part_id)
             bins.append(opened)
+            _Report(observer, FILLING, bins, [], accepted=True)
     return bins
 
 
@@ -308,7 +356,7 @@ def _Candidates(contents: list[frozenset[int]]):
                 }
 
 
-def _Improve(oracle: _Oracle, bins: list[Layout]) -> list[Layout]:
+def _Improve(oracle: _Oracle, bins: list[Layout], observer: Observer | None = None) -> list[Layout]:
     """Apply improving moves and swaps until none is left.
 
     First improvement rather than best: the candidates are cheap to
@@ -321,9 +369,11 @@ def _Improve(oracle: _Oracle, bins: list[Layout]) -> list[Layout]:
     while True:
         contents = [frozenset(layout.placements) for layout in bins]
         for changes in _Candidates(contents):
+            _Report(observer, IMPROVING, bins, changes, accepted=False)
             improved = _Improvement(oracle, bins, changes)
             if improved is not None:
                 bins = improved
+                _Report(observer, IMPROVING, bins, [], accepted=True)
                 break
         else:
             return bins
@@ -345,7 +395,11 @@ def OnePerBin(parts: dict[int, Part], params: LayoutParameters | None = None) ->
     return Grouping(_OnePerBin(_Oracle(parts, params or LayoutParameters()), sorted(parts)))
 
 
-def FirstFit(parts: dict[int, Part], params: LayoutParameters | None = None) -> Grouping:
+def FirstFit(
+    parts: dict[int, Part],
+    params: LayoutParameters | None = None,
+    observer: Observer | None = None,
+) -> Grouping:
     """First-fit-decreasing alone, without the local search.
 
     Exposed so a test can see what the search inherits and what it adds. A
@@ -353,10 +407,15 @@ def FirstFit(parts: dict[int, Part], params: LayoutParameters | None = None) -> 
     local search from one that never fires.
     """
     _RequireParts(parts)
-    return Grouping(_FirstFit(_Oracle(parts, params or LayoutParameters()), parts))
+    return Grouping(_FirstFit(_Oracle(parts, params or LayoutParameters()), parts, observer))
 
 
-def Improve(parts: dict[int, Part], grouping: Grouping, params: LayoutParameters | None = None) -> Grouping:
+def Improve(
+    parts: dict[int, Part],
+    grouping: Grouping,
+    params: LayoutParameters | None = None,
+    observer: Observer | None = None,
+) -> Grouping:
     """Move and swap parts between the given bins while it helps.
 
     Takes a grouping rather than producing one, so the search can be run
@@ -366,16 +425,22 @@ def Improve(parts: dict[int, Part], grouping: Grouping, params: LayoutParameters
     missing = sorted(grouping.PartIds() - set(parts))
     if missing:
         raise ValueError(f"grouping holds parts {missing}, which were not given")
-    return Grouping(_Improve(_Oracle(parts, params or LayoutParameters()), list(grouping.bins)))
+    return Grouping(_Improve(_Oracle(parts, params or LayoutParameters()), list(grouping.bins), observer))
 
 
-def Group(parts: dict[int, Part], params: LayoutParameters | None = None) -> Grouping:
+def Group(
+    parts: dict[int, Part],
+    params: LayoutParameters | None = None,
+    observer: Observer | None = None,
+) -> Grouping:
     """Partition parts into bins, minimizing total grid cells.
 
     First-fit-decreasing for a starting point, then local search. One
     oracle spans both, so the sets first-fit already priced cost the search
     nothing to revisit.
+
+    `observer`, if given, sees both phases - see `Step`.
     """
     _RequireParts(parts)
     oracle = _Oracle(parts, params or LayoutParameters())
-    return Grouping(_Improve(oracle, _FirstFit(oracle, parts)))
+    return Grouping(_Improve(oracle, _FirstFit(oracle, parts, observer), observer))
