@@ -31,7 +31,7 @@ from pipeline.layout.orientation import RankedAssignments
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import CanonicalOrder, Part
 from pipeline.layout.placement import Layout, Placement, RotatedSize
-from pipeline.layout.spacing import Spread
+from pipeline.layout.spacing import Distribute, Spread
 from pipeline.layout.verify import CheckLayout
 
 
@@ -367,6 +367,10 @@ def SolveFixedGrid(
         # Feasible, but the solver stopped at the first arrangement that
         # was - so the gaps are arbitrary. Even them out before returning.
         spread = Spread(parts, settled, container, params, Reporting(observer, (n, m), attempt, SPREADING))
+        # Then out into whatever room is left. The springs only reach a
+        # couple of millimetres past each clearance, so in a bin with space
+        # to spare they go slack long before the parts are using it.
+        spread = Distribute(parts, spread, container, params)
         balanced = Layout(grid=(n, m), placements=spread, inset=params.inset)
         return balanced if not CheckLayout(balanced, parts) else layout
 

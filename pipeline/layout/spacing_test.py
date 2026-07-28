@@ -16,7 +16,8 @@ from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
-from pipeline.layout.spacing import Gaps, Spread, SpringParameters
+from pipeline.layout.solver import SolveFixedGrid
+from pipeline.layout.spacing import Distribute, Gaps, Spread, SpringParameters
 from pipeline.layout.verify import CheckLayout
 
 SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
@@ -258,3 +259,86 @@ def test_the_spoons_come_out_more_evenly_spaced():
 
     assert _spread_of(after) < _spread_of(before)
     assert min(_finite(after)) > min(_finite(before)), "the tightest gap should have opened"
+
+
+def _box(width: float, height: float) -> np.ndarray:
+    return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
+
+
+def _placed(parts, positions: dict[int, tuple[float, float]]) -> dict[int, Placement]:
+    return {part_id: Placement(part_id, np.array(xy, dtype=np.float64)) for part_id, xy in positions.items()}
+
+
+def test_a_lone_part_ends_up_centred():
+    """The case that prompted this. Both energy terms are one-sided, so
+    beyond its clearance a part feels nothing at all and stops wherever
+    bottom-left fill dropped it - measured at 4.1mm from one wall and
+    76.2mm from the opposite one.
+    """
+    params = _quick()
+    parts = BuildParts({0: _box(40.0, 18.0)}, params)
+    container = BuildContainer(3, 2, params.inset)
+
+    settled = Distribute(parts, _placed(parts, {0: (4.1, 4.79)}), container, params)
+
+    position = settled[0].position
+    assert position[0] == pytest.approx((container.width - parts[0].size[0]) / 2.0, abs=0.01)
+    assert position[1] == pytest.approx((container.height - parts[0].size[1]) / 2.0, abs=0.01)
+
+
+def test_centring_is_all_that_happens_to_a_single_part():
+    """Nothing to inflate away from: a lone part is its own centre, so the
+    scale step must leave it exactly where centring put it. Scaling its
+    *corner* instead drove it into the wall.
+    """
+    params = _quick()
+    parts = BuildParts({0: _box(40.0, 18.0)}, params)
+    container = BuildContainer(5, 3, params.inset)
+
+    settled = Distribute(parts, _placed(parts, {0: (4.1, 4.79)}), container, params)
+
+    assert settled[0].position[0] > params.c_wall * 2, "the part was pushed against a wall"
+
+
+def test_parts_spread_into_the_room_they_have():
+    params = _quick()
+    parts = BuildParts({0: _box(30.0, 16.0), 1: _box(30.0, 16.0)}, params)
+    container = BuildContainer(5, 2, params.inset)
+    before = _placed(parts, {0: (5.0, 5.0), 1: (5.0, 30.0)})
+
+    after = Distribute(parts, before, container, params)
+
+    gap_before = abs(before[1].position[1] - before[0].position[1])
+    gap_after = abs(after[1].position[1] - after[0].position[1])
+    assert gap_after > gap_before
+
+
+def test_distributing_never_breaks_a_clearance():
+    """Everything here is checked against the true clearances before it is
+    kept, the same discipline `Spread` follows - concave parts make
+    "further apart" a claim rather than a proof.
+    """
+    params = _quick()
+    parts = LoadParts(SPOONS, params)
+    container = BuildContainer(5, 2, params.inset)
+    layout = SolveFixedGrid(parts, 5, 2, params)
+    assert layout is not None
+
+    settled = Distribute(parts, layout.placements, container, params)
+
+    assert ComputeEnergy(parts, settled, container, params).feasible
+    assert CheckLayout(Layout(grid=(5, 2), placements=settled, inset=params.inset), parts) == []
+
+
+def test_a_full_bin_is_left_alone():
+    """With no room to spare there is nothing to distribute, and the pass
+    must not jostle a layout that is already as good as it gets.
+    """
+    params = _quick()
+    parts = BuildParts({0: _box(70.0, 30.0)}, params)
+    container = BuildContainer(2, 1, params.inset)
+    before = _placed(parts, {0: (params.c_wall + 0.1, params.c_wall + 0.1)})
+
+    after = Distribute(parts, before, container, params)
+
+    assert ComputeEnergy(parts, after, container, params).feasible

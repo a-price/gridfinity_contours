@@ -32,6 +32,19 @@ Two properties make this sound rather than merely plausible:
 Feasibility is never at risk: the springs run at *inflated* clearances,
 which strictly contain the true ones, and every candidate is checked
 against the true clearances before being kept.
+
+**The springs only reach a couple of millimetres, which is not the same as
+using the bin.** They go slack the moment nothing is within reach of
+anything else, so in a bin with room to spare a part stops a few
+millimetres off the two walls bottom-left fill left it against, with the
+rest of the bin empty - measured at 4.1mm from one wall and 76.2mm from
+the opposite one. Lengthening the springs cannot fix that: a part only
+feels another while a sample lands inside its raster, and that raster is
+sized when the part is built, long before the bin is known.
+
+So `Distribute` finishes the job geometrically rather than with a force,
+by centring the arrangement and then scaling it out until something
+reaches a wall.
 """
 
 from dataclasses import replace
@@ -43,7 +56,7 @@ from pipeline.layout.descent import Descent, Reporter
 from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
-from pipeline.layout.placement import Placement
+from pipeline.layout.placement import Placement, RotatedSize
 
 
 def SpringParameters(params: LayoutParameters) -> LayoutParameters:
@@ -166,3 +179,173 @@ def Spread(
         descent.Step(result.forces)
 
     return best
+
+
+def _Boxes(
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+    """Each placed part's axis-aligned box, as (minimum, maximum) corners."""
+    boxes = {}
+    for part_id, placement in placements.items():
+        low = np.asarray(placement.position, dtype=np.float64)
+        boxes[part_id] = (low, low + RotatedSize(parts[part_id].size, placement.orientation))
+    return boxes
+
+
+def _Limits(container: Container, params: LayoutParameters) -> tuple[np.ndarray, np.ndarray]:
+    """The box every part's own box has to stay inside.
+
+    Held a raster cell short of the true clearance, the same margin and the
+    same reason as `solver._ContactPositions`. A part moved to *exactly*
+    `c_wall` reads as violating it: the energy measures the wall with the
+    container's analytic distance, while `verify` measures it against the
+    polygon that approximates the corner arcs, and the two disagree by
+    microns. Stopping a quarter millimetre short costs nothing visible and
+    keeps the two agreeing.
+
+    Symmetric, so it does not move the centre - only how far the inflation
+    is allowed to push.
+    """
+    margin = params.c_wall + params.resolution
+    return np.array([margin, margin]), np.array([container.width, container.height]) - margin
+
+
+def _Shift(boxes: dict[int, tuple[np.ndarray, np.ndarray]], container: Container, params: LayoutParameters):
+    """The translation that centres the whole arrangement in the bin.
+
+    One vector for every part, so pair distances are untouched - which is
+    what makes this safe by construction rather than by inspection. The
+    worst wall gap can only improve: a side that had `L` and `R` ends up
+    with `(L + R) / 2`, and that is at least `min(L, R)`.
+    """
+    low = np.min([box[0] for box in boxes.values()], axis=0)
+    high = np.max([box[1] for box in boxes.values()], axis=0)
+    limit_low, limit_high = _Limits(container, params)
+    return ((limit_low + limit_high) - (low + high)) / 2.0
+
+
+def _Inflation(boxes, centre: np.ndarray, container: Container, params: LayoutParameters) -> np.ndarray:
+    """How far the arrangement can be scaled about `centre` before some part
+    reaches a wall, per axis.
+
+    What scales is each part's *centre*, not its corner. Scaling corners
+    looks equivalent and is not: a part straddling the middle of the bin has
+    its corner half a part-width off centre, so scaling that corner slides
+    the part bodily outward - which drove a lone part into the wall it was
+    supposed to be moving away from.
+
+    A part is only ever constrained by the wall it is moving toward, so each
+    part and axis contributes at most one bound. One sitting exactly on the
+    centre does not move at all, and constrains nothing.
+    """
+    limit_low, limit_high = _Limits(container, params)
+    scale = np.array([np.inf, np.inf])
+
+    for low, high in boxes.values():
+        middle = (low + high) / 2.0
+        half = (high - low) / 2.0
+        for axis in range(2):
+            offset = middle[axis] - centre[axis]
+            if offset > 0:
+                room = limit_high[axis] - half[axis] - centre[axis]
+                scale[axis] = min(scale[axis], room / offset)
+            elif offset < 0:
+                room = limit_low[axis] + half[axis] - centre[axis]
+                scale[axis] = min(scale[axis], room / offset)
+
+    return np.maximum(1.0, np.where(np.isfinite(scale), scale, 1.0))
+
+
+def _Scaled(
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+    centre: np.ndarray,
+    scale: np.ndarray,
+) -> dict[int, Placement]:
+    """The arrangement with every part's centre scaled away from `centre`.
+
+    The part keeps its size, so its corner moves by exactly what its centre
+    moved.
+    """
+    moved = {}
+    for part_id, placement in placements.items():
+        position = np.asarray(placement.position, dtype=np.float64)
+        middle = position + RotatedSize(parts[part_id].size, placement.orientation) / 2.0
+        moved[part_id] = replace(placement, position=position + (middle - centre) * (scale - 1.0))
+    return moved
+
+
+def Distribute(
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+    container: Container,
+    params: LayoutParameters,
+) -> dict[int, Placement]:
+    """Spread a feasible arrangement out to use the whole bin.
+
+    `Spread` evens out gaps that are *tight*, and stops the moment nothing
+    is within a spring's reach of anything else. In a bin with room to
+    spare that happens almost immediately, so a lone part ends up wherever
+    bottom-left fill dropped it, a few millimetres off two walls, with the
+    rest of the bin empty. Measured: a 40x18mm part in a 120x78mm bin
+    settled 4.1mm from the left wall and 76.2mm from the right.
+
+    The reason no force fixes that is `pad`. Parts only feel each other
+    while a sample lands inside the other's raster, and that raster is
+    sized when the part is built, long before the bin is known. Reaching
+    across a roomy bin would mean rasterizing every part with a skirt as
+    wide as the largest bin it might ever land in.
+
+    So this is geometry rather than a force, in two steps that are safe for
+    different reasons. Centring translates every part by one vector, which
+    cannot change any pair distance at all. Inflating scales the positions
+    about the centre, which can only push parts further apart - though for
+    concave parts "further apart" is not quite a proof, since a spoon slid
+    along the line of centres can find a different part of its neighbour,
+    so the result is checked rather than trusted.
+
+    Returns the input untouched if the improvement does not verify.
+    """
+    if not placements:
+        return dict(placements)
+
+    boxes = _Boxes(parts, placements)
+    centred = {
+        part_id: replace(placement, position=np.asarray(placement.position) + _Shift(boxes, container, params))
+        for part_id, placement in placements.items()
+    }
+    best = centred if _Holds(parts, centred, container, params) else dict(placements)
+
+    boxes = _Boxes(parts, best)
+    low = np.min([box[0] for box in boxes.values()], axis=0)
+    high = np.max([box[1] for box in boxes.values()], axis=0)
+    centre = (low + high) / 2.0
+
+    # Backed off rather than bisected: the whole scale is one number per
+    # axis, and the first few steps down from the geometric limit are where
+    # any concave surprise shows up.
+    limit = _Inflation(boxes, centre, container, params)
+    for fraction in (1.0, 0.75, 0.5, 0.25):
+        scale = 1.0 + (limit - 1.0) * fraction
+        if (scale <= 1.0).all():
+            break
+        candidate = _Scaled(parts, best, centre, scale)
+        if _Holds(parts, candidate, container, params):
+            return candidate
+
+    return best
+
+
+def _Holds(
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+    container: Container,
+    params: LayoutParameters,
+) -> bool:
+    """Whether an arrangement still satisfies the true clearances.
+
+    The same discipline `Spread` follows: propose, then verify against what
+    the layout actually has to guarantee, and keep nothing that fails.
+    """
+    return ComputeEnergy(parts, placements, container, params).feasible
