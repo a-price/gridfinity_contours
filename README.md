@@ -11,6 +11,55 @@ in the first place, assigns the resulting bins to your drawers, and emits
 both the printable `.scad` and true-scale sheets to check against the real
 objects. See [Design docs](#design-docs).
 
+## Watching it work
+
+Three spoons looking for the smallest bin that holds them:
+
+![three spoon outlines shoving each other inside a bin outline, failing to fit, then settling into a larger one](docs/media/pack.gif)
+
+The first three attempts are a 5x2 bin. The spoons shove each other around
+without ever resolving: the solver minimizes an energy that reaches zero
+only when every clearance holds, and in a 5x2 it never gets there. The
+search steps up to 6x2, where they settle and then spread out to even up
+the gaps.
+
+6x2 is the smallest size the search found, which is not the same as the
+smallest that exists. The solver is stochastic, so failing at 5x2 is no
+proof that 5x2 is impossible, and the run reports it as "not found" rather
+than "too small".
+
+Ten kitchen objects, grouped into six bins, going into two drawers:
+
+![bins of cutlery appearing in two drawer outlines, some withdrawn and replaced, until all six sit without overlapping](docs/media/drawer.gif)
+
+Bins snap to whole 42mm cells here, and when a branch runs out the search
+takes a bin back out rather than nudging it. It tries every position a bin
+could hold, so running out of them is a proof: this is the only level of
+the project that can say a set of bins does not fit, instead of just
+failing to fit them.
+
+Both GIFs come from `layout_demo.py`, which runs the same code as the CLI
+and draws through the same shapes as the printed sheets. Regenerate them
+with:
+
+```
+.venv/bin/python3 layout_demo.py pack \
+    test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
+    --out docs/media/pack.gif --restarts 3 --every 4
+
+.venv/bin/python3 layout_demo.py drawer \
+    test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
+    test_data/small_fork.svg test_data/medium_fork.svg test_data/big_fork.svg \
+    test_data/spreader.svg test_data/screwdriver.svg \
+    test_data/small_measure.svg test_data/big_measure.svg \
+    --drawer 210x340 --drawer 170x130 --restarts 6 --every 1 \
+    --out docs/media/drawer.gif
+```
+
+The two runs take about 15 and 30 seconds. `--drawer` is a drawer's
+interior in millimeters and can be repeated. `--restarts` is lowered here
+just to keep them short.
+
 ## Tools
 
 ### `silhouette.py` — main app
@@ -73,6 +122,58 @@ Run it with:
 
 The image path is optional; if omitted, use the "Load Image" button.
 
+### `layout_cli.py` — pack contours into a bin
+
+Takes the contours the capture stage exported and finds the smallest
+Gridfinity bin they all fit in, writing a true-scale sheet to print and the
+`.scad` to slice:
+
+```
+.venv/bin/python3 layout_cli.py \
+    test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
+    --out spoons
+```
+
+```
+loaded 3 contours from 3 file(s)
+...
+5x2 (10 cells): not found - no arrangement in 24 attempts
+4x3 (12 cells): too small - part 1 is 162.8x34.9mm and does not fit a 162.3x120.3mm interior at any quarter turn
+6x2 (12 cells): packed
+note: 5x2 was not ruled out geometrically - a tighter packing may exist
+packed 3 parts into 6x2 (12 cells)
+wrote spoons.svg, spoons.pdf, spoons.scad
+```
+
+Every candidate size is reported with why it was rejected, and the two
+reasons mean different things. "Too small" is a proof from areas and
+bounding boxes. "Not found" means the solver did not manage it in its
+restart budget, so that size may still be packable - raise `--restarts`
+and see. The closing note fires when that happened below the size it
+settled on, which is when the bin you print is bigger than it needed to
+be.
+
+Useful flags: `--restarts` and `--seed` steer the search, `--max-grid`
+caps the bin size, `--pocket-offset` sets how much larger than its object
+each pocket is cut, `--height` sets the bin depth in 7mm Gridfinity units,
+and `--no-scad` skips the solid if you only want the sheet. Ctrl-C stops
+the search and still reports everything it learned.
+
+It prints a live progress line while it searches, since a hard pack takes
+long enough to look hung without one. `--quiet` suppresses it, and it
+turns itself off when the output is not a terminal.
+
+### `layout_gui.py` — the same, interactively
+
+```
+.venv/bin/python3 layout_gui.py test_data/*.svg
+```
+
+A window that accumulates contours from several capture sessions, packs
+them, and previews the result. It is separate from `silhouette.py` because
+that tool works on one photo, and packing wants objects from many. The
+file arguments are optional - there is a Load button.
+
 ### `generate_aruco_sheet.py`
 
 Generates a letter-size PDF calibration sheet with 4 ArUco markers at known
@@ -94,9 +195,15 @@ writes a Gridfinity `.scad` with one cutout. Requires the
 `gridfinity-rebuilt-openscad` submodule (see Installation) and OpenSCAD to
 render an STL.
 
-**For anything with more than one object in it, use the layout stage
+**For anything with more than one object in it, use `layout_cli.py`
 instead** - it takes a whole set of contours and writes the `.scad` for
-you. Documented in [docs/architecture.md](docs/architecture.md).
+you.
+
+### `layout_demo.py` — animate the search
+
+Writes the GIFs at the top of this file. Commands and flags are up there;
+the design behind what they show is in
+[docs/architecture.md](docs/architecture.md).
 
 ### `postprocess_gcode_for_prusa_i3.py`
 
