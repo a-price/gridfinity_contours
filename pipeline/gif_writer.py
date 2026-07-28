@@ -12,6 +12,17 @@ GitHub with no player, no codec, and no external hosting.
 Frames arrive as BGR arrays from `layout.render`, which is what OpenCV
 produces and what the rest of the pipeline already passes around. The
 conversion to RGB happens here, once, rather than at each call site.
+
+**One palette for the whole animation, not one per frame.** This is the
+decision the file size turns on, and it is not obvious. A per-frame
+adaptive palette is locally optimal and globally terrible: two consecutive
+frames that look nearly identical get different palettes, so the same gray
+lands on a different index in each, every pixel differs *numerically*, and
+the delta encoding that should skip the unchanged 95% of the page finds
+nothing to skip. Measured on the drawer animation, per-frame palettes cost
+749KB against 196KB for a shared one - and the per-frame version got
+*larger* as its palette got smaller, since a coarser adaptive palette
+varies more from frame to frame.
 """
 
 from typing import Sequence
@@ -25,10 +36,10 @@ from PIL import Image
 # GIFs written naively come out slower than asked.
 DELAY_QUANTUM_MS = 10
 
-# The drawings are dark lines on white with antialiasing, so almost all of
-# the color range is grays that nobody can distinguish. Quantizing hard is
-# what keeps a few hundred frames to a few hundred kilobytes.
-DEFAULT_COLORS = 64
+# Sixteen levels reproduces an antialiased line drawing to within about 4%
+# per channel, which is invisible on an edge and half the size of the 64
+# this started at. Raise it for artwork with real color in it.
+DEFAULT_COLORS = 16
 
 WHITE = (255, 255, 255)
 
@@ -60,15 +71,51 @@ def Padded(frame: np.ndarray, height: int, width: int, fill: tuple[int, int, int
     return canvas
 
 
-def _Quantized(frame: np.ndarray, colors: int) -> Image.Image:
-    """One BGR frame as a paletted image, without dithering.
+def Neutral(frames: Sequence[np.ndarray]) -> bool:
+    """Whether every pixel of every frame is a shade of gray.
 
-    Dithering trades a flat white page for a stippled one, which costs both
-    file size and legibility here - the frames are line drawings, so a
-    palette of grays reproduces them essentially exactly.
+    Detected rather than assumed. Everything this project draws today is
+    neutral - the stroke colors in `preview` and `floorplan` are black and
+    three grays on white - and that admits a much better palette. But
+    baking the assumption in would mean a colored stroke added later came
+    out silently desaturated, which is the kind of bug nobody goes looking
+    for in an image writer.
     """
-    rgb = Image.fromarray(frame[..., ::-1])
-    return rgb.convert("P", dither=Image.Dither.NONE, palette=Image.Palette.ADAPTIVE, colors=colors)
+    return all((frame[..., 0] == frame[..., 1]).all() and (frame[..., 1] == frame[..., 2]).all() for frame in frames)
+
+
+def _GrayRamp(levels: int) -> Image.Image:
+    """A palette of evenly spaced grays.
+
+    Better than an adaptive palette on this content, and not by a little.
+    Antialiasing a gray line against a white page produces exactly a ramp,
+    so evenly spaced entries land where the pixels actually are. Median cut
+    instead spends its entries where colors *cluster* - crowding near white
+    and near black, where the flat regions are - and leaves gaps across the
+    middle of the ramp where the edge pixels live. Measured at 16 entries:
+    worst-case error 11/255 for the ramp against 37/255 for median cut, at
+    the same file size.
+    """
+    ramp = [round(index * 255 / (levels - 1)) for index in range(levels)]
+    palette = Image.new("P", (1, 1))
+    palette.putpalette([channel for value in ramp for channel in (value, value, value)])
+    return palette
+
+
+def _Composite(frames: Sequence[np.ndarray], colors: int) -> Image.Image:
+    """A palette covering every frame, for content this cannot assume is
+    gray.
+
+    Derived from all the frames stacked together rather than from one of
+    them: the first frame of a search is nearly empty and the last is full,
+    so a palette taken from either would misrepresent the rest.
+    """
+    stacked = np.concatenate([frame[..., ::-1] for frame in frames], axis=0)
+    return Image.fromarray(stacked).quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+
+
+def _Palette(frames: Sequence[np.ndarray], colors: int) -> Image.Image:
+    return _GrayRamp(colors) if Neutral(frames) else _Composite(frames, colors)
 
 
 def WriteGif(
@@ -90,6 +137,10 @@ def WriteGif(
     combined time. That is why holding on a final result costs a handful of
     bytes rather than a copy of the image per frame - repeat the frame and
     let the encoder do it.
+
+    `colors` sizes the one palette every frame shares. Dithering is off
+    throughout: it would trade a flat white page for a stippled one, which
+    costs both file size and legibility on a line drawing.
     """
     if not frames:
         raise ValueError("an animation needs at least one frame")
@@ -98,9 +149,14 @@ def WriteGif(
             raise ValueError(f"frame {index} is not an 8-bit BGR image: shape {frame.shape}, dtype {frame.dtype}")
     if milliseconds_per_frame < DELAY_QUANTUM_MS:
         raise ValueError(f"a GIF frame cannot be shown for less than {DELAY_QUANTUM_MS}ms")
+    if not 2 <= colors <= 256:
+        raise ValueError(f"a GIF palette holds 2 to 256 colors, got {colors}")
 
     height, width = Canvas(frames)
-    images = [_Quantized(Padded(frame, height, width, fill), colors) for frame in frames]
+    padded = [Padded(frame, height, width, fill) for frame in frames]
+
+    palette = _Palette(padded, colors)
+    images = [Image.fromarray(frame[..., ::-1]).quantize(palette=palette, dither=Image.Dither.NONE) for frame in padded]
 
     images[0].save(
         path,

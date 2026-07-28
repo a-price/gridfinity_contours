@@ -30,7 +30,7 @@ from typing import Sequence
 
 import numpy as np
 
-from pipeline.gif_writer import Canvas, WriteGif
+from pipeline.gif_writer import DEFAULT_COLORS, Canvas, WriteGif
 from pipeline.layout.descent import Snapshot
 from pipeline.layout.drawer import (
     PLACED,
@@ -277,6 +277,13 @@ def _AddAnimationArguments(parser: argparse.ArgumentParser, pixels_per_mm: float
     parser.add_argument(
         "--max-frames", type=int, default=DEFAULT_MAX_FRAMES, metavar="N", help="stop recording past this many frames"
     )
+    parser.add_argument(
+        "--colors",
+        type=int,
+        default=DEFAULT_COLORS,
+        metavar="N",
+        help=f"palette size shared by every frame (default: {DEFAULT_COLORS})",
+    )
 
 
 def _Load(args: argparse.Namespace, params: LayoutParameters) -> dict[int, Part]:
@@ -301,7 +308,7 @@ def RunPack(args: argparse.Namespace) -> int:
     for _ in range(args.hold):
         recorder.Draw(result.layout)
 
-    return _Write(args.out, recorder, args.ms_per_frame)
+    return _Write(args.out, recorder, args.ms_per_frame, args.colors)
 
 
 def RunDrawer(args: argparse.Namespace) -> int:
@@ -333,7 +340,7 @@ def RunDrawer(args: argparse.Namespace) -> int:
     for _ in range(args.hold):
         recorder.Draw(result)
 
-    written = _Write(args.out, recorder, args.ms_per_frame)
+    written = _Write(args.out, recorder, args.ms_per_frame, args.colors)
     if written:
         return written
     # The GIF is written either way; the exit status reports the assignment,
@@ -341,12 +348,12 @@ def RunDrawer(args: argparse.Namespace) -> int:
     return 0 if result.placed else 1
 
 
-def _Write(path: str, recorder: Recording, ms_per_frame: int) -> int:
+def _Write(path: str, recorder: Recording, ms_per_frame: int, colors: int = DEFAULT_COLORS) -> int:
     if not recorder.frames:
         print("no frames were recorded - lower --every, or raise --max-frames")
         return 1
 
-    WriteGif(path, recorder.frames, ms_per_frame)
+    WriteGif(path, recorder.frames, ms_per_frame, colors)
     if recorder.truncated:
         print(f"note: recording stopped at {recorder.cap} frames; the animation is not the whole search")
 
