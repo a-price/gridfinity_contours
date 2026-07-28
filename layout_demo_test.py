@@ -1,7 +1,7 @@
 """Tests for layout_demo.
 
-The demo exists to be re-run, so what these check is that the command in
-the README still works end to end - not that any particular arrangement
+The demo exists to be re-run, so what these check is that the commands in
+the README still work end to end - not that any particular arrangement
 comes out, which is the solver's business and is pinned by its own tests.
 """
 
@@ -10,12 +10,13 @@ import pytest
 from PIL import Image, ImageSequence
 
 import layout_demo
-from layout_demo import Recorder
+from layout_demo import DrawerRecorder, PackRecorder, ParseDrawer, Recording
 from pipeline.layout.descent import RELAXING, Snapshot
+from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot, Trial
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.placement import Placement
+from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.render import RenderLayout
 
 SPOONS = ["test_data/small_spoon.svg", "test_data/medium_spoon.svg"]
@@ -35,21 +36,48 @@ def _snapshot(iteration: int, placements: dict[int, Placement]) -> Snapshot:
     return Snapshot((5, 2), 0, RELAXING, iteration, placements, 1.0)
 
 
-def test_the_readme_command_writes_a_playable_gif(tmp_path):
+def _frames(path) -> int:
+    with Image.open(path) as gif:
+        assert gif.format == "GIF"
+        return sum(1 for _ in ImageSequence.Iterator(gif))
+
+
+def test_the_pack_command_writes_a_playable_gif(tmp_path):
     out = tmp_path / "pack.gif"
     code = layout_demo.Main(
         ["pack", *SPOONS, "--out", str(out), "--restarts", "2", "--every", "6", "--pixels-per-mm", "1.5"]
     )
 
     assert code == 0
-    with Image.open(out) as gif:
-        assert gif.format == "GIF"
-        # More than one, or it is a picture rather than an animation - and a
-        # single frame is exactly what a silently-broken observer produces.
-        assert sum(1 for _ in ImageSequence.Iterator(gif)) > 1
+    # More than one, or it is a picture rather than an animation - and a
+    # single frame is exactly what a silently-broken observer produces.
+    assert _frames(out) > 1
 
 
-def test_the_last_frame_is_the_layout_that_was_solved(tmp_path):
+def test_the_drawer_command_writes_a_playable_gif(tmp_path):
+    out = tmp_path / "drawer.gif"
+    code = layout_demo.Main(
+        [
+            "drawer",
+            *SPOONS,
+            "--out",
+            str(out),
+            "--drawer",
+            "260x180",
+            "--restarts",
+            "2",
+            "--every",
+            "1",
+            "--pixels-per-mm",
+            "0.6",
+        ]
+    )
+
+    assert code == 0
+    assert _frames(out) > 1
+
+
+def test_the_last_pack_frame_is_the_layout_that_was_solved():
     """The animation must not end one step short of its own answer.
 
     `Spread` returns the best arrangement it saw rather than its last, so
@@ -57,7 +85,7 @@ def test_the_last_frame_is_the_layout_that_was_solved(tmp_path):
     why the demo appends the result rather than trusting the last frame.
     """
     parts, params = _parts()
-    recorder = Recorder(parts, params, pixels_per_mm=1.5, every=6)
+    recorder = PackRecorder(parts, params, pixels_per_mm=1.5, every=6)
     result = Pack(parts, params, observer=recorder)
     assert result.layout is not None
 
@@ -90,32 +118,76 @@ def test_both_descent_phases_are_reported():
     assert phases == {"relaxing", "spreading"}
 
 
+def test_a_drawer_frame_draws_every_drawer_side_by_side():
+    """One image per frame, however many drawers there are - a bin moving
+    between them is the thing worth seeing.
+    """
+    parts, params = _parts()
+    layouts = {0: Layout(grid=(2, 1), placements={}, inset=params.inset)}
+    drawers = [Drawer(3, 2), Drawer(2, 2)]
+
+    recorder = DrawerRecorder(drawers, layouts, parts, pixels_per_mm=1.0, every=1)
+    recorder(Trial(0, (Slot(0, 0, (0, 0)),)))
+
+    single = DrawerRecorder([drawers[0]], layouts, parts, pixels_per_mm=1.0, every=1)
+    single.Draw(AssignmentResult(PLACED, {0: Slot(0, 0, (0, 0))}))
+
+    assert recorder.frames[0].shape[1] > single.frames[0].shape[1]
+
+
 def test_sampling_keeps_one_frame_in_every_n():
     parts, params = _parts()
     placements = {part_id: Placement(part_id, np.array([10.0, 10.0]), 0) for part_id in parts}
-    recorder = Recorder(parts, params, pixels_per_mm=1.0, every=4)
+    recorder = PackRecorder(parts, params, pixels_per_mm=1.0, every=4)
 
     for iteration in range(12):
         recorder(_snapshot(iteration, placements))
 
-    assert recorder.snapshots == 12
+    assert recorder.steps == 12
     assert len(recorder.frames) == 3
 
 
 def test_recording_stops_at_the_cap_and_says_so():
     parts, params = _parts()
     placements = {part_id: Placement(part_id, np.array([10.0, 10.0]), 0) for part_id in parts}
-    recorder = Recorder(parts, params, pixels_per_mm=1.0, every=1, max_frames=5)
+    recorder = PackRecorder(parts, params, pixels_per_mm=1.0, every=1, max_frames=5)
 
     for iteration in range(20):
         recorder(_snapshot(iteration, placements))
 
     assert len(recorder.frames) == 5
     assert recorder.truncated
-    assert recorder.snapshots == 20, "the cap stops recording, not the search"
+    assert recorder.steps == 20, "the cap stops recording, not the search"
+
+
+def test_the_cap_does_not_stop_a_caller_holding_on_the_answer():
+    """Which is when it matters most: a truncated recording still has to
+    end on the result rather than wherever it was cut off.
+    """
+    parts, params = _parts()
+    recorder = PackRecorder(parts, params, pixels_per_mm=1.0, every=1, max_frames=2)
+    placements = {part_id: Placement(part_id, np.array([10.0, 10.0]), 0) for part_id in parts}
+
+    for iteration in range(10):
+        recorder(_snapshot(iteration, placements))
+    recorder.Draw(Layout(grid=(5, 2), placements=placements, inset=params.inset))
+
+    assert len(recorder.frames) == 3
 
 
 def test_sampling_every_zero_is_refused():
-    parts, params = _parts()
-    with pytest.raises(ValueError, match="at least every iteration"):
-        Recorder(parts, params, every=0)
+    with pytest.raises(ValueError, match="at least every step"):
+        Recording(every=0)
+
+
+def test_a_drawer_is_given_in_millimeters():
+    # 42mm cells with the half-millimeter gap taken off the run as a whole,
+    # not off each cell - so 210mm is five cells, not four.
+    assert ParseDrawer("210x340") == Drawer(5, 8)
+    assert ParseDrawer("170X130") == Drawer(4, 3)
+
+
+@pytest.mark.parametrize("text", ["500", "500x400x300", "widexdeep", "10x10"])
+def test_an_unusable_drawer_is_refused(text):
+    with pytest.raises(Exception, match="drawer"):
+        ParseDrawer(text)

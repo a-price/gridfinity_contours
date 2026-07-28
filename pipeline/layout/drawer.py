@@ -44,7 +44,7 @@ drawer is 11 x 17 cells, past a machine word and still a single value.
 """
 
 from dataclasses import dataclass, field
-from typing import Iterator, Sequence
+from typing import Callable, Iterator, Sequence
 
 from pipeline.layout.container import BASE_GAP_MM, GRID_PITCH_MM
 
@@ -180,6 +180,30 @@ def AdmissibleFootprints(drawers: Sequence[Drawer], max_grid: int) -> frozenset[
     )
 
 
+@dataclass(frozen=True)
+class Trial:
+    """The partial assignment the search is holding right now, for a caller
+    that wants to watch it work rather than wait for its answer.
+
+    Reported on every placement *and* every retreat, so both directions are
+    visible. An animation built from successful placements alone would show
+    a greedy algorithm dropping bins into place, which is precisely what
+    this is not - the backtracking is the reason it can prove INFEASIBLE.
+
+    Subtrees answered from the memo report nothing, because nothing is
+    searched: this shows the work done, not the work avoided.
+    """
+
+    node: int
+    slots: tuple[Slot, ...]
+
+    def __str__(self) -> str:
+        return f"node {self.node}, {len(self.slots)} bins down"
+
+
+Observer = Callable[[Trial], None]
+
+
 class _Exhausted(Exception):
     """The node budget ran out.
 
@@ -222,6 +246,18 @@ class _Context:
     budget: int
     nodes: int = 0
     memo: dict = field(default_factory=dict)
+    observer: Observer | None = None
+    trial: list[Slot] = field(default_factory=list)  # the path currently being explored
+
+    def Report(self) -> None:
+        """Hand the observer the path as it stands.
+
+        Copied into a tuple, because `trial` is mutated in place as the
+        search advances and retreats - an observer that kept the live list
+        would find every frame it saved showing the same final state.
+        """
+        if self.observer is not None:
+            self.observer(Trial(self.nodes, tuple(self.trial)))
 
 
 def _Orientations(n: int, m: int) -> list[tuple[int, int, bool]]:
@@ -291,9 +327,20 @@ def _Search(context: _Context, index: int, state: tuple[int, ...]) -> list[Slot]
         occupied = list(state)
         occupied[drawer_index] |= _Mask(drawer, x, y, width, height)
 
-        rest = _Search(context, index + 1, tuple(occupied))
+        slot = Slot(bin_id, drawer_index, (x, y), turned)
+        context.trial.append(slot)
+        context.Report()
+        try:
+            rest = _Search(context, index + 1, tuple(occupied))
+        finally:
+            # Popped in a finally so that running out of budget leaves the
+            # trial consistent rather than unwinding with a stack of bins
+            # still nominally placed.
+            context.trial.pop()
+        context.Report()
+
         if len(rest) + 1 > len(best):
-            best = [Slot(bin_id, drawer_index, (x, y), turned)] + rest
+            best = [slot] + rest
             if len(best) == remaining:
                 break  # everything left fits; nothing can beat that
 
@@ -336,6 +383,7 @@ def Assign(
     footprints: dict[int, tuple[int, int]],
     drawers: Sequence[Drawer],
     budget: int = DEFAULT_NODE_BUDGET,
+    observer: Observer | None = None,
 ) -> AssignmentResult:
     """Fit every bin into the given drawers, or say why they do not fit.
 
@@ -344,8 +392,14 @@ def Assign(
     Nothing about a bin's contents reaches this level, which is what keeps
     it exact.
 
-    Bins may be turned a quarter turn, exactly as parts may be inside a
-    bin.
+    Bins may be turned a quarter turn - two distinct footprints where a
+    part inside a bin gets four, since a rectangle at 0 and 180 degrees
+    covers the same cells (see `_Orientations`).
+
+    `observer`, if given, sees each partial assignment as the search builds
+    and abandons it - see `Trial`. Nothing that runs before the search
+    reports: a set of bins turned away by `_Impossible` was never searched,
+    so there is nothing to watch.
     """
     if not footprints:
         raise ValueError("nothing to assign")
@@ -362,7 +416,7 @@ def Assign(
 
     # Largest first, since the big bins are the constrained ones.
     ordered = sorted(((bin_id, n, m) for bin_id, (n, m) in footprints.items()), key=lambda f: (-f[1] * f[2], f[0]))
-    context = _Context(ordered, drawers, budget)
+    context = _Context(ordered, drawers, budget, observer=observer)
 
     try:
         slots = _Search(context, 0, tuple(0 for _ in drawers))

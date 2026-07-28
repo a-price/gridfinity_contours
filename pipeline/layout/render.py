@@ -136,6 +136,33 @@ def RenderShapes(
     return image
 
 
+def SideBySide(images: Sequence[np.ndarray], gap: int = 0) -> np.ndarray:
+    """Several rendered pages in one image, left to right.
+
+    For the things this project draws one page at a time but wants to look
+    at together - two drawers of a floorplan, say, where watching a bin
+    move from one to the other is the whole point and two separate images
+    could not show it.
+
+    Pages are aligned at their top edge and the shorter ones are padded, so
+    a page's own contents never move when a taller one joins it.
+    """
+    if not images:
+        raise ValueError("nothing to compose")
+    if gap < 0:
+        raise ValueError(f"gap must not be negative, got {gap}")
+
+    height = max(image.shape[0] for image in images)
+    width = sum(image.shape[1] for image in images) + gap * (len(images) - 1)
+
+    canvas = np.full((height, width, 3), PAGE_COLOR, dtype=np.uint8)
+    x = 0
+    for image in images:
+        canvas[: image.shape[0], x : x + image.shape[1]] = image
+        x += image.shape[1] + gap
+    return canvas
+
+
 def RenderLayout(
     layout: Layout,
     parts: dict[int, Part],

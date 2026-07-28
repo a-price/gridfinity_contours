@@ -21,11 +21,13 @@ from pipeline.layout.drawer import (
     PLACED,
     AdmissibleFootprints,
     Assign,
+    AssignmentResult,
     Drawer,
     DrawerCells,
     FreeCells,
     LargestFreeRegion,
     Slot,
+    Trial,
     _Orientations,
 )
 from pipeline.layout.packer import CandidateGrids
@@ -375,3 +377,58 @@ def test_free_cells_are_reported_per_drawer():
 def test_a_slot_reports_the_footprint_as_it_sits():
     assert Slot(0, 0, (0, 0), turned=True).Footprint((5, 2)) == (2, 5)
     assert Slot(0, 0, (0, 0), turned=False).Footprint((5, 2)) == (5, 2)
+
+
+def _trials(footprints: dict[int, tuple[int, int]], drawers: list[Drawer]) -> list[Trial]:
+    seen: list[Trial] = []
+    Assign(footprints, drawers, observer=seen.append)
+    return seen
+
+
+def test_the_observer_sees_the_search_retreat():
+    """The point of watching this search at all.
+
+    Three 2x2 bins do not fit a 3x4 drawer, and proving it means placing
+    two and then taking one back out. An observer that only saw placements
+    would show a greedy algorithm, and could not show the step that makes
+    INFEASIBLE a proof.
+    """
+    trials = _trials({0: (2, 2), 1: (2, 2), 2: (2, 2)}, [Drawer(3, 4)])
+
+    assert trials, "the search reported nothing"
+    assert any(
+        len(later.slots) < len(earlier.slots) for earlier, later in zip(trials, trials[1:])
+    ), "no trial ever gave a bin back"
+
+
+def test_each_trial_is_its_own_snapshot():
+    """The search mutates one list as it advances and retreats, so a trial
+    that aliased it would leave every recorded frame showing the last state.
+    """
+    trials = _trials({0: (2, 2), 1: (2, 2), 2: (2, 2)}, [Drawer(3, 4)])
+
+    assert len({trial.slots for trial in trials}) > 1
+
+
+def test_a_trial_only_ever_holds_placeable_bins():
+    """Whatever a frame draws is a real partial assignment: inside the
+    drawer, and not overlapping.
+    """
+    footprints = {0: (3, 2), 1: (2, 2), 2: (2, 1)}
+    drawers = [Drawer(4, 3)]
+
+    for trial in _trials(footprints, drawers):
+        partial = AssignmentResult(PLACED, {slot.bin_id: slot for slot in trial.slots})
+        covered = _occupied(footprints, partial, drawers)
+        assert len(covered[0]) == sum(
+            footprints[slot.bin_id][0] * footprints[slot.bin_id][1] for slot in trial.slots
+        ), f"bins overlap in {trial}"
+        assert all(0 <= x < 4 and 0 <= y < 3 for x, y in covered[0]), f"a bin left the drawer in {trial}"
+
+
+def test_a_search_that_never_starts_reports_nothing():
+    """A set turned away by the bounds was never searched, so there is
+    nothing to watch - and a frame of it would be a picture of a search
+    that did not happen.
+    """
+    assert _trials({0: (5, 5)}, [Drawer(2, 2)]) == []

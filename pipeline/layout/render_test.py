@@ -16,8 +16,10 @@ from pipeline.layout.preview import LayoutShapes
 from pipeline.layout.render import (
     DEFAULT_PIXELS_PER_MM,
     MARGIN_MM,
+    PAGE_COLOR,
     DashRuns,
     RenderLayout,
+    SideBySide,
     _ToBgr,
 )
 
@@ -199,3 +201,35 @@ def test_the_default_scale_keeps_a_big_bin_a_reasonable_size():
     image = RenderLayout(layout, parts, DEFAULT_PIXELS_PER_MM)
 
     assert 600 < image.shape[1] < 1200
+
+
+def test_pages_compose_left_to_right():
+    """Two drawers of a floorplan in one image, so a bin moving between
+    them is visible where two separate images could not show it.
+    """
+    left = np.zeros((10, 20, 3), dtype=np.uint8)
+    right = np.zeros((10, 30, 3), dtype=np.uint8)
+
+    composed = SideBySide([left, right], gap=4)
+
+    assert composed.shape == (10, 54, 3)
+    assert (composed[:, 20:24] == PAGE_COLOR).all(), "the gap should be page, not ink"
+
+
+def test_a_shorter_page_is_padded_rather_than_stretched():
+    """A page's own contents must not move when a taller one joins it -
+    the drawers are drawn at true relative scale.
+    """
+    short = np.zeros((6, 20, 3), dtype=np.uint8)
+    tall = np.zeros((10, 20, 3), dtype=np.uint8)
+
+    composed = SideBySide([short, tall])
+
+    assert composed.shape == (10, 40, 3)
+    assert (composed[:6, :20] == 0).all()
+    assert (composed[6:, :20] == PAGE_COLOR).all()
+
+
+def test_composing_nothing_is_refused():
+    with pytest.raises(ValueError, match="nothing to compose"):
+        SideBySide([])
