@@ -10,7 +10,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from typing import Any
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -33,9 +33,7 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
 
 
 def _quick(**overrides) -> LayoutParameters:
-    settings: dict[str, Any] = dict(restarts=4, iterations=120, patience=25, max_grid=2)
-    settings.update(overrides)
-    return LayoutParameters(**settings)
+    return replace(LayoutParameters(restarts=4, iterations=120, patience=25, max_grid=2), **overrides)
 
 
 def _widgets(widget, kind):

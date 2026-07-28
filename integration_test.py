@@ -22,13 +22,13 @@ guessed:
 * `max_grid` is 7, not the default 6. Four of these objects genuinely need
   a seven-cell bin, and the knife misses six by 0.7mm.
 * The solver budget is cut, and the local search is skipped on the full
-  set - see `_HOUSEHOLD_BUDGET` and the scaling note on the full test.
+  set - see the budget constants and the scaling note on the full test.
 """
 
 import glob
 import os
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -72,7 +72,7 @@ MAX_GRID = 7
 # test is about whether the stack executes and returns something sound, and
 # a stricter budget buys tighter bins at a cost the suite cannot afford.
 # Anything asserted here has to hold at any budget.
-_HOUSEHOLD_BUDGET = dict(restarts=3, iterations=120, patience=12)
+RESTARTS, ITERATIONS, PATIENCE = 3, 120, 12
 
 # Two kitchen drawers, 500 x 400mm of usable interior each: 11 x 9 cells,
 # 99 apiece. Chosen so the bins genuinely have to be split across both -
@@ -86,9 +86,8 @@ FLOORPLAN_ENV = "DRAWER_FLOORPLAN"
 
 
 def _params(**overrides) -> LayoutParameters:
-    settings: dict[str, Any] = dict(max_grid=MAX_GRID, **_HOUSEHOLD_BUDGET)
-    settings.update(overrides)
-    return LayoutParameters(**settings)
+    base = LayoutParameters(max_grid=MAX_GRID, restarts=RESTARTS, iterations=ITERATIONS, patience=PATIENCE)
+    return replace(base, **overrides)
 
 
 def _assert_bins_are_sound(grouping, parts, params) -> None:

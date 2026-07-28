@@ -63,16 +63,22 @@ class EnergyResult:
         return self.containment >= 1.0
 
 
-def _PenaltyAndScale(distance: np.ndarray, clearance: float, weight: float) -> tuple[np.ndarray, np.ndarray]:
+def _PenaltyAndScale(distance: np.ndarray, clearance: float) -> tuple[np.ndarray, np.ndarray]:
     """The quadratic penalty for samples closer than `clearance`, and the
     factor by which each sample's direction is scaled to give the force.
 
-    Energy is `weight * violation^2`, so the force is its negative
-    derivative, `2 * weight * violation`, along the direction that
-    increases distance.
+    Energy is `violation^2`, so the force is its negative derivative,
+    `2 * violation`, along the direction that increases distance.
+
+    The two terms carried per-term weights until M9. They were never set to
+    anything but 1.0 in the seven milestones they existed, and weighting
+    them differently is not something D3 describes: the wall term and the
+    pair term are both "how far inside its clearance is this sample", in
+    the same millimeters, so there is no exchange rate between them to
+    tune.
     """
     violation = np.maximum(0.0, clearance - distance)
-    return weight * violation**2, 2.0 * weight * violation
+    return violation**2, 2.0 * violation
 
 
 def ComputeEnergy(
@@ -190,7 +196,7 @@ def _WallTerm(samples: np.ndarray, container: Container, params: LayoutParameter
     """One part's penalty for crowding the bin wall, and the inward force
     it earns.
     """
-    penalty, scale = _PenaltyAndScale(container.SampleDepth(samples), params.c_wall, params.wall_weight)
+    penalty, scale = _PenaltyAndScale(container.SampleDepth(samples), params.c_wall)
     return float(penalty.sum()), (scale[:, None] * container.SampleDerivative(samples)).sum(axis=0)
 
 
@@ -209,7 +215,7 @@ def _DirectedPairTerm(
     """
     local = target.ToLocal(target_part, samples)
     distance = target_part.SampleSdf(local)
-    penalty, scale = _PenaltyAndScale(distance, params.c_pair_enforced, params.pair_weight)
+    penalty, scale = _PenaltyAndScale(distance, params.c_pair_enforced)
     if not penalty.any():
         return 0.0, np.zeros(2), 0.0, 0.0
 

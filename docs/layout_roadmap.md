@@ -588,6 +588,40 @@ candidate must be evaluated. If M8's search is already near its time
 budget, this is where it tips over; cache per-bin entropy keyed by the
 bin's frozenset of part ids, exactly as M8 caches packing results.
 
+## On `LayoutParameters`
+
+It reached twenty fields by M9 and looked like accretion, so it was
+measured rather than guessed at. Two things came out.
+
+**It should not be split, and the reason is a derivation chain.** The
+fields do fall into three groups by who touches them — what the answer
+must satisfy, how hard to look for it, and how the searcher moves — and no
+module reads more than half of them. But `pocket_offset` → `c_pair` →
+(+`resolution`) `c_pair_enforced` → (+`spacing_margin`) `spacing_pair` →
+`pad` crosses all three groups, and `pad` is what the *rasterizer* sizes
+distance fields from. Splitting scatters one derivation across three types
+that then have to reach into each other.
+
+**Two fields were inert and are gone.** `pair_weight` and `wall_weight`
+existed from M2 to M9 and were never set to anything but 1.0 — they
+appeared only at their definition and two call sites. Weighting the terms
+differently is not something D3 describes either: both are "how far inside
+its clearance is this sample", in the same millimeters, so there is no
+exchange rate between them to tune. `_PenaltyAndScale` is simpler without
+them.
+
+**A note on the test helpers.** Seven test modules build a reduced-budget
+`LayoutParameters` the same way. They used to do it by unpacking a dict,
+which type-checks nothing useful: a `**dict` unpack cannot be checked
+against parameter *names* at all, and it only passed before M9 because
+every field happened to be numeric. Adding a non-numeric field surfaced
+that, and annotating the dict `dict[str, Any]` — which is what was done
+three times before anyone looked — suppresses the check rather than
+satisfying it. They now read
+`replace(LayoutParameters(restarts=..., ...), **overrides)`, which is one
+line instead of three and type-checks the defaults; a typo'd field name is
+caught where the dict form silently accepted it.
+
 ## End-to-end coverage
 
 `integration_test.py` is the one test module that deliberately breaks the

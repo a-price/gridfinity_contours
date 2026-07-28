@@ -26,7 +26,7 @@ from pipeline.layout.part import DEFAULT_RESOLUTION_MM
 
 @dataclass
 class LayoutParameters:
-    """Tunables for the packer.
+    """Everything tunable about a layout, read by eleven modules.
 
     The three clearances are derived from `pocket_offset` rather than set
     independently, because they are not independent: a pocket is cut
@@ -35,14 +35,29 @@ class LayoutParameters:
     `pair_clearance - 2*pocket_offset`, which has to stay printable.
     Setting them separately invites a layout whose dividers are too thin to
     print. Explicit values still override.
+
+    **Why this is one object and not three.** The fields fall into three
+    groups that different people touch - what the answer must satisfy
+    (`pocket_offset`, the clearances, `inset`, `max_grid`,
+    `admissible_grids`), how hard to look for it (`seed`, `iterations`,
+    `restarts`, `patience`, `placement_tries`, `spacing_iterations`), and
+    how the searcher moves (`resolution`, `step_scale`, `damping`,
+    `jitter`, `max_step`, `spacing_margin`). No module reads more than half
+    of them, which looks like an argument for splitting.
+
+    It is not, because a single derivation chain runs straight through all
+    three: `pocket_offset` gives `c_pair`, plus `resolution` gives
+    `c_pair_enforced`, plus `spacing_margin` gives `spacing_pair`, which
+    gives `pad` - and `pad` is what the *rasterizer* sizes distance fields
+    from. Split the groups and that chain is scattered across three types
+    that have to reach into each other. One object with grouped fields
+    keeps it derivable in one place.
     """
 
     pocket_offset: float = 1.0
     pair_clearance: float | None = None
     wall_clearance: float | None = None
     resolution: float = DEFAULT_RESOLUTION_MM
-    pair_weight: float = 1.0
-    wall_weight: float = 1.0
     inset: float = DEFAULT_INTERIOR_INSET_MM
     max_grid: int = 6
     seed: int = 0

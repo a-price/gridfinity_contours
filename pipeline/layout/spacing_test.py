@@ -6,7 +6,7 @@ together* while the layout stays feasible, and that nothing ever pulls a
 pair together on purpose.
 """
 
-from typing import Any
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -27,9 +27,7 @@ def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> n
 
 
 def _quick(**overrides) -> LayoutParameters:
-    settings: dict[str, Any] = dict(restarts=6, iterations=150, patience=25)
-    settings.update(overrides)
-    return LayoutParameters(**settings)
+    return replace(LayoutParameters(restarts=6, iterations=150, patience=25), **overrides)
 
 
 def _finite(gaps: dict) -> list[float]:

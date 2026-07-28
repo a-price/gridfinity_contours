@@ -8,11 +8,11 @@ size of the drawer rather than of whatever happened to be put in it.
 """
 
 import re
-from typing import Any
-
 import matplotlib
 
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
+
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -31,9 +31,7 @@ def _rectangle(width: float, height: float) -> np.ndarray:
 
 
 def _quick(**overrides) -> LayoutParameters:
-    settings: dict[str, Any] = dict(restarts=3, iterations=120, patience=12)
-    settings.update(overrides)
-    return LayoutParameters(**settings)
+    return replace(LayoutParameters(restarts=3, iterations=120, patience=12), **overrides)
 
 
 def _one_bin(params: LayoutParameters):
