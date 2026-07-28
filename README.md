@@ -1,10 +1,15 @@
 # Gridfinity Contours
 
-Turns a photo of an oddly-shaped object into a custom-fit
-[Gridfinity](https://gridfinity.xyz/) bin: photograph the object next to a
-printed calibration sheet, interactively segment it, extract a simplified
-real-world-scale contour, then feed that contour into a bin generator to
-produce a 3D-printable model with a cutout matching the object's outline.
+Turns photos of oddly-shaped objects into custom-fit
+[Gridfinity](https://gridfinity.xyz/) bins: photograph an object next to a
+printed calibration sheet, interactively segment it, and extract a
+simplified real-world-scale contour.
+
+From there the layout stage takes over: it packs several contours into the
+smallest bin that holds them all, decides which objects should share a bin
+in the first place, assigns the resulting bins to your drawers, and emits
+both the printable `.scad` and true-scale sheets to check against the real
+objects. See [Design docs](#design-docs).
 
 ## Tools
 
@@ -83,11 +88,15 @@ if you don't touch the constants in either file.
 
 ### `solid.py`
 
-Takes a set of contour points (paste `silhouette.py`'s export output into
-the `points` array at the bottom of the file) and generates a Gridfinity
-bin `.scad` file - sized to the standard 42mm grid - with a cutout matching
-the object's outline. Requires the `gridfinity-rebuilt-openscad` submodule
-(see Installation) and OpenSCAD to render the result into an STL.
+The original single-contour bin generator, kept for reference: paste
+`silhouette.py`'s export into the `points` array at the bottom and it
+writes a Gridfinity `.scad` with one cutout. Requires the
+`gridfinity-rebuilt-openscad` submodule (see Installation) and OpenSCAD to
+render an STL.
+
+**For anything with more than one object in it, use the layout stage
+instead** - it takes a whole set of contours and writes the `.scad` for
+you. Documented in [docs/architecture.md](docs/architecture.md).
 
 ### `postprocess_gcode_for_prusa_i3.py`
 
@@ -109,7 +118,7 @@ python3 postprocess_gcode_for_prusa_i3.py path/to/file.gcode [height_mm]
   smallest practical number of Gridfinity cells, via a repulsive-force
   relaxation, and grouping contours across bins.
   [docs/layout_roadmap.md](docs/layout_roadmap.md) is the implementation
-  plan; built through M8, with drawer assignment proposed as M9.
+  plan; built through M9.
 
 ## Installation
 
@@ -139,7 +148,12 @@ them:
 - `make lint` - `pyflakes`
 - `make typecheck` - `pyright`
 - `make test` - `pytest`
-- `make check` - all of the above, stopping at the first failure
+- `make check` - all of the above at once, on four cores; every failure is
+  reported, not just the first
+- `make check-serial` - the same checks one at a time, when interleaved
+  output is the problem
+- `make docs` - re-render `docs/*.dot` to SVG (needs graphviz);
+  `make docs-check` fails if a rendered SVG is older than its source
 - `make requirements` - regenerate `requirements.txt` from `requirements.in`
   (see below)
 
@@ -152,10 +166,11 @@ and run `make requirements` to change a direct dependency or its version.
 meta-tool for maintaining the lockfile, not a project dependency itself,
 so it isn't in `requirements.in`.
 
-Tests are plain `pytest`; the `slow` marker flags tests that exercise the
-real SAM2 model end-to-end (slower, needs the cached weights):
+Tests are plain `pytest`. The `slow` marker flags end-to-end work that
+costs seconds to minutes - loading the real SAM2 weights, or running the
+layout search over real contours:
 
 ```
 .venv/bin/python3 -m pytest              # everything
-.venv/bin/python3 -m pytest -m "not slow"  # skip the SAM2-dependent tests
+.venv/bin/python3 -m pytest -m "not slow"  # skip the slow ones
 ```

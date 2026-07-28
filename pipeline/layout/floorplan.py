@@ -48,9 +48,8 @@ def _Rectangle(width: float, height: float) -> np.ndarray:
 def PlacedBinShapes(layout: Layout, slot: Slot, parts: dict[int, Part]) -> list[Shape]:
     """One bin's drawing, moved to where the assignment put it.
 
-    A turned slot rotates the whole drawing a quarter turn rather than
-    re-deriving it: `RotatePoints` with orientation 1 is the same exact
-    operation a part uses to turn inside a bin, so the bin's page rotates
+    A turned slot rotates the drawing rather than re-deriving it, using
+    the same exact quarter turn a part uses inside a bin. The page goes
     from `w x h` to `h x w` with its corner still at the origin, ready to
     translate onto the lattice.
     """
@@ -125,8 +124,7 @@ def WriteFloorplanPdf(
 ) -> None:
     """Write the drawer floorplan: one true-scale page per drawer.
 
-    A PDF rather than an SVG because the page size is what makes this
-    useful, and an SVG's physical size is not honoured by every viewer or
-    print path - the same reason the per-bin preview is printed as PDF.
+    A PDF because the page size is the whole point here, and an SVG's is
+    not reliably honoured - see `pdf_writer.WriteShapesPdf`.
     """
     WriteShapesPdfPages(path, FloorplanPages(drawers, layouts, result, parts))

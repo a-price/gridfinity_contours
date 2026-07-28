@@ -63,11 +63,9 @@ class LayoutParameters:
     seed: int = 0
 
     # Bin footprints anything downstream will accept, or None for "any up
-    # to max_grid". In practice this comes from the drawers a person owns
-    # (`drawer.AdmissibleFootprints`): a bin 7 cells long cannot go in a
-    # drawer 6 cells wide at any angle, so packing one wastes the whole
-    # search below it. A frozenset rather than a predicate so that a
-    # parameter set stays comparable and printable.
+    # to max_grid" - in practice from `drawer.AdmissibleFootprints`, which
+    # says why. A frozenset rather than a predicate so that a parameter set
+    # stays comparable and printable.
     admissible_grids: frozenset[tuple[int, int]] | None = None
 
     # Solver budget. `patience` abandons an attempt whose best energy has

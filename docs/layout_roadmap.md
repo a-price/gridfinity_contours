@@ -57,8 +57,8 @@ design rather than to add it.
 rectangle and an L-shape; rotating a part 90° gives a field equal to the
 field of the rotated polygon; the independent overlap predicate agrees
 with hand-checked cases; the three `test_data/` spoons load at their
-measured sizes (200.26, 162.76, 73.93 mm long). **Met** — 46 tests across
-`pipeline/layout/{container,part,svg,verify}_test.py`.
+measured sizes (200.26, 162.76, 73.93 mm long). **Met** — across
+`pipeline/layout/{container,part,loading,verify}_test.py`.
 
 Two things M1 turned up that later milestones inherit:
 
@@ -81,19 +81,19 @@ Two things M1 turned up that later milestones inherit:
 ## M2 — Energy and forces
 
 - [x] `LayoutParameters` dataclass: `pocket_offset`, `c_pair`, `c_wall`
-  (both derived from `pocket_offset` by default), `raster_resolution`,
+  (both derived from `pocket_offset` by default), `resolution`,
   iteration/restart budgets, `seed`, `max_grid`.
 - [x] Pair term: sample `∂i` against `sdf_j` and `∂j` against `sdf_i`,
   quadratic in penetration depth, forces applied equal and opposite.
 - [x] Wall term: sample every part against the container field.
-- [x] `Energy(placements)` returning total energy and per-part force,
-  vectorized over sample points.
+- [x] `ComputeEnergy(placements)` returning total energy and per-part
+  force, vectorized over sample points.
 
 **Done when:** two identical squares at increasing separation give
 energy that is positive-and-decreasing, then exactly zero past `c_pair`;
 force directions point along the separating axis; a part straddling the
 wall is pushed inward. Finite-difference check: numerical gradient of
-`Energy` matches the returned forces. **Met** — 39 tests in
+`ComputeEnergy` matches the returned forces. **Met** —
 `pipeline/layout/energy_test.py`.
 
 Notes for later milestones:
@@ -151,7 +151,7 @@ placed without overlap, repeatably; the same seed reproduces a
 byte-identical layout; a deliberately over-full bin fails cleanly rather
 than returning an overlapping layout; and a run started from deliberately
 stacked parts either separates them or reports failure — it must never
-return a layout with parts on top of each other. **Met** — 29 tests in
+return a layout with parts on top of each other. **Met** —
 `pipeline/layout/solver_test.py`.
 
 Three things M3 turned up, all of which M4 inherits:
@@ -227,8 +227,8 @@ report cleanly explains any smaller size it rejected; the sweep finds
 zero overlaps across a few hundred random cases.
 **This is the gate for everything downstream** — if the sweep is not
 clean, the raster resolution or clearance defaults are wrong, and no
-amount of GUI work will fix that. **Met** — 23 tests in
-`pipeline/layout/packer_test.py`, sweep clean over 120 randomized sets.
+amount of GUI work will fix that. **Met** — `pipeline/layout/packer_test.py`,
+sweep clean over 120 randomized sets.
 
 **The gate earned its place on its first run.** It failed, on exactly the
 class of defect it was written to catch: two parts came out 3.157mm apart
@@ -403,7 +403,7 @@ See [Grouping](layout.md#grouping).
 
 **Done when:** the three `test_data/` spoons group from 22 cells
 (one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
-passing the independent overlap check. **Met** — 22 tests in
+passing the independent overlap check. **Met** —
 `pipeline/layout/grouping_test.py`; the spoons group to a single 5x2 at
 **10 cells**, every bin clean under `CheckLayout`.
 
@@ -513,8 +513,8 @@ the rest of this document uses.
 
 **Done when:** a set of bins with a known-tight drawer packing is placed
 exactly, and a set that passes the area bound but cannot tile is reported
-infeasible *as a fact* rather than as a failed search. **Met** — 30 tests
-in `pipeline/layout/drawer_test.py`. Three 2x2 bins into a 3x4 drawer is
+infeasible *as a fact* rather than as a failed search. **Met** —
+`pipeline/layout/drawer_test.py`. Three 2x2 bins into a 3x4 drawer is
 exactly 12 cells into 12 and provably does not tile; the search says so in
 under a millisecond, having placed two.
 

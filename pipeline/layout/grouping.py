@@ -220,8 +220,8 @@ def _FirstFit(oracle: _Oracle, parts: dict[int, Part]) -> list[Layout]:
     """Parts largest-first, each into the first open bin that still packs
     at that bin's current size.
 
-    Largest-first for the usual reason: the big parts are the constrained
-    ones, and a bin that cannot take them cannot take them in any order.
+    Largest-first, since the big parts are the constrained ones - the
+    same heuristic and the same reason as `solver._ConstructiveInit`.
     """
     bins: list[Layout] = []
     for part_id in sorted(parts, key=lambda i: -parts[i].area):

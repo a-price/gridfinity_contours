@@ -1,6 +1,8 @@
 # Layout Optimization Design
 
-Status: draft. Companion implementation plan: [layout_roadmap.md](layout_roadmap.md).
+Built through M9. Companion implementation plan:
+[layout_roadmap.md](layout_roadmap.md); the view from above is
+[architecture.md](architecture.md).
 
 ## Problem
 

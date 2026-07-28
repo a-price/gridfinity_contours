@@ -352,8 +352,7 @@ def Assign(
         unplaced, detail = impossible
         return AssignmentResult(INFEASIBLE, {}, unplaced, detail)
 
-    # Largest first: the constrained bins are the big ones, and a drawer
-    # that cannot take them cannot take them in any order.
+    # Largest first, since the big bins are the constrained ones.
     ordered = sorted(((bin_id, n, m) for bin_id, (n, m) in footprints.items()), key=lambda f: (-f[1] * f[2], f[0]))
     context = _Context(ordered, drawers, budget)
 

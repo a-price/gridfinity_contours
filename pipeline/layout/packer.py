@@ -122,12 +122,11 @@ def CandidateGrids(max_grid: int, admissible: Collection[tuple[int, int]] | None
     the same set of solutions - enumerating both would double the search to
     rediscover each answer sideways.
 
-    `admissible`, if given, restricts the result to footprints something
-    downstream can actually accept - in practice, sizes that fit a drawer
-    (`drawer.AdmissibleFootprints`). A bin no drawer can hold is not worth
-    packing however well it packs, and the rotation argument above survives
-    the restriction unchanged, since a bin turns in a drawer exactly as a
-    part turns in a bin.
+    `admissible`, if given, keeps only footprints something downstream can
+    accept - in practice the ones that fit a drawer, from
+    `drawer.AdmissibleFootprints`. The rotation argument above survives the
+    restriction, since a bin turns in a drawer exactly as a part turns in a
+    bin.
     """
     if max_grid < 1:
         raise ValueError(f"max_grid must be at least 1, got {max_grid}")
