@@ -90,9 +90,11 @@ DEFAULT_GROUP_PIXELS_PER_MM = 1.2
 # edges do not read as one shared wall.
 DRAWER_GAP_MM = 6.0
 
-# The same, between bins - wider, because a marked bin's border would
-# otherwise sit right against its neighbour's rim.
-BIN_GAP_MM = 10.0
+# The same, between bins, and small on purpose: every rendered page already
+# carries `render.MARGIN_MM` of white on each side, so this is on top of 4mm
+# that is there whatever happens. Two adjacent marked bins stay legible even
+# at zero, since each one's own rim is drawn inside its mark.
+BIN_GAP_MM = 3.0
 
 
 class Recording:
