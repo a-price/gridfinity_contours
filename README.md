@@ -13,59 +13,42 @@ objects. See [Design docs](#design-docs).
 
 ## Watching it work
 
-Three spoons looking for the smallest bin that holds them:
+Four utensils looking for the smallest bin that holds them:
 
-![three spoon outlines shoving each other inside a bin outline, failing to fit, then settling into a larger one](docs/media/pack.gif)
+![four utensil outlines shoving each other inside a bin outline, failing twice, then settling into a larger bin](docs/media/pack.gif)
 
-The first three attempts are a 5x2 bin. The spoons shove each other around
-without ever resolving: the solver minimizes an energy that reaches zero
-only when every clearance holds, and in a 5x2 it never gets there. The
-search steps up to 6x2, where they settle and then spread out to even up
-the gaps.
+It fails at 5x2 and 6x2 before packing into 5x3. A size the solver could
+not manage is reported as "not found" rather than "too small": the search
+is stochastic, so a tighter packing may still exist.
 
-6x2 is the smallest size the search found, which is not the same as the
-smallest that exists. The solver is stochastic, so failing at 5x2 is no
-proof that 5x2 is impossible, and the run reports it as "not found" rather
-than "too small".
+Six objects deciding which of them should share a bin:
 
-Six objects deciding which of them should share a bin at all:
+![six bins each holding one object, with a border marking the bins being considered, merging down to two bins](docs/media/group.gif)
 
-![six bins each holding one object, with a border marking the pair being considered, merging down to two bins](docs/media/group.gif)
+Six bins and 44 cells down to two and 25. The border marks the bins being
+priced; most candidates are rejected, so the arrangement only changes on
+the few moves worth taking.
 
-Each object starts in a bin of its own - 44 cells across six bins. The
-border marks the bins whose contents the search is pricing. Most of what
-it tries is rejected, so the picture holds still for long stretches and
-then jumps when a move is worth taking, which is what a first-improvement
-local search looks like from outside. It ends on two bins and 25 cells.
-
-The bordered bins move far more often than the arrangement does because
-pricing a candidate is cheap and packing one is not: a lower bound on the
-cell count rejects most candidates without ever running the solver. That
-gap is the only reason this search is affordable at all.
-
-Ten kitchen objects, grouped into six bins, going into two drawers:
+Ten objects, grouped into six bins, going into two drawers:
 
 ![bins of cutlery appearing in two drawer outlines, some withdrawn and replaced, until all six sit without overlapping](docs/media/drawer.gif)
 
-Bins snap to whole 42mm cells here, and when a branch runs out the search
-takes a bin back out rather than nudging it. It tries every position a bin
-could hold, so running out of them is a proof: this is the only level of
-the project that can say a set of bins does not fit, instead of just
-failing to fit them.
+Bins land on whole 42mm cells, and the search takes one back out when a
+branch runs out. This is the only level that can prove a set of bins does
+not fit.
 
-Both GIFs come from `layout_demo.py`, which runs the same code as the CLI
-and draws through the same shapes as the printed sheets. Regenerate them
-with:
+All three come from `layout_demo.py`, which runs the same code as the CLI:
 
 ```
 .venv/bin/python3 layout_demo.py pack \
     test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
-    --out docs/media/pack.gif --restarts 3 --every 4
+    test_data/medium_fork.svg --out docs/media/pack.gif \
+    --restarts 8 --every 8 --pixels-per-mm 1.4 --colors 8
 
 .venv/bin/python3 layout_demo.py group \
     test_data/big_spoon.svg test_data/small_spoon.svg test_data/screwdriver.svg \
     test_data/spreader.svg test_data/big_measure.svg test_data/small_measure.svg \
-    --start one-per-bin --restarts 6 --every 1 \
+    --start one-per-bin --restarts 12 --every 1 \
     --out docs/media/group.gif
 
 .venv/bin/python3 layout_demo.py drawer \
@@ -77,15 +60,10 @@ with:
     --out docs/media/drawer.gif
 ```
 
-The three runs take about 15 seconds, 2 minutes, and 30 seconds.
-`--drawer` is a drawer's interior in millimeters and can be repeated.
-`--restarts` is lowered just to keep them short.
-
-Grouping is the slow one because every candidate that survives its bound
-costs a full stochastic pack, and the search is quadratic in the number of
-bins. `--start one-per-bin` gives the local search the most to find;
-`--start first-fit` is what `Group` does, and on this set the two reach
-the same two bins and 25 cells.
+About 15 seconds, 2.5 minutes, and 30 seconds. `--drawer` is a drawer's
+interior in millimeters and can be repeated. `--start one-per-bin` gives
+the grouping search the most to find; `--start first-fit` is what `Group`
+does, and reaches the same 25 cells here.
 
 ## Tools
 
@@ -164,21 +142,20 @@ Gridfinity bin they all fit in, writing a true-scale sheet to print and the
 ```
 loaded 3 contours from 3 file(s)
 ...
-5x2 (10 cells): not found - no arrangement in 24 attempts
-4x3 (12 cells): too small - part 1 is 162.8x34.9mm and does not fit a 162.3x120.3mm interior at any quarter turn
-6x2 (12 cells): packed
-note: 5x2 was not ruled out geometrically - a tighter packing may exist
-packed 3 parts into 6x2 (12 cells)
+4x2 (8 cells): too small - part 1 is 162.8x34.9mm and does not fit a 162.3x78.3mm interior at any quarter turn
+3x3 (9 cells): too small - part 1 is 162.8x34.9mm and does not fit a 120.3x120.3mm interior at any quarter turn
+5x2 (10 cells): packed
+packed 3 parts into 5x2 (10 cells)
 wrote spoons.svg, spoons.pdf, spoons.scad
 ```
 
 Every candidate size is reported with why it was rejected, and the two
 reasons mean different things. "Too small" is a proof from areas and
-bounding boxes. "Not found" means the solver did not manage it in its
-restart budget, so that size may still be packable - raise `--restarts`
-and see. The closing note fires when that happened below the size it
-settled on, which is when the bin you print is bigger than it needed to
-be.
+bounding boxes, as all nine rejections are here. "Not found" means the
+solver did not manage a size the bounds allowed, so that size may still be
+packable - raise `--restarts` and see. When that happens below the size it
+settles on, a closing note says so, because then the bin you print is
+bigger than it needed to be.
 
 Useful flags: `--restarts` and `--seed` steer the search, `--max-grid`
 caps the bin size, `--pocket-offset` sets how much larger than its object

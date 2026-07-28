@@ -4,9 +4,12 @@ local frame."""
 import numpy as np
 import pytest
 
+from pipeline.layout.loading import BuildParts
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import (
-    DISTANT_MM,
     BuildPart,
+    CanonicalOrder,
+    DISTANT_MM,
     PolygonArea,
     ResampleBoundary,
 )
@@ -234,3 +237,35 @@ def test_part_derivative_matches_finite_differences(shape):
         numeric = (part.SampleSdf(query + offset) - part.SampleSdf(query - offset)) / (2 * step)
 
         assert part.SampleDerivative(query)[:, axis] == pytest.approx(numeric, abs=1e-4)
+
+
+def test_canonical_order_ignores_the_labels():
+    """Ids come from the order contour files were listed, so anything that
+    walks a part dict in id order inherits the command line - which is how
+    the same three spoons used to pack into different bins depending on how
+    they were named.
+    """
+    params = LayoutParameters()
+    shapes = {
+        0: np.array([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]),
+        1: np.array([[0.0, 0.0], [40.0, 0.0], [40.0, 20.0], [0.0, 20.0]]),
+        2: np.array([[0.0, 0.0], [30.0, 0.0], [30.0, 10.0], [0.0, 10.0]]),
+    }
+    parts = BuildParts(shapes, params)
+
+    forward = CanonicalOrder(parts)
+    shuffled = CanonicalOrder({part_id: parts[part_id] for part_id in (2, 0, 1)})
+
+    assert forward == shuffled == [1, 2, 0], "largest first, whatever order the dict is in"
+
+
+def test_canonical_order_falls_back_to_the_id_only_for_identical_parts():
+    """Two parts alike in area and extent are interchangeable, so which of
+    them comes first cannot change any answer - but it still has to be
+    decided, or the order is not a function of the parts.
+    """
+    params = LayoutParameters()
+    square = np.array([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]])
+    parts = BuildParts({7: square.copy(), 3: square.copy()}, params)
+
+    assert CanonicalOrder(parts) == [3, 7]

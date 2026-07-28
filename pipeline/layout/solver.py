@@ -27,8 +27,9 @@ import numpy as np
 from pipeline.layout.container import BuildContainer, Container
 from pipeline.layout.descent import RELAXING, SPREADING, Descent, Observer, Reporter, Reporting
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
+from pipeline.layout.orientation import RankedAssignments
 from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.part import Part
+from pipeline.layout.part import CanonicalOrder, Part
 from pipeline.layout.placement import Layout, Placement, RotatedSize
 from pipeline.layout.spacing import Spread
 from pipeline.layout.verify import CheckLayout
@@ -53,23 +54,22 @@ def FittingOrientations(part: Part, container: Container, params: LayoutParamete
     return fitting
 
 
-def _ChooseOrientations(
-    fitting: dict[int, list[int]],
-    rng: np.random.Generator,
-    attempt: int,
-) -> dict[int, int]:
-    """Quarter-turn orientation per part, drawn from those that fit.
+def _ChooseOrientations(ranked: list[dict[int, int]], attempt: int) -> dict[int, int]:
+    """The orientation assignment this attempt should start from.
 
     Orientation is discrete, so the relaxation cannot explore it - no
     torque acts on a part that can only sit at four angles. The restart
-    loop is the only thing that ever varies it, which is why the first
-    attempt takes the parts as they came where it can (PCA-aligned, long
-    axis along x, which already suits a bin wider than it is tall) and
-    later attempts randomize.
+    loop is the only thing that ever varies it, so a bad choice is not a
+    slow attempt but a doomed one, and choosing well is worth doing before
+    the search rather than by drawing until something works.
+
+    `ranked` is sorted best-first by `orientation.RankedAssignments`, so
+    attempts walk it in order. Cycling once it runs out is not a repeat:
+    `_ConstructiveInit` sweeps from a different corner and draws different
+    positions on every attempt, so the same orientations get genuinely
+    different starting arrangements.
     """
-    if attempt == 0:
-        return {part_id: 0 if 0 in options else options[0] for part_id, options in fitting.items()}
-    return {part_id: options[int(rng.integers(len(options)))] for part_id, options in fitting.items()}
+    return ranked[attempt % len(ranked)]
 
 
 def _PositionRange(
@@ -199,7 +199,7 @@ def _ConstructiveInit(
     else:
         corner = np.where(rng.random(2) < 0.5, 1.0, -1.0)
 
-    for part_id in sorted(parts, key=lambda i: -parts[i].area):
+    for part_id in CanonicalOrder(parts):
         orientation = orientations[part_id]
         size = RotatedSize(parts[part_id].size, orientation)
         low_limit, high_limit = _PositionRange(parts[part_id], orientation, container, params)
@@ -328,6 +328,10 @@ def SolveFixedGrid(
         # spending the whole restart budget rediscovering it.
         return None
 
+    # Ranked once for the whole grid, not per attempt: the score depends on
+    # the assignment as a whole, and the restart loop only walks the result.
+    ranked = RankedAssignments(parts, fitting, container, params, params.restarts)
+
     for attempt in range(params.restarts):
         if cancelled is not None and cancelled():
             return None
@@ -339,7 +343,7 @@ def SolveFixedGrid(
         # not renumber the attempts that came before it.
         rng = np.random.default_rng([params.seed, attempt])
 
-        orientations = _ChooseOrientations(fitting, rng, attempt)
+        orientations = _ChooseOrientations(ranked, attempt)
         settled = Relax(
             parts,
             _ConstructiveInit(parts, orientations, container, params, rng, attempt),

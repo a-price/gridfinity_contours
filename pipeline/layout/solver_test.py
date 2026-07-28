@@ -11,6 +11,7 @@ Budgets are cut well below the defaults throughout, so the suite stays
 quick; the cases are chosen to be comfortably solvable at that budget.
 """
 
+import itertools
 from dataclasses import replace
 
 import numpy as np
@@ -19,6 +20,7 @@ import pytest
 from pipeline.layout.container import BuildContainer, InteriorSpan
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
+from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Placement
 from pipeline.layout.solver import (
@@ -80,27 +82,26 @@ def test_fitting_orientations_is_empty_when_a_part_cannot_fit_at_all():
     assert FittingOrientations(part, BuildContainer(1, 1, params.inset), params) == []
 
 
-def test_first_attempt_keeps_parts_as_they_came():
-    """PCA already lays a part's long axis along x, which suits a bin wider
-    than it is tall, so the first attempt should not throw that away.
+def test_attempts_walk_the_ranking_best_first():
+    """The first attempt gets the best-scoring assignment, not a guess.
+
+    A bad orientation is not a slow attempt but a doomed one, since nothing
+    in the relaxation can turn a part - so the ranking is spent in order.
     """
-    params = _quick()
-    parts = _three_squares(params)
-    fitting = {part_id: [0, 1, 2, 3] for part_id in parts}
+    ranked = [{0: 0, 1: 2}, {0: 2, 1: 0}, {0: 0, 1: 0}]
 
-    chosen = _ChooseOrientations(fitting, np.random.default_rng(0), attempt=0)
-
-    assert set(chosen.values()) == {0}
+    assert [_ChooseOrientations(ranked, attempt) for attempt in range(3)] == ranked
 
 
-def test_later_attempts_only_choose_orientations_that_fit():
-    fitting = {0: [0, 2], 1: [1], 2: [0, 1, 2, 3]}
-    rng = np.random.default_rng(0)
+def test_attempts_past_the_ranking_cycle_rather_than_stop():
+    """Running out of assignments must not end the search: the constructive
+    initializer sweeps from a different corner and draws different
+    positions each attempt, so the same orientations get a genuinely
+    different starting arrangement.
+    """
+    ranked = [{0: 0}, {0: 2}]
 
-    for attempt in range(1, 12):
-        chosen = _ChooseOrientations(fitting, rng, attempt)
-        for part_id, orientation in chosen.items():
-            assert orientation in fitting[part_id]
+    assert [_ChooseOrientations(ranked, attempt) for attempt in range(2, 6)] == ranked * 2
 
 
 # ---------------------------------------------------- constructive startup
@@ -437,3 +438,25 @@ def test_the_progress_hook_is_optional():
     parts = BuildParts({0: _rectangle(30, 25)}, params)
 
     assert SolveFixedGrid(parts, 1, 1, params) is not None
+
+
+@pytest.mark.slow
+def test_the_answer_does_not_depend_on_the_order_the_files_were_listed():
+    """The bug this ranking was built to fix.
+
+    Part ids come from the order contour files were named, and the search
+    used to draw one orientation per part from a single seeded stream in id
+    order - so which part got which draw, and therefore which arrangements
+    the restarts explored, depended on how the command line was typed. Five
+    of the six orderings of these three spoons found the 10-cell bin and the
+    sixth returned a 12-cell one.
+    """
+    params = LayoutParameters()
+    grids = set()
+
+    for order in itertools.permutations(SPOONS):
+        result = Pack(LoadParts(list(order), params), params)
+        assert result.layout is not None, f"no bin found for {order}"
+        grids.add(result.layout.grid)
+
+    assert grids == {(5, 2)}, f"file order changed the answer: {sorted(grids)}"

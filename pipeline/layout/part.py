@@ -315,3 +315,32 @@ def BuildPart(
         pad=pad,
         area=PolygonArea(local),
     )
+
+
+def CanonicalOrder(parts: dict[int, Part]) -> list[int]:
+    """Part ids ordered by the parts themselves, not by their labels.
+
+    Ids are handed out in the order contour files were listed, so anything
+    that walks a part dict in id order inherits the command line. That is
+    fine for reporting and quietly harmful in a search: the solver draws
+    one orientation per part from a single seeded stream, so which part
+    gets which draw - and therefore which arrangements the restarts
+    explore - depended on the order the files happened to be named in.
+    Measured on the three spoons, five of the six orderings found the
+    10-cell bin and the sixth returned a 12-cell one.
+
+    Largest first, which is also what the constructive initializer wants:
+    the big parts are the constrained ones. Extent breaks ties before the
+    id does, so the id is reached only by parts identical in area and
+    bounding box - and those are interchangeable, so which is which cannot
+    matter.
+    """
+    return sorted(
+        parts,
+        key=lambda part_id: (
+            -parts[part_id].area,
+            -float(parts[part_id].size[0]),
+            -float(parts[part_id].size[1]),
+            part_id,
+        ),
+    )
