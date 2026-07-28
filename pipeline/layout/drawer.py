@@ -225,7 +225,15 @@ class _Context:
 
 
 def _Orientations(n: int, m: int) -> list[tuple[int, int, bool]]:
-    """The footprint as given, plus its quarter turn when that differs."""
+    """The footprint as given, plus its quarter turn when that differs.
+
+    Two, where a *part* inside a bin gets four. A part is asymmetric, so
+    every quarter turn places it differently; a bin's footprint is a
+    rectangle, so 0 and 180 degrees cover identical cells and so do 90 and
+    270. Enumerating two is therefore complete rather than approximate -
+    the turns it skips occupy the same cells as the ones it tries. A square
+    footprint collapses further, to one.
+    """
     return [(n, m, False)] if n == m else [(n, m, False), (m, n, True)]
 
 

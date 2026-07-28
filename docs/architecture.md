@@ -167,10 +167,22 @@ measure against a physical print, and no raster error to leave margin for.
 
 That is why this level can be exact where the ones below it cannot.
 
-**Rotation stays free, and the existing dedup stays valid.** A bin may be
-turned a quarter turn in a drawer, exactly as a part may be turned in a
-bin. `packer.CandidateGrids` already emits only `n ≥ m` on that reasoning,
-and the argument survives one level up unchanged.
+**Rotation stays free, but a bin has fewer distinct turns than a part.** A
+part is asymmetric, so all four quarter turns place it differently and the
+solver tries all four. A bin's *footprint* is a rectangle, so 0° and 180°
+occupy identical cells, as do 90° and 270° — only two distinct footprints
+exist, and the assignment search enumerates exactly those (one, for a
+square bin). That is completeness, not a shortcut: no feasible assignment
+can be lost, because the pair it skips covers the same cells.
+
+What it does mean is that the search picks a *footprint*, not a physical
+orientation. Two ways of seating a bin in the cells it was given are
+equally valid, and the floorplan draws one of them — so it shows a
+placement that works, not the only one. Nothing downstream depends on
+which, since a Gridfinity bin's exterior is symmetric under that turn.
+
+`packer.CandidateGrids` emits only `n ≥ m` on the same reasoning, and the
+argument survives one level up unchanged.
 
 **Feasibility first, and contiguity reported rather than optimized.** The
 primary question is whether the bins fit at all. Leftover room matters

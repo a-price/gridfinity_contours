@@ -26,6 +26,7 @@ from pipeline.layout.drawer import (
     FreeCells,
     LargestFreeRegion,
     Slot,
+    _Orientations,
 )
 from pipeline.layout.packer import CandidateGrids
 
@@ -78,11 +79,27 @@ def test_a_drawer_too_small_for_one_cell_is_refused():
         DrawerCells(30, 30)
 
 
+def test_a_bin_has_two_distinct_turns_where_a_part_has_four():
+    """A part is asymmetric, so the solver tries all four quarter turns
+    (`solver.FittingOrientations`). A bin's footprint is a rectangle, so 0
+    and 180 degrees cover identical cells and only two footprints exist -
+    enumerating two is complete, not approximate.
+    """
+    assert _Orientations(5, 2) == [(5, 2, False), (2, 5, True)]
+
+
+def test_a_square_bin_has_only_one():
+    """Nothing to gain by turning it, and trying both would rediscover
+    every answer sideways.
+    """
+    assert _Orientations(3, 3) == [(3, 3, False)]
+
+
 def test_a_drawer_holds_a_bin_at_either_quarter_turn():
     drawer = Drawer(5, 2)
 
     assert drawer.Holds((5, 2))
-    assert drawer.Holds((2, 5)), "a bin turns in a drawer as a part turns in a bin"
+    assert drawer.Holds((2, 5)), "the same bin, turned"
     assert not drawer.Holds((6, 2))
 
 
