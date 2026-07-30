@@ -8,6 +8,7 @@ from pipeline.layout.container import (
     BASE_GAP_MM,
     GRID_PITCH_MM,
     BuildContainer,
+    GridSizes,
     InteriorSpan,
 )
 from pipeline.layout.verify import DistanceToBoundary, PolygonInside
@@ -28,6 +29,19 @@ def test_interior_span_grows_by_one_pitch_per_cell():
 
 def test_interior_span_without_a_lip_gives_back_the_intrusion():
     assert InteriorSpan(1, inset=0.0) == pytest.approx(GRID_PITCH_MM - BASE_GAP_MM)
+
+
+def test_grid_sizes_omit_the_rotations_of_what_they_already_list():
+    grids = GridSizes(4)
+
+    assert all(n >= m for n, m in grids)
+    assert len(grids) == len(set(grids))
+
+
+def test_grid_sizes_respect_the_cap():
+    assert max(max(grid) for grid in GridSizes(3)) == 3
+    with pytest.raises(ValueError):
+        GridSizes(0)
 
 
 def test_interior_envelope_spans_the_usable_interior():

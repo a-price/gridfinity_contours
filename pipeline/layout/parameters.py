@@ -196,3 +196,17 @@ class LayoutParameters:
         not the optimizer, but how far the field can see.
         """
         return self.spacing_pair + 1.0
+
+
+def FromOverrides(**overrides) -> "LayoutParameters":
+    """The tuned defaults, with only the given fields overridden.
+
+    For a caller translating parsed flags into parameters: a flag the user
+    did not pass should keep its tuned default rather than the caller
+    re-specifying that default itself, which is how the two would
+    eventually drift. `layout_cli` and `layout_demo` each expose a
+    different subset of fields as flags, so each still builds its own
+    overrides dict from its own `argparse.Namespace` - this is only the
+    "apply what was actually given" rule they both followed separately.
+    """
+    return LayoutParameters(**{name: value for name, value in overrides.items() if value is not None})

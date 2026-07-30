@@ -20,7 +20,7 @@ import os
 import sys
 
 import numpy as np
-from PyQt5.QtCore import QLibraryInfo, Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QCloseEvent, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -34,12 +34,11 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from pipeline.core import CreateGroupBox
+from pipeline.core import CreateGroupBox, FixQtOpenCvPluginPath
 from pipeline.layout.loading import ReadContours
 from pipeline.layout_stage import EXPORT_EXTENSIONS, LayoutStage
 
-# Fix PyQt5 / OpenCV collision
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
+FixQtOpenCvPluginPath()
 
 CONTOUR_FILE_FILTER = "Contours (*.json *.svg);;Contour dumps (*.json);;SVG files (*.svg)"
 

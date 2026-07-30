@@ -37,6 +37,25 @@ DEFAULT_INTERIOR_INSET_MM = STACKING_LIP_INTRUSION_MM
 _CORNER_TOLERANCE = 1e-12
 
 
+def GridSizes(max_grid: int) -> list[tuple[int, int]]:
+    """Every `n x m` grid size up to `max_grid`, with `n >= m`.
+
+    Only the squarer-or-taller half is generated. A `2x5` bin is a `5x2`
+    rotated a quarter turn, and since every part (or bin) can also turn a
+    quarter turn, the two have exactly the same set of solutions -
+    enumerating both would double the search to rediscover each answer
+    sideways. `packer.CandidateGrids` and `drawer.AdmissibleFootprints`
+    both filter this same list rather than each regenerating it, because
+    they have to agree: `packer.GridsFor` intersects a grid-size search
+    against exactly the footprints `drawer` says a set of drawers can
+    hold, and if the two conventions ever diverged that intersection would
+    silently come up empty.
+    """
+    if max_grid < 1:
+        raise ValueError(f"max_grid must be at least 1, got {max_grid}")
+    return [(n, m) for n in range(1, max_grid + 1) for m in range(1, n + 1)]
+
+
 def InteriorSpan(cells: int, inset: float = DEFAULT_INTERIOR_INSET_MM) -> float:
     """Usable interior length of a run of `cells` grid units, in mm.
 

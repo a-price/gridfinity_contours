@@ -17,7 +17,7 @@ from an unavoidable one.
 from dataclasses import dataclass, field
 from typing import Callable, Collection
 
-from pipeline.layout.container import BuildContainer, Container
+from pipeline.layout.container import BuildContainer, Container, GridSizes
 from pipeline.layout.descent import Observer
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
@@ -118,21 +118,18 @@ def CandidateGrids(max_grid: int, admissible: Collection[tuple[int, int]] | None
     """Grid sizes worth trying, smallest first, squarest first among
     equals.
 
-    Only `n >= m` is generated. A 2x5 bin is a 5x2 rotated a quarter turn,
-    and since every part can also turn a quarter turn, the two have exactly
-    the same set of solutions - enumerating both would double the search to
-    rediscover each answer sideways.
+    Built on `container.GridSizes`, which is also what
+    `drawer.AdmissibleFootprints` filters - the two have to enumerate the
+    same `n >= m` convention, since this intersects a search against
+    exactly what that says a set of drawers can hold.
 
     `admissible`, if given, keeps only footprints something downstream can
     accept - in practice the ones that fit a drawer, from
-    `drawer.AdmissibleFootprints`. The rotation argument above survives the
-    restriction, since a bin turns in a drawer exactly as a part turns in a
-    bin.
+    `drawer.AdmissibleFootprints`. The rotation argument in `GridSizes`
+    survives the restriction, since a bin turns in a drawer exactly as a
+    part turns in a bin.
     """
-    if max_grid < 1:
-        raise ValueError(f"max_grid must be at least 1, got {max_grid}")
-
-    grids = [(n, m) for n in range(1, max_grid + 1) for m in range(1, n + 1)]
+    grids = GridSizes(max_grid)
     if admissible is not None:
         grids = [grid for grid in grids if grid in admissible]
     grids.sort(key=lambda grid: (grid[0] * grid[1], grid[0] - grid[1], grid[0]))

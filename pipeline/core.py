@@ -14,9 +14,10 @@ stage's parameters change, reruns that stage and everything downstream of
 it.
 """
 
+import os
 from typing import Callable, Sequence
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QGroupBox,
@@ -25,6 +26,21 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+
+def FixQtOpenCvPluginPath() -> None:
+    """Point Qt's platform-plugin search path at PyQt5's own copy.
+
+    OpenCV bundles its own (usually older) Qt plugins, and having both
+    installed can leave `QT_QPA_PLATFORM_PLUGIN_PATH` pointing at the wrong
+    one - which crashes plugin loading at startup with a version mismatch.
+    Every Qt entry point in this project hits it, so it is fixed once here
+    rather than separately in each.
+
+    Call this before constructing a `QApplication` - Qt reads the
+    environment variable when it loads the platform plugin, not later.
+    """
+    os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
 
 
 class Stage:

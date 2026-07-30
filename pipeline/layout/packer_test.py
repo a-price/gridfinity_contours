@@ -60,6 +60,26 @@ def test_candidate_grids_respect_the_cap():
         CandidateGrids(0)
 
 
+def test_candidate_grids_agrees_with_admissible_footprints_on_every_size():
+    """Both enumerate `n >= m` grids up to `max_grid`, from
+    `container.GridSizes`, and they have to agree: `GridsFor` intersects a
+    grid-size search against exactly what `AdmissibleFootprints` allows, so
+    a diverged convention would silently empty that intersection and every
+    bin would read as unpackable.
+
+    A drawer big enough to hold every footprint up to the cap makes
+    `AdmissibleFootprints` a no-op filter, so what survives should be
+    exactly what an unrestricted `CandidateGrids` returns - as a set, since
+    the two order their results differently.
+    """
+    from pipeline.layout.drawer import AdmissibleFootprints, Drawer
+
+    unrestricted = set(CandidateGrids(6))
+    admissible = AdmissibleFootprints([Drawer(6, 6)], max_grid=6)
+
+    assert admissible == unrestricted
+
+
 # ----------------------------------------------------------------- bounds
 
 

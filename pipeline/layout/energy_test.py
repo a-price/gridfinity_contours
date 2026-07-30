@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, BuildContainer, Container
-from pipeline.layout.energy import ComputeEnergy
+from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import BuildPart
@@ -101,6 +101,19 @@ def test_energy_refuses_parts_whose_fields_are_too_small():
 
     with pytest.raises(ValueError, match="pass through each other"):
         ComputeEnergy(parts, placements, _roomy_container(), params)
+
+
+def test_placement_energy_refuses_parts_whose_fields_are_too_small():
+    """The same guarantee ComputeEnergy makes, from its other entry point -
+    a candidate placement must not be priced against a field too narrow to
+    enforce the clearance either.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    parts = {0: BuildPart(_rectangle(10, 10), pad=0.5), 1: BuildPart(_rectangle(10, 10), pad=0.5)}
+    placements = {0: Placement(0, np.array([20.0, 20.0])), 1: Placement(1, np.array([60.0, 20.0]))}
+
+    with pytest.raises(ValueError, match="pass through each other"):
+        PlacementEnergy(0, parts, placements, _roomy_container(), params)
 
 
 # ------------------------------------------------------------- pair energy

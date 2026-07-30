@@ -11,13 +11,10 @@ reported positions into ArucoCalibration.parameters.marker_positions_mm
 changes are needed if you don't touch the constants below).
 """
 
-import os
 import sys
 
 import cv2
 import matplotlib.pyplot as plt
-from PyQt5.QtCore import QLibraryInfo
-
 
 from pipeline.calibration import (
     ARUCO_MARKER_SIZE_MM,
@@ -25,9 +22,9 @@ from pipeline.calibration import (
     DefaultArucoMarkerPositions,
     PaperCalibration,
 )
+from pipeline.core import FixQtOpenCvPluginPath
 
-# Fix PyQt5 / OpenCV collision
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
+FixQtOpenCvPluginPath()
 
 
 PAGE_WIDTH_MM = PaperCalibration.WIDTH_MM

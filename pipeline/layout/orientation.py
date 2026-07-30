@@ -111,11 +111,29 @@ def StackedWidth(profiles: list[np.ndarray], columns: int, step: int = 1) -> flo
     return float(total.max())
 
 
+def _Profiles(
+    parts: dict[int, Part], fitting: dict[int, list[int]], order: list[int]
+) -> dict[tuple[int, int], np.ndarray]:
+    """Every fitting orientation's width profile, computed once.
+
+    Each profile rotates a part's whole distance-field mask and reduces
+    over it, which is the expensive step here - `RankedAssignments` used to
+    pay for it twice, once inside `Assignment` for the greedy seed and once
+    more building its own copy of the same dict a few lines later.
+    """
+    return {
+        (part_id, orientation): WidthProfile(parts[part_id], orientation)
+        for part_id in order
+        for orientation in fitting[part_id]
+    }
+
+
 def Assignment(
     parts: dict[int, Part],
     fitting: dict[int, list[int]],
     container: Container,
     params: LayoutParameters,
+    profiles: dict[tuple[int, int], np.ndarray] | None = None,
 ) -> dict[int, int]:
     """A quarter turn per part, chosen so the parts stack narrowly.
 
@@ -125,22 +143,29 @@ def Assignment(
     that keeps the running profile narrowest.
 
     Used both as an answer in its own right and as the seed candidate when
-    there are too many permutations to rank exhaustively.
+    there are too many permutations to rank exhaustively. `profiles`, if
+    given, is used instead of recomputing `WidthProfile` - the second use
+    already has one lying around and there is no reason for both callers
+    to pay for it.
     """
     columns = _Columns(container, params)
     step = _Step(params)
     if columns <= 0:
         return {part_id: options[0] for part_id, options in fitting.items()}
 
+    order = CanonicalOrder(parts)
+    if profiles is None:
+        profiles = _Profiles(parts, fitting, order)
+
     total = np.zeros(columns)
     chosen: dict[int, int] = {}
 
-    for part_id in CanonicalOrder(parts):
+    for part_id in order:
         options = fitting[part_id]
         best: tuple[float, int, int, np.ndarray] | None = None
 
         for orientation in options:
-            width = WidthProfile(parts[part_id], orientation)
+            width = profiles[(part_id, orientation)]
             if not len(width) or len(width) > columns:
                 continue
             peak, shift = _BestShift(total, width, step)
@@ -210,10 +235,16 @@ def RankedAssignments(
     if not order or any(not choices for choices in options):
         return [{part_id: fitting[part_id][0] for part_id in fitting if fitting[part_id]}]
 
-    greedy = Assignment(parts, fitting, container, params)
     columns, step = _Columns(container, params), _Step(params)
     if columns <= 0:
-        return [greedy]
+        return [Assignment(parts, fitting, container, params)]
+
+    # Built once and handed to Assignment for the greedy seed, rather than
+    # each computing its own copy - the expensive step is rotating a part's
+    # whole distance-field mask, and every fitting orientation of every
+    # part goes through it exactly once either way.
+    profiles = _Profiles(parts, fitting, order)
+    greedy = Assignment(parts, fitting, container, params, profiles)
 
     if _Permutations(options) <= enumerate_limit:
         candidates = list(itertools.product(*options))
@@ -222,11 +253,6 @@ def RankedAssignments(
         rng = np.random.default_rng([params.seed, columns, len(order)])
         sampled = {tuple(int(rng.choice(choices)) for choices in options) for _ in range(count * 2)}
         candidates = [tuple(greedy[part_id] for part_id in order), *sorted(sampled)]
-
-    profiles: dict[tuple[int, int], np.ndarray] = {}
-    for part_id in order:
-        for orientation in fitting[part_id]:
-            profiles[(part_id, orientation)] = WidthProfile(parts[part_id], orientation)
 
     scored = []
     for index, combination in enumerate(dict.fromkeys(candidates)):

@@ -140,24 +140,6 @@ def test_sdf_reads_distant_beyond_the_rasterized_field():
     assert part.SampleSdf(np.array([[500.0, 500.0]]))[0] == DISTANT_MM
 
 
-def test_gradient_points_away_from_the_part():
-    part = BuildPart(_rectangle(20, 10))
-
-    # Just left of the left edge: away is -x.
-    assert part.SampleGradient(np.array([[-1.0, 5.0]]))[0] == pytest.approx([-1.0, 0.0], abs=0.05)
-    # Just below the bottom edge: away is -y.
-    assert part.SampleGradient(np.array([[10.0, -1.0]]))[0] == pytest.approx([0.0, -1.0], abs=0.05)
-    # Inside, the gradient still points toward the outside it will escape to.
-    assert part.SampleGradient(np.array([[1.0, 5.0]]))[0] == pytest.approx([-1.0, 0.0], abs=0.05)
-
-
-def test_gradient_is_unit_length_where_the_field_is_defined():
-    part = BuildPart(_rectangle(20, 10))
-    query = np.array([[-1.0, 5.0], [10.0, -1.0], [2.0, 5.0], [21.0, 11.0]])
-
-    assert np.linalg.norm(part.SampleGradient(query), axis=1) == pytest.approx(1.0, abs=0.05)
-
-
 def test_area_survives_rasterization():
     part = BuildPart(_l_shape())
 

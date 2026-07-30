@@ -118,14 +118,16 @@ def _ContactPositions(
         return []
 
     # Contacts are offset a little further than the clearance strictly
-    # requires. A part placed at exactly c_pair reads as *violating* it:
-    # the distance field is rasterized, so its measured separation is off
-    # by up to the discretization error, and a hand-built perfect packing
-    # prices at a small positive energy rather than zero. Without this
-    # margin every contact position looks infeasible and the sweep falls
-    # through to its random tail - which was the whole problem BLF is here
-    # to solve.
-    margin = params.resolution
+    # requires, by the same margin `c_pair_enforced` already adds to
+    # `c_pair` (see LayoutParameters.raster_margin) - it exists for exactly
+    # this: covering the distance field's own discretization error. A part
+    # placed at exactly c_pair reads as *violating* it, since the raster's
+    # measured separation is off by up to that error, and a hand-built
+    # perfect packing would price at a small positive energy rather than
+    # zero. Without this margin every contact position looks infeasible and
+    # the sweep falls through to its random tail - which was the whole
+    # problem BLF is here to solve.
+    margin = params.raster_margin
 
     axes: list[list[float]] = [[params.c_wall + margin], [params.c_wall + margin]]
     for other_id, placement in placements.items():

@@ -10,7 +10,7 @@ import pytest
 from PIL import Image, ImageSequence
 
 import layout_demo
-from layout_demo import DrawerRecorder, GroupRecorder, PackRecorder, ParseDrawer, Recording
+from layout_demo import BuildParser, DrawerRecorder, GroupRecorder, ParametersFrom, PackRecorder, ParseDrawer, Recording
 from pipeline.layout.descent import RELAXING, Snapshot
 from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot, Trial
 from pipeline.layout.loading import BuildParts, ReadContours
@@ -43,6 +43,23 @@ def _frames(path) -> int:
     with Image.open(path) as gif:
         assert gif.format == "GIF"
         return sum(1 for _ in ImageSequence.Iterator(gif))
+
+
+# --------------------------------------------------------------- parameters
+
+
+def test_unset_flags_keep_the_tuned_defaults():
+    args = BuildParser().parse_args(["pack", "in.svg"])
+
+    assert ParametersFrom(args) == LayoutParameters()
+
+
+def test_passed_flags_override():
+    args = BuildParser().parse_args(["pack", "in.svg", "--seed", "7", "--max-grid", "3", "--restarts", "2"])
+
+    params = ParametersFrom(args)
+
+    assert (params.seed, params.max_grid, params.restarts) == (7, 3, 2)
 
 
 def test_the_pack_command_writes_a_playable_gif(tmp_path):

@@ -63,6 +63,24 @@ class EnergyResult:
         return self.containment >= 1.0
 
 
+def _RequirePad(part_id: int, part: Part, params: LayoutParameters) -> None:
+    """Refuse a part whose field does not reach the clearance this energy
+    is about to enforce - otherwise two parts closer than that would pass
+    through each other unnoticed rather than being priced.
+
+    Called from both entry points into this model. It used to guard only
+    `ComputeEnergy`, which let `PlacementEnergy` skip it entirely -
+    harmless while every part comes from `loading.BuildParts` (whose `pad`
+    is derived to always clear it), but silent for any other caller.
+    """
+    if part.pad < params.c_pair_enforced:
+        raise ValueError(
+            f"part {part_id}'s distance field reaches {part.pad}mm beyond it, short of the "
+            f"{params.c_pair_enforced}mm enforced pair clearance - parts would pass through "
+            "each other unnoticed"
+        )
+
+
 def _PenaltyAndScale(distance: np.ndarray, clearance: float) -> tuple[np.ndarray, np.ndarray]:
     """The quadratic penalty for samples closer than `clearance`, and the
     factor by which each sample's direction is scaled to give the force.
@@ -123,12 +141,7 @@ def ComputeEnergy(
     get more than about halfway through each other.
     """
     for part_id, part in parts.items():
-        if part.pad < params.c_pair_enforced:
-            raise ValueError(
-                f"part {part_id}'s distance field reaches {part.pad}mm beyond it, short of the "
-                f"{params.c_pair_enforced}mm enforced pair clearance - parts would pass through "
-                "each other unnoticed"
-            )
+        _RequirePad(part_id, part, params)
 
     forces = {part_id: np.zeros(2) for part_id in placements}
     energy = 0.0
@@ -178,12 +191,15 @@ def PlacementEnergy(
     every candidate - `O(n^2)` work for an `O(n)` question, several
     thousand times per attempt.
     """
+    _RequirePad(part_id, parts[part_id], params)
+
     samples = placements[part_id].SamplesToWorld(parts[part_id])
     energy, _ = _WallTerm(samples, container, params)
 
     for other_id, other in placements.items():
         if other_id == part_id:
             continue
+        _RequirePad(other_id, parts[other_id], params)
         for source_samples, target_part, target in (
             (samples, parts[other_id], other),
             (other.SamplesToWorld(parts[other_id]), parts[part_id], placements[part_id]),

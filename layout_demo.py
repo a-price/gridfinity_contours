@@ -51,7 +51,7 @@ from pipeline.layout.floorplan import FloorplanPages
 from pipeline.layout.grouping import FirstFit, Group, Improve, OnePerBin, Step
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack
-from pipeline.layout.parameters import LayoutParameters
+from pipeline.layout.parameters import FromOverrides, LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
 from pipeline.layout.render import Bordered, InRows, RenderLayout, RenderShapes, SideBySide
@@ -246,11 +246,10 @@ class GroupRecorder(Recording):
 
 def ParametersFrom(args: argparse.Namespace) -> LayoutParameters:
     """The tuned defaults, with only the flags actually passed applied -
-    the same rule `layout_cli` follows, so a demo and a real run of the
-    same inputs behave identically.
+    the same `parameters.FromOverrides` rule `layout_cli` uses, so a demo
+    and a real run of the same inputs behave identically.
     """
-    overrides = {"max_grid": args.max_grid, "seed": args.seed, "restarts": args.restarts}
-    return LayoutParameters(**{name: value for name, value in overrides.items() if value is not None})
+    return FromOverrides(max_grid=args.max_grid, seed=args.seed, restarts=args.restarts)
 
 
 def ParseDrawer(text: str) -> Drawer:

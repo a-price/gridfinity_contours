@@ -232,7 +232,7 @@ def _Limits(container: Container, params: LayoutParameters) -> tuple[np.ndarray,
     Symmetric, so it does not move the centre - only how far the inflation
     is allowed to push.
     """
-    margin = params.c_wall + params.resolution
+    margin = params.c_wall + params.raster_margin
     return np.array([margin, margin]), np.array([container.width, container.height]) - margin
 
 

@@ -1,3 +1,24 @@
+"""Interactive capture: photo to rectified, real-world-scale contour.
+
+Each pipeline stage carries its own configuration parameters, its
+inputs/outputs, and (where relevant) debug output - see `pipeline.core`.
+This window wires them into one Qt session:
+
+  * Load Image
+  * Segment Object Contour (SAM2, restricted to the clicked connected
+    component, then cleaned up and optionally symmetrized)
+  * Calibrate
+  * Select Contour - also auto-rectifies to real-world units and refreshes
+    the text preview
+  * Export - writes the already-rectified contour out to an SVG file
+
+Calibration uses ArucoCalibration by default: print
+generate_aruco_sheet.py's PDF, place it in frame, and its markers get
+detected automatically - no manual fiducial selection needed. If no
+markers are detected (e.g. no sheet in frame), update_rectified_contours()
+falls back to pixel-space output rather than failing.
+"""
+
 import argparse
 import sys
 import os
@@ -15,7 +36,7 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QComboBox,
 )
-from PyQt5.QtCore import Qt, QLibraryInfo
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 
 from pipeline.click_recorder import WidgetToImageCoords
@@ -27,31 +48,9 @@ from pipeline.contour_extraction import FindContours, PCABox
 from pipeline.contour_selection_stage import ContourSelectionStage
 from pipeline.rectify import Rectify
 from pipeline.svg_export_stage import SvgExportStage
-from pipeline.core import Pipeline
+from pipeline.core import FixQtOpenCvPluginPath, Pipeline
 
-# Fix PyQt5 / OpenCV collision
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
-
-# Pipeline stages have the following properties:
-#  * User Configuration parameters
-#  * Input(s)
-#  * Outputs(s)
-#  * Debugging
-
-# The pipeline has the following stages
-#  * Load Image
-#  * Segment Object Contour (SAM2, restricted to the clicked connected
-#    component, then cleaned up and optionally symmetrized)
-#  * Calibrate
-#  * Select Contour - also auto-rectifies to real-world units and refreshes
-#    the text preview
-#  * Export - writes the already-rectified contour out to an SVG file
-#
-# Calibration uses ArucoCalibration by default: print
-# generate_aruco_sheet.py's PDF, place it in frame, and its markers get
-# detected automatically - no manual fiducial selection needed. If no
-# markers are detected (e.g. no sheet in frame), update_rectified_contours()
-# falls back to pixel-space output rather than failing.
+FixQtOpenCvPluginPath()
 
 # What a click on the image view does - one mode is active at a time, since
 # a click alone can't otherwise disambiguate "add a segmentation point" from
@@ -67,7 +66,6 @@ class SVGGui(QMainWindow):
         self.setWindowTitle("SVG Outliner")
         self.setGeometry(100, 100, 1200, 800)
 
-        # Initialize variables
         self.original_image = None
         self.processed_image = None
         self.object_contours = []
@@ -111,17 +109,14 @@ class SVGGui(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        # Create main widget and layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QHBoxLayout(main_widget)
 
-        # Left panel for controls
         control_panel = QWidget()
         control_layout = QVBoxLayout(control_panel)
         control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Add buttons
         self.load_btn = QPushButton("Load Image")
         self.load_btn.clicked.connect(self.load_image)
 
@@ -139,7 +134,6 @@ class SVGGui(QMainWindow):
         self.contour_text_edit = QTextEdit()
         self.contour_text_edit.setReadOnly(True)
 
-        # Add controls to layout
         control_layout.addWidget(self.load_btn)
         control_layout.addWidget(self.show_original_btn)
 
@@ -187,13 +181,11 @@ class SVGGui(QMainWindow):
         control_layout.addWidget(QLabel("Exported Contour Points:"))
         control_layout.addWidget(self.contour_text_edit, stretch=1)
 
-        # Image display area
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("background-color: #2b2b2b;")
         self.image_label.mousePressEvent = self.image_clicked
 
-        # Add widgets to main layout
         layout.addWidget(control_panel, stretch=1)
         layout.addWidget(self.image_label, stretch=3)
 
@@ -265,99 +257,70 @@ class SVGGui(QMainWindow):
                 self.pipeline.RunFrom("display")
             return
 
+    def _draw_click_markers(self, image: np.ndarray) -> None:
+        """A green '+' for each positive (label 1) segmentation click, a
+        red '-' for each negative (label 0) one.
+        """
+        click_recorder = self.segmenter_stage.click_recorder
+        if click_recorder is None:
+            return
+
+        marker_len = max(15, min(image.shape[:2]) // 80)
+        thickness = max(3, marker_len // 5)
+        for (x, y), label in zip(click_recorder.image_points, click_recorder.image_labels):
+            color = (0, 255, 0) if label == 1 else (0, 0, 255)
+            cv2.line(image, (x - marker_len, y), (x + marker_len, y), color, thickness)
+            if label == 1:
+                cv2.line(image, (x, y - marker_len), (x, y + marker_len), color, thickness)
+
+    def _draw_contour_overlays(self, image: np.ndarray, overlay: np.ndarray) -> None:
+        """Every detected object's boundary - green if selected, yellow if
+        not - plus, for each selected object, its filled overlay (blended
+        in later for a transparency effect), its simplified outline, and
+        its PCA-aligned box and center.
+        """
+        selected_objects = self.contour_selection_stage.contour_selection.selected
+        for i, contour in enumerate(self.object_contours):
+            color = (0, 255, 0) if i in selected_objects else (0, 255, 255)
+            cv2.drawContours(image, [contour], -1, color, 2)
+            if i not in selected_objects:
+                continue
+
+            cv2.drawContours(overlay, [contour], -1, (0, 255, 0), -1)
+
+            simplified_contour = self.contour_selection_stage.contour_selection.simplified.get(i)
+            pca_box = self.contour_selection_stage.contour_selection.boxes.get(i)
+            if simplified_contour is None or pca_box is None:
+                continue
+
+            cv2.drawContours(image, [simplified_contour], -1, (255, 255, 0), 3)
+            cv2.drawContours(image, [pca_box.corners], -1, (255, 0, 255), 2)
+            cv2.circle(image, tuple(pca_box.center.astype(np.int32)), 5, (255, 0, 255), -1)
+
+    def _to_pixmap(self, image: np.ndarray) -> QPixmap:
+        height, width, _channels = image.shape
+        q_image = QImage(image.tobytes(), width, height, 3 * width, QImage.Format_RGB888).rgbSwapped()
+        return QPixmap.fromImage(q_image).scaled(
+            self.image_label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
     def update_display(self):
         if self.processed_image is None:
             return
 
-        # Create a copy of the image to draw on
         display_image = self.processed_image.copy()
+        overlay = display_image.copy()  # accumulates the selected-object fills, blended in below
 
-        # Create overlay for transparent effects
-        overlay = display_image.copy()
-
-        # Draw segmentation click points: a green "+" for positive
-        # (label 1) points, a red "-" for negative (label 0) points.
-        click_recorder = self.segmenter_stage.click_recorder
-        if click_recorder is not None:
-            marker_len = max(15, min(display_image.shape[:2]) // 80)
-            thickness = max(3, marker_len // 5)
-            for (x, y), label in zip(click_recorder.image_points, click_recorder.image_labels):
-                color = (0, 255, 0) if label == 1 else (0, 0, 255)
-                cv2.line(
-                    display_image,
-                    (x - marker_len, y),
-                    (x + marker_len, y),
-                    color,
-                    thickness,
-                )
-                if label == 1:
-                    cv2.line(
-                        display_image,
-                        (x, y - marker_len),
-                        (x, y + marker_len),
-                        color,
-                        thickness,
-                    )
-
-        # Draw object boundaries if available
-        selected_objects = self.contour_selection_stage.contour_selection.selected
+        self._draw_click_markers(display_image)
         if self.object_contours:
-            for i, contour in enumerate(self.object_contours):
-                # Selected objects in green, unselected in yellow
-                color = (0, 255, 0) if i in selected_objects else (0, 255, 255)
-                cv2.drawContours(display_image, [contour], -1, color, 2)
+            self._draw_contour_overlays(display_image, overlay)
 
-                # Add transparent green fill for selected objects
-                if i in selected_objects:
-                    cv2.drawContours(overlay, [contour], -1, (0, 255, 0), -1)  # Filled contour
-
-                    simplified_contour = self.contour_selection_stage.contour_selection.simplified.get(i)
-                    pca_box = self.contour_selection_stage.contour_selection.boxes.get(i)
-                    if simplified_contour is None or pca_box is None:
-                        continue
-
-                    # Draw simplified contour in bright blue over the original
-                    cv2.drawContours(
-                        display_image,
-                        [simplified_contour],
-                        -1,
-                        (255, 255, 0),
-                        3,
-                    )
-
-                    # Draw PCA-aligned bounding box
-                    cv2.drawContours(display_image, [pca_box.corners], -1, (255, 0, 255), 2)  # Magenta bounding box
-
-                    # Draw center point
-                    cv2.circle(
-                        display_image,
-                        tuple(pca_box.center.astype(np.int32)),
-                        5,
-                        (255, 0, 255),
-                        -1,
-                    )
-
-        # Blend overlay with main image for transparency effect (30% opacity)
-        alpha = 0.3
+        alpha = 0.3  # how strongly a selected object's fill shows through
         display_image = cv2.addWeighted(display_image, 1 - alpha, overlay, alpha, 0)
 
-        # Convert to QImage and display
-        height, width, channel = display_image.shape
-        bytes_per_line = 3 * width
-        q_image = QImage(
-            display_image.tobytes(),
-            width,
-            height,
-            bytes_per_line,
-            QImage.Format_RGB888,
-        ).rgbSwapped()
-        self.image_label.setPixmap(
-            QPixmap.fromImage(q_image).scaled(
-                self.image_label.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        )
+        self.image_label.setPixmap(self._to_pixmap(display_image))
 
     def update_rectified_contours(self):
         """Recomputes real-world (mm) contours for the current selection

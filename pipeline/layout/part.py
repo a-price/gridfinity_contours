@@ -181,6 +181,11 @@ class Part:
     def _Corners(self, points: np.ndarray) -> tuple:
         """The four surrounding samples and the fractional offsets into
         their cell, for every point the raster covers.
+
+        Gathered from the float32 raster, then converted - not the other
+        way round. Converting the whole field before gathering gives the
+        same four values at the cost of a copy the width of the raster, up
+        to several hundred KB, every call.
         """
         pixels, covered = self._PixelCoordinates(points)
         x, y = pixels[covered, 0], pixels[covered, 1]
@@ -188,8 +193,12 @@ class Part:
         x1 = np.minimum(x0 + 1, self.sdf.shape[1] - 1)
         y1 = np.minimum(y0 + 1, self.sdf.shape[0] - 1)
 
-        field = self.sdf.astype(np.float64)
-        return covered, field[y0, x0], field[y0, x1], field[y1, x0], field[y1, x1], x - x0, y - y0
+        field = self.sdf
+        f00 = field[y0, x0].astype(np.float64)
+        f10 = field[y0, x1].astype(np.float64)
+        f01 = field[y1, x0].astype(np.float64)
+        f11 = field[y1, x1].astype(np.float64)
+        return covered, f00, f10, f01, f11, x - x0, y - y0
 
     def SampleSdf(self, points: np.ndarray) -> np.ndarray:
         """Signed distance in mm at each local-mm point: negative inside the
@@ -220,7 +229,7 @@ class Part:
         construction, which the finite-difference test pins down.
 
         Magnitude is ~1 wherever the field is a well-resolved distance,
-        falling off across creases; use SampleGradient for a pure direction.
+        falling off across creases.
         """
         points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
         result = np.zeros((len(points), 2))
@@ -231,16 +240,6 @@ class Part:
         result[covered, 0] = ((f10 - f00) * (1 - fy) + (f11 - f01) * fy) / self.resolution
         result[covered, 1] = ((f01 - f00) * (1 - fx) + (f11 - f10) * fx) / self.resolution
         return result
-
-    def SampleGradient(self, points: np.ndarray) -> np.ndarray:
-        """Unit vectors pointing away from the part's interior at each
-        local-mm point - the direction that separates a colliding sample.
-        Zero beyond the rasterized field, where there is nothing to push
-        away from.
-        """
-        derivative = self.SampleDerivative(points)
-        norms = np.linalg.norm(derivative, axis=-1, keepdims=True)
-        return np.divide(derivative, norms, out=np.zeros_like(derivative), where=norms > 1e-9)
 
 
 def _RasterizePolygon(pixels: np.ndarray, height: int, width: int) -> np.ndarray:

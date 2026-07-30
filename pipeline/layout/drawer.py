@@ -46,7 +46,7 @@ drawer is 11 x 17 cells, past a machine word and still a single value.
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Sequence
 
-from pipeline.layout.container import BASE_GAP_MM, GRID_PITCH_MM
+from pipeline.layout.container import BASE_GAP_MM, GRID_PITCH_MM, GridSizes
 
 PLACED = "placed"
 INFEASIBLE = "infeasible"
@@ -171,12 +171,13 @@ def AdmissibleFootprints(drawers: Sequence[Drawer], max_grid: int) -> frozenset[
     A bin 7 cells long cannot go in a drawer 6 cells wide at any angle,
     however few cells it uses - so proposing one wastes the whole stack
     below. This is the predicate `packer.CandidateGrids` takes.
+
+    Filters `container.GridSizes` rather than regenerating its own `n >= m`
+    enumeration - the two have to agree, since `packer.GridsFor` intersects
+    a grid-size search against exactly this set.
     """
     return frozenset(
-        (n, m)
-        for n in range(1, max_grid + 1)
-        for m in range(1, n + 1)
-        if any(drawer.Holds((n, m)) for drawer in drawers)
+        footprint for footprint in GridSizes(max_grid) if any(drawer.Holds(footprint) for drawer in drawers)
     )
 
 
@@ -321,13 +322,13 @@ def _Search(context: _Context, index: int, state: tuple[int, ...]) -> list[Slot]
     best: list[Slot] = []
 
     for drawer_index, x, y, turned in _Positions(context, index, state):
-        width, height = (m, n) if turned else (n, m)
+        slot = Slot(bin_id, drawer_index, (x, y), turned)
+        width, height = slot.Footprint((n, m))
         drawer = context.drawers[drawer_index]
 
         occupied = list(state)
         occupied[drawer_index] |= _Mask(drawer, x, y, width, height)
 
-        slot = Slot(bin_id, drawer_index, (x, y), turned)
         context.trial.append(slot)
         context.Report()
         try:

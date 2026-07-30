@@ -188,7 +188,7 @@ def test_a_handful_goes_from_contours_to_a_drawer_floorplan(tmp_path):
     for index, layout in enumerate(grouping.bins):
         WriteLayoutSvg(str(tmp_path / f"bin{index}.svg"), layout, parts)
         WriteLayoutPdf(str(tmp_path / f"bin{index}.pdf"), layout, parts)
-        WriteScad(str(tmp_path / f"bin{index}.scad"), layout, parts)
+        WriteScad(str(tmp_path / f"bin{index}.scad"), layout, parts, pocket_offset=params.pocket_offset)
 
     for index in range(len(grouping.bins)):
         for suffix in ("svg", "pdf", "scad"):

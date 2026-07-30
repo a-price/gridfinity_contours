@@ -115,6 +115,40 @@ def _DrawShape(image: np.ndarray, shape: Shape, pixels_per_mm: float, offset: fl
         cv2.polylines(image, [pixels], isClosed=False, color=color, thickness=thickness, lineType=cv2.LINE_AA)
 
 
+def _Compose(images: Sequence[np.ndarray], gap: int, axis: int) -> np.ndarray:
+    """Several rendered pages in one image, laid out along `axis` (0 down,
+    1 across) and aligned at zero on the other. Pages shorter on that other
+    axis are padded rather than stretched, so a page's own contents never
+    move when a bigger neighbour joins it.
+
+    The shared body of `Stacked` and `SideBySide`, which differ only in
+    which axis accumulates and which is maxed - keeping two names rather
+    than one function with an axis argument, because `Stacked(...)` and
+    `SideBySide(...)` read better at every call site than a direction flag
+    would.
+    """
+    if not images:
+        raise ValueError("nothing to compose")
+    if gap < 0:
+        raise ValueError(f"gap must not be negative, got {gap}")
+
+    other = 1 - axis
+    span = max(image.shape[other] for image in images)
+    extent = sum(image.shape[axis] for image in images) + gap * (len(images) - 1)
+
+    shape = (extent, span, 3) if axis == 0 else (span, extent, 3)
+    canvas = np.full(shape, PAGE_COLOR, dtype=np.uint8)
+
+    position = 0
+    for image in images:
+        if axis == 0:
+            canvas[position : position + image.shape[0], : image.shape[1]] = image
+        else:
+            canvas[: image.shape[0], position : position + image.shape[1]] = image
+        position += image.shape[axis] + gap
+    return canvas
+
+
 def Stacked(images: Sequence[np.ndarray], gap: int = 0) -> np.ndarray:
     """Several rendered pages in one image, top to bottom.
 
@@ -122,20 +156,7 @@ def Stacked(images: Sequence[np.ndarray], gap: int = 0) -> np.ndarray:
     row of pages that has got too long to read. Aligned at the left edge,
     narrower rows padded on the right.
     """
-    if not images:
-        raise ValueError("nothing to compose")
-    if gap < 0:
-        raise ValueError(f"gap must not be negative, got {gap}")
-
-    width = max(image.shape[1] for image in images)
-    height = sum(image.shape[0] for image in images) + gap * (len(images) - 1)
-
-    canvas = np.full((height, width, 3), PAGE_COLOR, dtype=np.uint8)
-    y = 0
-    for image in images:
-        canvas[y : y + image.shape[0], : image.shape[1]] = image
-        y += image.shape[0] + gap
-    return canvas
+    return _Compose(images, gap, axis=0)
 
 
 def InRows(images: Sequence[np.ndarray], columns: int, gap: int = 0) -> np.ndarray:
@@ -212,20 +233,7 @@ def SideBySide(images: Sequence[np.ndarray], gap: int = 0) -> np.ndarray:
     Pages are aligned at their top edge and the shorter ones are padded, so
     a page's own contents never move when a taller one joins it.
     """
-    if not images:
-        raise ValueError("nothing to compose")
-    if gap < 0:
-        raise ValueError(f"gap must not be negative, got {gap}")
-
-    height = max(image.shape[0] for image in images)
-    width = sum(image.shape[1] for image in images) + gap * (len(images) - 1)
-
-    canvas = np.full((height, width, 3), PAGE_COLOR, dtype=np.uint8)
-    x = 0
-    for image in images:
-        canvas[: image.shape[0], x : x + image.shape[1]] = image
-        x += image.shape[1] + gap
-    return canvas
+    return _Compose(images, gap, axis=1)
 
 
 def RenderLayout(

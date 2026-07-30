@@ -384,6 +384,13 @@ def _RequireParts(parts: dict[int, Part]) -> None:
         raise ValueError("nothing to group")
 
 
+def _MakeOracle(parts: dict[int, Part], params: LayoutParameters | None) -> _Oracle:
+    """One place to apply the "no params means the tuned defaults" rule
+    every entry point below repeats.
+    """
+    return _Oracle(parts, params or LayoutParameters())
+
+
 def OnePerBin(parts: dict[int, Part], params: LayoutParameters | None = None) -> Grouping:
     """Every part in a bin of its own - the baseline to measure against.
 
@@ -392,7 +399,7 @@ def OnePerBin(parts: dict[int, Part], params: LayoutParameters | None = None) ->
     nobody recomputes is how a regression hides.
     """
     _RequireParts(parts)
-    return Grouping(_OnePerBin(_Oracle(parts, params or LayoutParameters()), sorted(parts)))
+    return Grouping(_OnePerBin(_MakeOracle(parts, params), sorted(parts)))
 
 
 def FirstFit(
@@ -407,7 +414,7 @@ def FirstFit(
     local search from one that never fires.
     """
     _RequireParts(parts)
-    return Grouping(_FirstFit(_Oracle(parts, params or LayoutParameters()), parts, observer))
+    return Grouping(_FirstFit(_MakeOracle(parts, params), parts, observer))
 
 
 def Improve(
@@ -421,11 +428,16 @@ def Improve(
     Takes a grouping rather than producing one, so the search can be run
     on any starting point - including one per bin, which is the case where
     it has the most to find.
+
+    Deliberately does not require `parts` to be non-empty the way its three
+    siblings do: `parts` here is validation context for `grouping`, not a
+    catalog to partition, and an empty grouping legitimately improves to
+    nothing regardless of what parts exist to check it against.
     """
     missing = sorted(grouping.PartIds() - set(parts))
     if missing:
         raise ValueError(f"grouping holds parts {missing}, which were not given")
-    return Grouping(_Improve(_Oracle(parts, params or LayoutParameters()), list(grouping.bins), observer))
+    return Grouping(_Improve(_MakeOracle(parts, params), list(grouping.bins), observer))
 
 
 def Group(
@@ -442,5 +454,5 @@ def Group(
     `observer`, if given, sees both phases - see `Step`.
     """
     _RequireParts(parts)
-    oracle = _Oracle(parts, params or LayoutParameters())
+    oracle = _MakeOracle(parts, params)
     return Grouping(_Improve(oracle, _FirstFit(oracle, parts, observer), observer))

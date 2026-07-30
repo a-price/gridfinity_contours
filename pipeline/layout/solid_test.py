@@ -71,6 +71,23 @@ def test_a_bin_wall_thins_at_the_offset_once():
     assert wall == pytest.approx(5.0 - 1.0, abs=0.15)
 
 
+def test_the_divider_reads_exact_geometry_not_the_relaxations_raster():
+    """`ThinnestWalls` decides whether a cut bin holds together, so it has
+    to agree with `verify.CheckLayout` - the same exact polygon geometry,
+    not the rasterized field the relaxation uses for its own, looser
+    purposes. Tight enough a tolerance that a regression back to the raster
+    would fail it: two 20mm squares 6mm apart have an exactly known gap.
+    """
+    layout, parts = _layout(
+        {0: _rectangle(20, 20), 1: _rectangle(20, 20)},
+        {0: [4.0, 8.0], 1: [30.0, 8.0]},  # exactly 6mm of gap
+    )
+
+    divider, _ = ThinnestWalls(layout, parts, pocket_offset=1.0)
+
+    assert divider == pytest.approx(4.0, abs=1e-6)
+
+
 def test_a_single_part_has_no_dividers():
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
@@ -124,14 +141,24 @@ def test_a_pocket_deeper_than_the_infill_is_refused():
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
     with pytest.raises(ValueError, match="raise the height"):
-        GenerateScad(layout, parts, height_units=3, pocket_depth=20.0)
+        GenerateScad(layout, parts, pocket_offset=1.0, height_units=3, pocket_depth=20.0)
 
 
 def test_a_bin_with_no_infill_is_refused():
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
     with pytest.raises(ValueError, match="all base"):
-        GenerateScad(layout, parts, height_units=1)
+        GenerateScad(layout, parts, pocket_offset=1.0, height_units=1)
+
+
+def test_the_pocket_offset_defaults_to_the_layouts_own_tunable():
+    """One tolerance setting, not two: the default tracks
+    `LayoutParameters.pocket_offset` rather than a separately maintained
+    number, so the two cannot quietly drift apart.
+    """
+    layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
+
+    assert GenerateScad(layout, parts) == GenerateScad(layout, parts, pocket_offset=LayoutParameters().pocket_offset)
 
 
 def test_a_layout_whose_parts_are_missing_is_refused():
@@ -139,7 +166,7 @@ def test_a_layout_whose_parts_are_missing_is_refused():
     layout = Layout(grid=layout.grid, placements={**layout.placements, 9: Placement(9, np.zeros(2))})
 
     with pytest.raises(ValueError, match=r"\[9\]"):
-        GenerateScad(layout, parts)
+        GenerateScad(layout, parts, pocket_offset=1.0)
 
 
 # ------------------------------------------------------------- coordinates
@@ -153,7 +180,7 @@ def test_pockets_are_centred_on_the_bin():
     interior_x = InteriorSpan(2, params.inset)
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]}, grid=(2, 1))
 
-    (points,) = _polygons(GenerateScad(layout, parts))
+    (points,) = _polygons(GenerateScad(layout, parts, pocket_offset=1.0))
 
     # 5mm into the interior, whose own left edge is half a span left of centre.
     assert points[:, 0].min() == pytest.approx(5.0 - interior_x / 2.0, abs=0.01)
@@ -171,7 +198,7 @@ def test_an_asymmetric_pocket_is_not_mirrored():
     layout, parts = _layout({0: ELL}, {0: [10.0, 6.0]}, grid=(2, 1))
     interior = np.array([InteriorSpan(2, params.inset), InteriorSpan(1, params.inset)])
 
-    (points,) = _polygons(GenerateScad(layout, parts))
+    (points,) = _polygons(GenerateScad(layout, parts, pocket_offset=1.0))
 
     placed = layout.placements[0].ToWorld(parts[0]) - interior / 2.0
     expected = np.stack([placed[:, 0], -placed[:, 1]], axis=-1)
@@ -184,7 +211,7 @@ def test_the_y_flip_is_a_reflection_not_a_rotation():
     """
     layout, parts = _layout({0: ELL}, {0: [10.0, 6.0]}, grid=(2, 1))
 
-    (points,) = _polygons(GenerateScad(layout, parts))
+    (points,) = _polygons(GenerateScad(layout, parts, pocket_offset=1.0))
 
     def signed_area(polygon: np.ndarray) -> float:
         x, y = polygon[:, 0], polygon[:, 1]
@@ -207,7 +234,7 @@ def test_the_cutouts_are_children_of_bin_render():
     """
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
-    scad = GenerateScad(layout, parts)
+    scad = GenerateScad(layout, parts, pocket_offset=1.0)
 
     assert "bin_render(bin) {" in scad
     assert "difference()" not in scad
@@ -216,7 +243,7 @@ def test_the_cutouts_are_children_of_bin_render():
 def test_pockets_extend_downward_from_the_infill_surface():
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
-    scad = GenerateScad(layout, parts, height_units=3)
+    scad = GenerateScad(layout, parts, pocket_offset=1.0, height_units=3)
 
     depth = 3 * HEIGHT_UNIT_MM - BASE_HEIGHT_MM
     assert f"translate([0, 0, {-depth:.4f}])" in scad
@@ -229,13 +256,13 @@ def test_one_pocket_per_placed_part():
         {0: [4.0, 8.0], 1: [32.0, 8.0]},
     )
 
-    assert len(_polygons(GenerateScad(layout, parts))) == 2
+    assert len(_polygons(GenerateScad(layout, parts, pocket_offset=1.0))) == 2
 
 
 def test_the_bin_takes_its_size_from_the_layout():
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]}, grid=(3, 2))
 
-    scad = GenerateScad(layout, parts)
+    scad = GenerateScad(layout, parts, pocket_offset=1.0)
 
     assert "grid_size = [3, 2]" in scad
 
@@ -247,7 +274,7 @@ def test_the_library_include_is_absolute():
     """
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
-    scad = GenerateScad(layout, parts)
+    scad = GenerateScad(layout, parts, pocket_offset=1.0)
 
     include = re.search(r"include <(.*?)/standard.scad>", scad)
     assert include is not None and include.group(1).startswith("/")
@@ -257,7 +284,7 @@ def test_writing_puts_the_program_on_disk(tmp_path):
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
     path = tmp_path / "bin.scad"
 
-    WriteScad(str(path), layout, parts)
+    WriteScad(str(path), layout, parts, pocket_offset=1.0)
 
     assert "bin_render(bin)" in path.read_text()
 
@@ -277,7 +304,7 @@ def test_the_spoons_render_to_a_solid(tmp_path):
     assert layout is not None
 
     scad, stl = tmp_path / "spoons.scad", tmp_path / "spoons.stl"
-    WriteScad(str(scad), layout, parts)
+    WriteScad(str(scad), layout, parts, pocket_offset=params.pocket_offset)
 
     finished = subprocess.run(
         ["openscad", "-o", str(stl), str(scad)],

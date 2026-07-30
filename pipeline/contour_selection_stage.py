@@ -11,9 +11,9 @@ _EPSILON_SLIDER_SCALE = 1000  # slider is int-only; epsilon_fraction is a small 
 class ContourSelectionStage(Stage):
     """Qt wiring for ContourSelection: a debounced slider for the
     simplification threshold. Selection itself happens by clicking directly
-    on the shared image view (see SVGGui.image_clicked), the same way
-    HoughCircleCalibration.ToggleSelection works for circle fiducials, when
-    that calibration stage is wired in.
+    on the shared image view (see SVGGui.image_clicked) - the same pattern
+    HoughCircleCalibration.ToggleSelection follows for circle fiducials,
+    though no application currently wires a Qt stage for that calibration.
     """
 
     def __init__(self, contour_selection: ContourSelection | None = None) -> None:

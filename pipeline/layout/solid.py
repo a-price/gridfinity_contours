@@ -25,8 +25,7 @@ from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, InteriorSpa
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
-from pipeline.layout.spacing import Separations
-from pipeline.layout.verify import DistanceToBoundary
+from pipeline.layout.verify import DistanceToBoundary, MinimumSeparation
 
 # The vendored gridfinity-rebuilt-openscad submodule, as an absolute path.
 # Absolute because a generated .scad is routinely written somewhere other
@@ -53,16 +52,30 @@ def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float) 
     twice as fast as intuition suggests on the divider, which is exactly
     why this is worth computing rather than eyeballing.
 
+    Both measurements read exact polygon geometry - `verify.MinimumSeparation`
+    for the divider, `DistanceToBoundary` for the wall - rather than the
+    rasterized distance fields `spacing.Separations` reads for the
+    relaxation's own use. This is the number that decides whether a cut
+    bin holds together, so it uses the same exact geometry `CheckLayout`
+    verifies a layout against, not an approximation that could read a
+    divider as printable when the raster's discretization error alone
+    would sink it.
+
     Returns `inf` for whichever does not apply - a single part has no
     dividers.
     """
-    separations = Separations(parts, layout.placements).values()
-    divider = min((gap - 2.0 * pocket_offset for gap in separations), default=np.inf)
+    polygons = {part_id: placement.ToWorld(parts[part_id]) for part_id, placement in layout.placements.items()}
+
+    divider = np.inf
+    ordered = sorted(polygons)
+    for index, id_a in enumerate(ordered):
+        for id_b in ordered[index + 1 :]:
+            divider = min(divider, MinimumSeparation(polygons[id_a], polygons[id_b]) - 2.0 * pocket_offset)
 
     envelope = layout.Envelope()
     wall = np.inf
-    for part_id, placement in layout.placements.items():
-        distance = float(np.min(DistanceToBoundary(placement.ToWorld(parts[part_id]), envelope)))
+    for polygon in polygons.values():
+        distance = float(np.min(DistanceToBoundary(polygon, envelope)))
         wall = min(wall, distance - pocket_offset)
 
     return float(divider), float(wall)
@@ -130,6 +143,15 @@ def GenerateScad(
     library_path: str = LIBRARY_PATH,
 ) -> str:
     """An OpenSCAD program for the bin this layout describes.
+
+    `pocket_offset` defaults to `LayoutParameters().pocket_offset` - the
+    same tunable that sizes a layout's clearances in the first place. The
+    two are meant to track each other: in practice there is one tolerance
+    setting, not two, and a caller who packed at a non-default
+    `pocket_offset` should pass that same value here rather than rely on
+    the default. Pass a different value deliberately to cut at a tolerance
+    the layout did not budget for - `ThinnestWalls` is what keeps that
+    honest, refusing anything that leaves too little to print.
 
     `pocket_depth` defaults to the full infill, so each object drops to
     the top of the base, and may not exceed it - see below for why that is
