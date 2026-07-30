@@ -5,9 +5,7 @@ import pytest
 from pipeline.layout.container import BuildContainer, InteriorSpan
 from pipeline.layout.loading import LoadParts, LoadSvgContours
 from pipeline.layout.part import BuildPart, PolygonArea
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
-
+from conftest import SPOONS
 
 # ---------------------------------------------------------------- fixtures
 

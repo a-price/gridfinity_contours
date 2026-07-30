@@ -11,10 +11,7 @@ from pipeline.layout.container import (
     InteriorSpan,
 )
 from pipeline.layout.verify import DistanceToBoundary, PolygonInside
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
+from conftest import Rectangle as _rectangle
 
 
 def test_interior_span_matches_the_gridfinity_spec():

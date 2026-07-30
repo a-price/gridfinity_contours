@@ -1,13 +1,11 @@
 import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 import cv2
 import numpy as np
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QLabel
 
 from pipeline.segmenter import SegmenterParameters
 from pipeline.segmenter_stage import SegmenterStage, _KeepClickedComponents
@@ -16,11 +14,6 @@ IMAGE_PATH = os.path.join(os.path.dirname(__file__), "..", "IMG_SPOON.JPG")
 
 SPOON_POINT_A = (3550, 1550)  # bowl
 BACKGROUND_POINT = (900, 2700)  # dark cloth
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture(scope="session")

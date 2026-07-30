@@ -12,7 +12,6 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
 
-from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -24,14 +23,14 @@ from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.preview import OuterFootprint
-
-
-def _rectangle(width: float, height: float) -> np.ndarray:
-    return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
+from conftest import QuickParameters, Rectangle as _rectangle
 
 
 def _quick(**overrides) -> LayoutParameters:
-    return replace(LayoutParameters(restarts=3, iterations=120, patience=12), **overrides)
+    """A thinner budget than the shared one: these tests only need a layout
+    to exist so a floorplan can be drawn from it, not a good one.
+    """
+    return QuickParameters(**{"restarts": 3, "iterations": 120, "patience": 12, **overrides})
 
 
 def _one_bin(params: LayoutParameters):

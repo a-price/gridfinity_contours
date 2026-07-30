@@ -6,8 +6,6 @@ fits, since that would silently inflate every result - and that whatever
 comes back survives the independent geometric check.
 """
 
-from dataclasses import replace
-
 import numpy as np
 import pytest
 
@@ -26,17 +24,7 @@ from pipeline.layout.packer import (
 )
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.verify import CheckLayout
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
-
-
-def _quick(**overrides) -> LayoutParameters:
-    return replace(LayoutParameters(restarts=6, iterations=150, patience=25), **overrides)
-
+from conftest import QuickParameters as _quick, Rectangle as _rectangle, SPOONS
 
 # ------------------------------------------------------------- enumeration
 

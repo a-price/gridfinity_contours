@@ -6,34 +6,24 @@ seconds, so a stage that quietly packed on a parameter change would lock
 the window on every tick of a spin box.
 """
 
-import os
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from dataclasses import replace
-
 import numpy as np
 import pytest
-from PyQt5.QtWidgets import QApplication, QDoubleSpinBox, QLabel, QPushButton
+from PyQt5.QtWidgets import QDoubleSpinBox, QLabel, QPushButton
 
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import NOT_FOUND, PACKED, GridAttempt, PackResult
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout
 from pipeline.layout_stage import LayoutStage
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
+from conftest import QuickParameters, Rectangle as _rectangle
 
 
 def _quick(**overrides) -> LayoutParameters:
-    return replace(LayoutParameters(restarts=4, iterations=120, patience=25, max_grid=2), **overrides)
+    """The shared budget, capped at a 2x2 bin - these tests are about the
+    panel and its wiring, so the smallest search that produces a layout is
+    the right one.
+    """
+    return QuickParameters(**{"restarts": 4, "iterations": 120, "patience": 25, "max_grid": 2, **overrides})
 
 
 def _widgets(widget, kind):

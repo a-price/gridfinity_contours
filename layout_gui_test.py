@@ -7,23 +7,13 @@ only ever produce one session's worth of contours.
 
 import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-import numpy as np
 import pytest
-from PyQt5.QtWidgets import QApplication
 
 from pipeline.contour_io import SaveContours
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout_stage import EXPORT_EXTENSIONS
 from layout_gui import LayoutGui
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    return QApplication.instance() or QApplication([])
+from conftest import Rectangle as _rectangle, SPOONS
 
 
 @pytest.fixture
@@ -31,10 +21,6 @@ def gui(qapp):
     window = LayoutGui()
     window.layout_stage.parameters = LayoutParameters(restarts=4, iterations=120, patience=25, max_grid=2)
     return window
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
 
 
 def _slow() -> LayoutParameters:

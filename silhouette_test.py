@@ -7,8 +7,6 @@ ruler card. Click coordinates below were sampled from that image, not guessed.
 import math
 import os
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 import matplotlib
 
 matplotlib.use("Agg")  # headless: no window should pop up when writing the export PDF
@@ -18,7 +16,7 @@ import numpy as np
 import pytest
 from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QLabel
 
 from pipeline.click_recorder import ClickRecorder, ClickRecorderParameters
 from pipeline.morphology import Morphology
@@ -34,12 +32,6 @@ SPOON_POINT_A = (3550, 1550)  # bowl
 SPOON_POINT_B = (1500, 1150)  # handle
 BACKGROUND_POINT = (900, 2700)  # dark cloth
 RULER_POINT = (4600, 2400)  # ruler card, a different bright object
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    app = QApplication.instance() or QApplication([])
-    return app
 
 
 @pytest.fixture(scope="session")

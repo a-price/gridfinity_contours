@@ -11,10 +11,7 @@ import pytest
 
 from pipeline.layout.part import BuildPart, PolygonArea
 from pipeline.layout.placement import Placement, RotatePoints, RotateVectors, RotatedSize
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
+from conftest import Rectangle as _rectangle
 
 
 def _l_shape() -> np.ndarray:

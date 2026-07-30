@@ -16,8 +16,7 @@ from pipeline.layout.orientation import Assignment, RankedAssignments, StackedWi
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import RotatedSize
 from pipeline.layout.solver import FittingOrientations
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
+from conftest import Rectangle as _rectangle, SPOONS
 
 
 def _wedge(length: float, thin: float, thick: float) -> np.ndarray:
@@ -28,10 +27,6 @@ def _wedge(length: float, thin: float, thick: float) -> np.ndarray:
         [[0.0, 0.0], [length, 0.0], [length, thick], [0.0, thin]],
         dtype=np.float64,
     )
-
-
-def _rectangle(width: float, height: float) -> np.ndarray:
-    return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
 
 
 def _parts(shapes: dict[int, np.ndarray], params: LayoutParameters):

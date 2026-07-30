@@ -11,7 +11,6 @@ import signal
 from unittest import mock
 
 import matplotlib
-import numpy as np
 import pytest
 
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
@@ -29,13 +28,7 @@ from pipeline.contour_io import LoadContours, SaveContours
 from pipeline.layout.loading import LoadSvgContours
 from pipeline.layout.packer import Progress
 from pipeline.layout.parameters import LayoutParameters
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
-
+from conftest import Rectangle as _rectangle, SPOONS
 
 # ------------------------------------------------------------------ inputs
 

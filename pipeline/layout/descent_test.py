@@ -13,10 +13,7 @@ from pipeline.layout.descent import Descent
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import BuildPart, Part
 from pipeline.layout.placement import Placement
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
+from conftest import Rectangle as _rectangle
 
 
 def _part(width: float = 10.0, height: float = 10.0) -> Part:

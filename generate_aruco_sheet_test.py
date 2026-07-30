@@ -1,7 +1,3 @@
-import os
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 import matplotlib
 
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF

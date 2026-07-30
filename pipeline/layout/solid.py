@@ -25,7 +25,7 @@ from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, InteriorSpa
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
-from pipeline.layout.spacing import Gaps
+from pipeline.layout.spacing import Separations
 from pipeline.layout.verify import DistanceToBoundary
 
 # The vendored gridfinity-rebuilt-openscad submodule, as an absolute path.
@@ -56,9 +56,7 @@ def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float) 
     Returns `inf` for whichever does not apply - a single part has no
     dividers.
     """
-    params = LayoutParameters()
-    gaps = Gaps(parts, layout.placements, params)
-    separations = [slack + params.c_pair for slack in gaps.values()]
+    separations = Separations(parts, layout.placements).values()
     divider = min((gap - 2.0 * pocket_offset for gap in separations), default=np.inf)
 
     envelope = layout.Envelope()

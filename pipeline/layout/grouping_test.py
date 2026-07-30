@@ -10,9 +10,6 @@ survives the independent geometric check, since a grouping is only as
 sound as the layouts it is made of.
 """
 
-from dataclasses import replace
-
-import numpy as np
 import pytest
 
 from pipeline.layout.drawer import AdmissibleFootprints, Drawer
@@ -33,16 +30,7 @@ from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.verify import CheckLayout
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
-
-
-def _quick(**overrides) -> LayoutParameters:
-    return replace(LayoutParameters(restarts=6, iterations=150, patience=25), **overrides)
+from conftest import QuickParameters as _quick, Rectangle as _rectangle, SPOONS
 
 
 def _parts(shapes: list[tuple[float, float]], params: LayoutParameters) -> dict[int, Part]:

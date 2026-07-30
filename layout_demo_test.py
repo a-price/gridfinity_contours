@@ -18,13 +18,16 @@ from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.render import RenderLayout
-
-SPOONS = ["test_data/small_spoon.svg", "test_data/medium_spoon.svg"]
+from conftest import QuickParameters, SPOONS
 
 
 def _quick() -> LayoutParameters:
-    """Small enough to run in a test, large enough to actually settle."""
-    return LayoutParameters(restarts=2, iterations=60, patience=15)
+    """Small enough to run in a test, large enough to actually settle.
+
+    Thinner than the shared budget because these tests record every frame
+    of the search, so the budget sets how much rendering they do too.
+    """
+    return QuickParameters(restarts=2, iterations=60, patience=15)
 
 
 def _parts():

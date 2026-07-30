@@ -24,15 +24,10 @@ from pipeline.layout.solid import (
     ThinnestWalls,
     WriteScad,
 )
-
-SPOONS = ["test_data/big_spoon.svg", "test_data/medium_spoon.svg", "test_data/small_spoon.svg"]
+from conftest import Rectangle as _rectangle, SPOONS
 
 # An L, so a mirror is detectable: its long arm runs one way only.
 ELL = np.array([[0.0, 0.0], [30.0, 0.0], [30.0, 8.0], [8.0, 8.0], [8.0, 20.0], [0.0, 20.0]])
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
 
 
 def _layout(contours: dict, positions: dict, grid=(2, 1)):

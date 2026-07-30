@@ -15,10 +15,7 @@ from pipeline.layout.verify import (
     PolygonInside,
     PolygonsOverlap,
 )
-
-
-def _rectangle(width: float, height: float, x: float = 0.0, y: float = 0.0) -> np.ndarray:
-    return np.array([[x, y], [x + width, y], [x + width, y + height], [x, y + height]], dtype=np.float64)
+from conftest import Rectangle as _rectangle
 
 
 def _u_shape() -> np.ndarray:

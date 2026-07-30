@@ -79,23 +79,29 @@ def SpringParameters(params: LayoutParameters) -> LayoutParameters:
     )
 
 
-def Gaps(
+def Separations(
     parts: dict[int, Part],
     placements: dict[int, Placement],
-    params: LayoutParameters,
 ) -> dict[tuple[int, int], float]:
-    """Every pair's slack over the pair clearance, keyed by part ids.
+    """How far apart every pair of parts actually is, in mm, keyed by part
+    ids.
 
-    Slack rather than raw distance, so that zero means "exactly at the
-    limit" and the number is comparable across contacts whose clearances
-    differ. Measured both ways round and the smaller kept, matching how
-    the energy sees a pair - one part's boundary can be near the other's
-    field without the reverse being true.
+    Measured both ways round and the smaller kept, matching how the energy
+    sees a pair - one part's boundary can be near the other's field without
+    the reverse being true.
 
-    Pairs beyond the field's reach come back as a very large slack; they
-    are not neighbours, and the springs will not act on them.
+    Read off the rasterized distance fields, so pairs beyond a field's
+    reach come back very large rather than at their true distance. That is
+    the right answer for a caller asking "are these two near each other",
+    and the wrong one for a caller that needs an exact figure at long
+    range - `verify.MinimumSeparation` measures polygon to polygon for
+    that.
+
+    Takes no `LayoutParameters`, which is the point of it being separate
+    from `Gaps`: this is a fact about where the parts ended up, not about
+    what any particular parameter set would have required of them.
     """
-    gaps: dict[tuple[int, int], float] = {}
+    separations: dict[tuple[int, int], float] = {}
 
     # Once per part rather than once per direction of every pair, matching
     # ComputeEnergy - rotating a spoon's several thousand boundary samples
@@ -109,9 +115,28 @@ def Gaps(
             for source, target in ((id_a, id_b), (id_b, id_a)):
                 local = placements[target].ToLocal(parts[target], world_samples[source])
                 separation = min(separation, float(parts[target].SampleSdf(local).min()))
-            gaps[(id_a, id_b)] = separation - params.c_pair
+            separations[(id_a, id_b)] = separation
 
-    return gaps
+    return separations
+
+
+def Gaps(
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+    params: LayoutParameters,
+) -> dict[tuple[int, int], float]:
+    """Every pair's slack over the pair clearance, keyed by part ids.
+
+    Slack rather than raw distance, so that zero means "exactly at the
+    limit" and the number is comparable across contacts whose clearances
+    differ - which is what the spacing pass wants, since it is trying to
+    even out how much room each contact has to spare rather than how far
+    apart things are.
+
+    Pairs beyond the field's reach come back as a very large slack; they
+    are not neighbours, and the springs will not act on them.
+    """
+    return {pair: separation - params.c_pair for pair, separation in Separations(parts, placements).items()}
 
 
 def Spread(
