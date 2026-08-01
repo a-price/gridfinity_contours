@@ -259,6 +259,49 @@ The one contact still at 0.03mm is the big spoon's length against the bin:
 200.26mm of spoon in a 204.3mm interior leaves about 0.05mm total, so it
 is geometry, not the solver.
 
+#### The under-filled bin, and why the springs cannot reach it
+
+The springs go slack the moment nothing is within reach of anything else,
+so a bin with room to spare is not spaced at all: every pair reads
+`DISTANT_MM` and the parts stay where bottom-left fill dropped them.
+
+**Lengthening the springs does not fix this, and the reason is not `pad`.**
+`pad` is *derived* — `spacing_pair + 1` — so it is not a lever in its own
+right; and the pair force is `max(0, rest − d)²`, which is zero past the
+rest length however large the raster is. Growing the bounding box alone
+changes nothing at all.
+
+Raising `spacing_margin`, which does grow both, changes nothing either.
+`SpringParameters` inflates the *wall* clearance by the same amount, and
+at bin scale every part violates all four walls at once; the descent
+stalls and the placements come back identical at margins of 21, 42, 80 and
+160mm. Inflating only the pair springs does distribute the parts — and
+costs the tight bins the entire point of the pass, taking the spoons in
+5x2 from a gap spread of 0.04mm to 24.57mm. There is no setting of this
+model that serves both regimes, because a repulsion-only energy has
+nothing to say about a part that is far from everything.
+
+So the roomy bin is handled geometrically instead, by `Distribute`:
+center the arrangement, scale it out about its center, then center it
+again. The third step is the load-bearing one. Inflation scales part
+*centers* while centering centers the *bounding box*, so scaling undoes
+the centering it started from — whichever part sits furthest out reaches
+its wall first and stops the scale, leaving the rest with whatever they
+happened to get, measured at 7.0mm against 2.2mm with one part jammed in a
+corner. It is deliberately not iterated: re-centering frees room on the
+pinned side, and another round would simply pin the other one.
+
+The inflation stops at `spacing_wall`, not at the bare clearance. The bare
+clearance is the *legal minimum*, so inflating to it spends every
+millimetre of slack on the gaps between parts and leaves none at the rim —
+five parts in a 4x3 came out with one 2.2mm off the wall against
+inter-part gaps of tens of millimetres. `spacing_wall` is what the springs
+already drive a wall contact to when they have the room, so stopping there
+makes the two passes agree instead of the later one overriding the
+earlier. It only ever reduces how far the inflation pushes, so no bin that
+fits today stops fitting, and a tight bin — where there is no room to
+inflate — is untouched.
+
 ### D4: Solver — damped descent with annealed restarts
 
 Within a fixed grid size, one *attempt* is:

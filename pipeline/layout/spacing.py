@@ -42,9 +42,18 @@ the opposite one. Lengthening the springs cannot fix that: a part only
 feels another while a sample lands inside its raster, and that raster is
 sized when the part is built, long before the bin is known.
 
+Lengthening them was tried and measured. It does couple the parts - at a
+42mm rest length all three pairs of a three-part 4x3 bin come within
+reach - but it does not distribute them, because `SpringParameters`
+inflates the wall clearance by the same margin and at bin scale every
+part violates all four walls at once; the descent stalls and the
+placements come back identical. Inflating only the *pair* springs does
+work, and costs the tight bins the whole point of this pass: the three
+spoons in 5x2 went from a gap spread of 0.04mm to 24.57mm.
+
 So `Distribute` finishes the job geometrically rather than with a force,
-by centring the arrangement and then scaling it out until something
-reaches a wall.
+by centering the arrangement and then scaling it out into the room that
+is left.
 """
 
 from dataclasses import replace
@@ -219,25 +228,36 @@ def _Boxes(
 
 
 def _Limits(container: Container, params: LayoutParameters) -> tuple[np.ndarray, np.ndarray]:
-    """The box every part's own box has to stay inside.
+    """The box the inflation may push a part's own box out to.
 
-    Held a raster cell short of the true clearance, the same margin and the
-    same reason as `solver._ContactPositions`. A part moved to *exactly*
-    `c_wall` reads as violating it: the energy measures the wall with the
-    container's analytic distance, while `verify` measures it against the
-    polygon that approximates the corner arcs, and the two disagree by
-    microns. Stopping a quarter millimetre short costs nothing visible and
-    keeps the two agreeing.
+    `spacing_wall` rather than the bare `c_wall`, which is what this used
+    to be (plus a raster cell, so that the energy's analytic wall and
+    `verify`'s polygonal one could not disagree by microns about a part
+    sitting exactly on the limit).
 
-    Symmetric, so it does not move the centre - only how far the inflation
-    is allowed to push.
+    The bare clearance is the wrong target here, and measurably so. It is
+    the *legal minimum*, so inflating to it spends every millimetre of a
+    roomy bin's slack on the gaps between parts and leaves none at the
+    wall: five parts in a 4x3 bin came out with one 2.2mm off the rim
+    while the gaps between them ran to tens of millimetres. `spacing_wall`
+    is the rest length `Spread` already drives wall contacts to when it
+    has the room - the project's existing answer to "how far off a wall
+    should a part sit" - so using it here makes this pass agree with the
+    spring pass instead of overriding it.
+
+    It stays strictly above the old value, so the microns argument still
+    holds; and it can only reduce how far the inflation pushes, never
+    increase it, so no bin that fits today stops fitting.
+
+    Symmetric, so it does not move the center - only how far the inflation
+    is allowed to go.
     """
-    margin = params.c_wall + params.raster_margin
+    margin = params.spacing_wall
     return np.array([margin, margin]), np.array([container.width, container.height]) - margin
 
 
 def _Shift(boxes: dict[int, tuple[np.ndarray, np.ndarray]], container: Container, params: LayoutParameters):
-    """The translation that centres the whole arrangement in the bin.
+    """The translation that centers the whole arrangement in the bin.
 
     One vector for every part, so pair distances are untouched - which is
     what makes this safe by construction rather than by inspection. The
@@ -250,19 +270,39 @@ def _Shift(boxes: dict[int, tuple[np.ndarray, np.ndarray]], container: Container
     return ((limit_low + limit_high) - (low + high)) / 2.0
 
 
-def _Inflation(boxes, centre: np.ndarray, container: Container, params: LayoutParameters) -> np.ndarray:
-    """How far the arrangement can be scaled about `centre` before some part
+def _Centered(
+    parts: dict[int, Part],
+    placements: dict[int, Placement],
+    container: Container,
+    params: LayoutParameters,
+) -> dict[int, Placement]:
+    """The arrangement translated so its bounding box sits in the middle of
+    the bin.
+
+    One vector for every part, so no pair distance changes and the worst
+    wall gap can only improve - which is what makes this safe to apply
+    without measuring anything.
+    """
+    shift = _Shift(_Boxes(parts, placements), container, params)
+    return {
+        part_id: replace(placement, position=np.asarray(placement.position, dtype=np.float64) + shift)
+        for part_id, placement in placements.items()
+    }
+
+
+def _Inflation(boxes, center: np.ndarray, container: Container, params: LayoutParameters) -> np.ndarray:
+    """How far the arrangement can be scaled about `center` before some part
     reaches a wall, per axis.
 
-    What scales is each part's *centre*, not its corner. Scaling corners
+    What scales is each part's *center*, not its corner. Scaling corners
     looks equivalent and is not: a part straddling the middle of the bin has
-    its corner half a part-width off centre, so scaling that corner slides
+    its corner half a part-width off center, so scaling that corner slides
     the part bodily outward - which drove a lone part into the wall it was
     supposed to be moving away from.
 
     A part is only ever constrained by the wall it is moving toward, so each
     part and axis contributes at most one bound. One sitting exactly on the
-    centre does not move at all, and constrains nothing.
+    center does not move at all, and constrains nothing.
     """
     limit_low, limit_high = _Limits(container, params)
     scale = np.array([np.inf, np.inf])
@@ -271,12 +311,12 @@ def _Inflation(boxes, centre: np.ndarray, container: Container, params: LayoutPa
         middle = (low + high) / 2.0
         half = (high - low) / 2.0
         for axis in range(2):
-            offset = middle[axis] - centre[axis]
+            offset = middle[axis] - center[axis]
             if offset > 0:
-                room = limit_high[axis] - half[axis] - centre[axis]
+                room = limit_high[axis] - half[axis] - center[axis]
                 scale[axis] = min(scale[axis], room / offset)
             elif offset < 0:
-                room = limit_low[axis] + half[axis] - centre[axis]
+                room = limit_low[axis] + half[axis] - center[axis]
                 scale[axis] = min(scale[axis], room / offset)
 
     return np.maximum(1.0, np.where(np.isfinite(scale), scale, 1.0))
@@ -285,19 +325,19 @@ def _Inflation(boxes, centre: np.ndarray, container: Container, params: LayoutPa
 def _Scaled(
     parts: dict[int, Part],
     placements: dict[int, Placement],
-    centre: np.ndarray,
+    center: np.ndarray,
     scale: np.ndarray,
 ) -> dict[int, Placement]:
-    """The arrangement with every part's centre scaled away from `centre`.
+    """The arrangement with every part's center scaled away from `center`.
 
-    The part keeps its size, so its corner moves by exactly what its centre
+    The part keeps its size, so its corner moves by exactly what its center
     moved.
     """
     moved = {}
     for part_id, placement in placements.items():
         position = np.asarray(placement.position, dtype=np.float64)
         middle = position + RotatedSize(parts[part_id].size, placement.orientation) / 2.0
-        moved[part_id] = replace(placement, position=position + (middle - centre) * (scale - 1.0))
+        moved[part_id] = replace(placement, position=position + (middle - center) * (scale - 1.0))
     return moved
 
 
@@ -322,40 +362,48 @@ def Distribute(
     across a roomy bin would mean rasterizing every part with a skirt as
     wide as the largest bin it might ever land in.
 
-    So this is geometry rather than a force, in two steps that are safe for
-    different reasons. Centring translates every part by one vector, which
-    cannot change any pair distance at all. Inflating scales the positions
-    about the centre, which can only push parts further apart - though for
-    concave parts "further apart" is not quite a proof, since a spoon slid
-    along the line of centres can find a different part of its neighbour,
-    so the result is checked rather than trusted.
+    So this is geometry rather than a force, in three steps that are safe
+    for different reasons. Centering translates every part by one vector,
+    which cannot change any pair distance at all. Inflating scales the
+    positions about the center, which can only push parts further apart -
+    though for concave parts "further apart" is not quite a proof, since a
+    spoon slid along the line of centers can find a different part of its
+    neighbour, so the result is checked rather than trusted. Then it
+    centers *again*, and that step is not a tidy-up: inflation scales part
+    centers while centering centers the arrangement's bounding box, so
+    scaling silently undoes the centering it started from. Whichever part
+    sits furthest out reaches its wall first and stops the scale, leaving
+    every other part with whatever margin it happened to get - measured at
+    7.0mm on one side against 2.2mm on the other, with one part jammed
+    into a corner.
+
+    It is deliberately not iterated. Re-centering frees room on the side
+    the scale was pinned against, so another round would inflate into it
+    and pin the other side instead, converging on parts pressed against
+    both walls - the state the second centering exists to undo.
 
     Returns the input untouched if the improvement does not verify.
     """
     if not placements:
         return dict(placements)
 
-    boxes = _Boxes(parts, placements)
-    centred = {
-        part_id: replace(placement, position=np.asarray(placement.position) + _Shift(boxes, container, params))
-        for part_id, placement in placements.items()
-    }
-    best = centred if _Holds(parts, centred, container, params) else dict(placements)
+    centered = _Centered(parts, placements, container, params)
+    best = centered if _Holds(parts, centered, container, params) else dict(placements)
 
     boxes = _Boxes(parts, best)
     low = np.min([box[0] for box in boxes.values()], axis=0)
     high = np.max([box[1] for box in boxes.values()], axis=0)
-    centre = (low + high) / 2.0
+    center = (low + high) / 2.0
 
     # Backed off rather than bisected: the whole scale is one number per
     # axis, and the first few steps down from the geometric limit are where
     # any concave surprise shows up.
-    limit = _Inflation(boxes, centre, container, params)
+    limit = _Inflation(boxes, center, container, params)
     for fraction in (1.0, 0.75, 0.5, 0.25):
         scale = 1.0 + (limit - 1.0) * fraction
         if (scale <= 1.0).all():
             break
-        candidate = _Scaled(parts, best, centre, scale)
+        candidate = _Centered(parts, _Scaled(parts, best, center, scale), container, params)
         if _Holds(parts, candidate, container, params):
             return candidate
 

@@ -37,7 +37,9 @@ Bins land on whole 42mm cells, and the search takes one back out when a
 branch runs out. This is the only level that can prove a set of bins does
 not fit.
 
-All three come from `layout_demo.py`, which runs the same code as the CLI:
+All three come from `layout_demo.py`, which runs the same code as the CLI.
+`make gifs` regenerates all of them (`make -j3 gifs` to run them at once),
+or `make gif-pack` / `gif-group` / `gif-drawer` for one:
 
 ```
 .venv/bin/python3 layout_demo.py pack \

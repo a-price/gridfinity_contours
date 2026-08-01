@@ -172,9 +172,9 @@ def test_a_layout_whose_parts_are_missing_is_refused():
 # ------------------------------------------------------------- coordinates
 
 
-def test_pockets_are_centred_on_the_bin():
+def test_pockets_are_centered_on_the_bin():
     """A layout's origin is the interior's corner; OpenSCAD's bin is
-    centred on the origin.
+    centered on the origin.
     """
     params = LayoutParameters()
     interior_x = InteriorSpan(2, params.inset)
@@ -182,7 +182,7 @@ def test_pockets_are_centred_on_the_bin():
 
     (points,) = _polygons(GenerateScad(layout, parts, pocket_offset=1.0))
 
-    # 5mm into the interior, whose own left edge is half a span left of centre.
+    # 5mm into the interior, whose own left edge is half a span left of center.
     assert points[:, 0].min() == pytest.approx(5.0 - interior_x / 2.0, abs=0.01)
 
 

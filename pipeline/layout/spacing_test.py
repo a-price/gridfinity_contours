@@ -13,7 +13,7 @@ from pipeline.layout.container import BuildContainer
 from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.placement import Layout, Placement
+from pipeline.layout.placement import Layout, Placement, RotatedSize
 from pipeline.layout.solver import SolveFixedGrid
 from pipeline.layout.spacing import Distribute, Gaps, Spread, SpringParameters
 from pipeline.layout.verify import CheckLayout
@@ -258,7 +258,7 @@ def _placed(parts, positions: dict[int, tuple[float, float]]) -> dict[int, Place
     return {part_id: Placement(part_id, np.array(xy, dtype=np.float64)) for part_id, xy in positions.items()}
 
 
-def test_a_lone_part_ends_up_centred():
+def test_a_lone_part_ends_up_centered():
     """The case that prompted this. Both energy terms are one-sided, so
     beyond its clearance a part feels nothing at all and stops wherever
     bottom-left fill dropped it - measured at 4.1mm from one wall and
@@ -275,9 +275,9 @@ def test_a_lone_part_ends_up_centred():
     assert position[1] == pytest.approx((container.height - parts[0].size[1]) / 2.0, abs=0.01)
 
 
-def test_centring_is_all_that_happens_to_a_single_part():
-    """Nothing to inflate away from: a lone part is its own centre, so the
-    scale step must leave it exactly where centring put it. Scaling its
+def test_centering_is_all_that_happens_to_a_single_part():
+    """Nothing to inflate away from: a lone part is its own center, so the
+    scale step must leave it exactly where centering put it. Scaling its
     *corner* instead drove it into the wall.
     """
     params = _quick()
@@ -317,6 +317,81 @@ def test_distributing_never_breaks_a_clearance():
 
     assert ComputeEnergy(parts, settled, container, params).feasible
     assert CheckLayout(Layout(grid=(5, 2), placements=settled, inset=params.inset), parts) == []
+
+
+def _wall_gaps(parts, placements, container) -> dict[int, tuple[float, float, float, float]]:
+    """Each part's distance to the left, bottom, right and top walls."""
+    gaps = {}
+    for part_id, placement in placements.items():
+        low = np.asarray(placement.position, dtype=np.float64)
+        high = low + RotatedSize(parts[part_id].size, placement.orientation)
+        gaps[part_id] = (low[0], low[1], container.width - high[0], container.height - high[1])
+    return gaps
+
+
+def test_inflating_leaves_the_arrangement_centered():
+    """The inflation scales part *centers* while the centering step centers
+    the arrangement's *bounding box*, so scaling undoes the centering it
+    started from: whichever part is furthest out reaches its wall first and
+    stops the scale, leaving every other part with whatever margin it
+    happened to get. Measured before this was fixed: 7.0mm on one side
+    against 2.2mm on the other, with one part jammed into a corner.
+
+    Re-centering afterwards costs one translation, which cannot change any
+    pair distance at all.
+    """
+    params = _quick()
+    contours = {0: _box(40.0, 18.0), 1: _box(30.0, 15.0), 2: _box(25.0, 12.0)}
+    parts = BuildParts(contours, params)
+    container = BuildContainer(4, 3, params.inset)
+    before = _placed(parts, {0: (2.2, 2.2), 1: (45.9, 1.9), 2: (79.6, 1.9)})
+
+    after = Distribute(parts, before, container, params)
+
+    gaps = _wall_gaps(parts, after, container)
+    left = min(gap[0] for gap in gaps.values())
+    right = min(gap[2] for gap in gaps.values())
+    bottom = min(gap[1] for gap in gaps.values())
+    top = min(gap[3] for gap in gaps.values())
+    assert left == pytest.approx(right, abs=0.1), f"lopsided across x: {left:.2f} vs {right:.2f}"
+    assert bottom == pytest.approx(top, abs=0.1), f"lopsided across y: {bottom:.2f} vs {top:.2f}"
+
+
+def test_inflating_stops_at_the_springs_wall_target():
+    """The bare clearance is the legal minimum, so inflating to it spends
+    every millimetre of a roomy bin's slack on the gaps between parts and
+    leaves none at the wall. `spacing_wall` is what `Spread` already drives
+    a wall contact to when it has the room, so stopping there makes the two
+    passes agree rather than the later one overriding the earlier.
+    """
+    params = _quick()
+    contours = {index: _box(28.0 - 2 * index, 14.0) for index in range(5)}
+    parts = BuildParts(contours, params)
+    container = BuildContainer(4, 3, params.inset)
+    before = _placed(parts, {index: (4.0 + 32.0 * index, 4.0) for index in range(5)})
+
+    after = Distribute(parts, before, container, params)
+
+    closest = min(min(gap) for gap in _wall_gaps(parts, after, container).values())
+    assert closest >= params.spacing_wall - 0.05
+    assert closest > params.c_wall, "the legal minimum is not the target"
+
+
+def test_a_tight_bin_is_not_pulled_off_its_walls():
+    """The wall target caps how far the inflation may *push*; it must not
+    become a force in its own right. A part the spring pass legitimately
+    left closer than `spacing_wall` has nowhere to go, and moving it would
+    be this pass overriding a tighter constraint than its own.
+    """
+    params = _quick()
+    parts = BuildParts({0: _box(70.0, 30.0)}, params)
+    container = BuildContainer(2, 1, params.inset)
+    before = _placed(parts, {0: (params.c_wall + 0.1, params.c_wall + 0.1)})
+
+    after = Distribute(parts, before, container, params)
+
+    assert ComputeEnergy(parts, after, container, params).feasible
+    assert CheckLayout(Layout(grid=(2, 1), placements=after, inset=params.inset), parts) == []
 
 
 def test_a_full_bin_is_left_alone():

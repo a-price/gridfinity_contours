@@ -10,7 +10,8 @@ DOT_SVGS := $(DOT_FILES:.dot=.svg)
 # `make test JOBS=4`.
 JOBS ?= 8
 
-.PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check
+.PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check \
+	gifs gif-pack gif-group gif-drawer
 
 format:
 	$(PYTHON) -m black $(PY_FILES)
@@ -62,3 +63,45 @@ docs: $(DOT_SVGS)
 docs-check:
 	@$(MAKE) --no-print-directory -q docs || \
 		{ echo "docs/*.svg are older than their .dot sources - run 'make docs'"; exit 1; }
+
+# The README's GIFs. Phony rather than dependency-tracked on purpose: what
+# they actually depend on is the behaviour of the whole layout package, and
+# a prerequisite list broad enough to be correct would regenerate them - at
+# three and a half minutes - every time a test file was touched. They go
+# stale silently instead, so regenerate them whenever a change moves parts
+# around. `Distribute` has now done that twice.
+#
+# Three targets rather than one recipe, so a change that only affects
+# packing does not cost the 2.5 minutes the grouping search takes. They are
+# independent, so `make -j3 gifs` runs them at once - nothing in the layout
+# package is threaded, so that is close to a 3x saving on a spare machine.
+#
+# The same commands appear in README.md, where they document what the flags
+# mean; keep the two in step.
+gifs: gif-pack gif-group gif-drawer
+
+# ~15 seconds.
+gif-pack:
+	$(PYTHON) layout_demo.py pack \
+		test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
+		test_data/medium_fork.svg --out docs/media/pack.gif \
+		--restarts 8 --every 8 --pixels-per-mm 1.4 --colors 8
+
+# ~2.5 minutes - the grouping search is quadratic in bins and every
+# surviving candidate is a full stochastic solve. See docs/architecture.md.
+gif-group:
+	$(PYTHON) layout_demo.py group \
+		test_data/big_spoon.svg test_data/small_spoon.svg test_data/screwdriver.svg \
+		test_data/spreader.svg test_data/big_measure.svg test_data/small_measure.svg \
+		--start one-per-bin --restarts 12 --every 1 \
+		--out docs/media/group.gif
+
+# ~30 seconds.
+gif-drawer:
+	$(PYTHON) layout_demo.py drawer \
+		test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
+		test_data/small_fork.svg test_data/medium_fork.svg test_data/big_fork.svg \
+		test_data/spreader.svg test_data/screwdriver.svg \
+		test_data/small_measure.svg test_data/big_measure.svg \
+		--drawer 210x340 --drawer 170x130 --restarts 6 --every 1 \
+		--out docs/media/drawer.gif
