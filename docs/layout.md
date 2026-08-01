@@ -378,11 +378,14 @@ pipeline/layout/spacing.py     evening out the gaps once a layout fits
 pipeline/layout/preview.py     drawing a solved layout at true scale
 pipeline/layout/solid.py       the printable bin, as OpenSCAD
 pipeline/layout/render.py      the same drawing, rasterized for a screen
+pipeline/layout/field.py       a part's distance field, false-colored
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
 pipeline/layout_stage.py       Stage subclass, group box, Qt
+pipeline/field_stage.py        the same, for the field viewer
 layout_cli.py                  headless entry point
 layout_gui.py                  interactive entry point
+field_gui.py                   the field viewer's window
 ```
 
 One test module per source module, strictly — a test lives beside the
@@ -395,9 +398,23 @@ its tests live somewhere else entirely.
 Dependencies run one way: `container` and `part` depend on nothing local,
 `placement` on `part`, `parameters` on `container` and `part`, `energy` and
 `descent` on those, `loading`, `spacing`, `solver`, `packer`, `preview`,
-`render` and `solid` above that, `grouping` on top of `packer`,
+`render`, `field` and `solid` above that, `grouping` on top of `packer`,
 `drawer` on top of that, `floorplan` on top of `drawer` and `preview`,
 and `verify` deliberately to one side.
+
+`field` is the odd one out in that it consumes nothing and is consumed by
+nothing — it exists to be *looked at*. Both phases of the search read a
+part's distance field and neither draws it, so when a pack behaves oddly
+there was no way to ask whether the field was what it looked like. It
+draws two things: the distance itself, contoured, with the clearance
+levels that mean something on a part's own field marked (`c_pair_enforced`
+and `spacing_pair`, but not `c_wall` — that one is measured against the
+container's analytic depth and is not a level of any part's field); and
+the length of the field's gradient, which is where the medial axis shows
+up. That second view is the one worth having: D3's forces stop being
+trustworthy exactly on those creases, and the deviation is two-sided —
+opposing walls leave the interpolated gradient near zero, perpendicular
+ones near `sqrt(2)`, and shading by raw magnitude would hide half of it.
 
 `parameters` is separate from `energy` because six of the nine modules
 that need a `LayoutParameters` compute no energy at all — the loader sizes

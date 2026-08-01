@@ -178,6 +178,23 @@ them, and previews the result. It is separate from `silhouette.py` because
 that tool works on one photo, and packing wants objects from many. The
 file arguments are optional - there is a Load button.
 
+### `field_gui.py` — look at the distance field
+
+```
+.venv/bin/python3 field_gui.py test_data/*.svg
+```
+
+Both phases of the layout search read one thing — the signed distance
+field rasterized for each contour — and neither of them draws it. This
+window does: one contour at a time, contoured every millimeter, with the
+clearance levels that mean something on a part's own field marked in red
+and green. Hover for the distance under the pointer in millimeters.
+
+The **Gradient magnitude** checkbox is the interesting one. It shows where
+the field stops being a distance — the creases of the medial axis, which
+is exactly where the solver's forces stop being trustworthy. It packs
+nothing and writes nothing; it is a magnifying glass, not a stage.
+
 ### `generate_aruco_sheet.py`
 
 Generates a letter-size PDF calibration sheet with 4 ArUco markers at known
