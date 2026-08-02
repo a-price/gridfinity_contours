@@ -11,7 +11,7 @@ DOT_SVGS := $(DOT_FILES:.dot=.svg)
 JOBS ?= 8
 
 .PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check \
-	gifs gif-pack gif-group gif-drawer
+	gifs gif-pack gif-group gif-drawer previews
 
 format:
 	$(PYTHON) -m black $(PY_FILES)
@@ -63,6 +63,18 @@ docs: $(DOT_SVGS)
 docs-check:
 	@$(MAKE) --no-print-directory -q docs || \
 		{ echo "docs/*.svg are older than their .dot sources - run 'make docs'"; exit 1; }
+
+# One reference rendering per drawing path, committed so that a change to
+# how anything looks arrives as a diff somebody reads rather than a red
+# build somebody silences. See render_demo.py for why these are artifacts
+# and not assertions.
+#
+# A few seconds, so unlike `gifs` this is cheap to re-run on a whim. Still
+# not part of `check`: a stale preview is a thing to notice in review, and
+# a test that failed on it would be a stored-image assertion by another
+# route - the exact thing this is built to avoid.
+previews:
+	$(PYTHON) render_demo.py --out docs/media
 
 # The README's GIFs. Phony rather than dependency-tracked on purpose: what
 # they actually depend on is the behaviour of the whole layout package, and

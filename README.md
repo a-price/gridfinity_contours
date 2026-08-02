@@ -63,7 +63,17 @@ or `make gif-pack` / `gif-group` / `gif-drawer` for one:
 ```
 
 About 15 seconds, 2.5 minutes, and 30 seconds. `--drawer` is a drawer's
-interior in millimeters (or `11x9 cells`) and can be repeated. `--start one-per-bin` gives
+interior in millimeters (or `11x9 cells`) and can be repeated.
+
+`make previews` writes one still per drawing path into the same directory
+(`render_demo.py`). Those are committed for the same reason the GIFs are:
+every renderer already has tests asserting what it *claims* to draw, and
+what those cannot notice is a change that keeps every invariant and still
+looks wrong. A stored-image assertion would be the obvious fix and the
+wrong one — eleven test modules sit downstream of a stochastic search, so
+one solver change reddens them all and the only response is to re-bless
+the lot. As committed artifacts instead, a visual change arrives as a diff
+somebody reads. `--start one-per-bin` gives
 the grouping search the most to find; `--start first-fit` is what `Group`
 does, and reaches the same 25 cells here.
 
