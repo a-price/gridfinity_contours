@@ -63,7 +63,7 @@ or `make gif-pack` / `gif-group` / `gif-drawer` for one:
 ```
 
 About 15 seconds, 2.5 minutes, and 30 seconds. `--drawer` is a drawer's
-interior in millimeters and can be repeated. `--start one-per-bin` gives
+interior in millimeters (or `11x9 cells`) and can be repeated. `--start one-per-bin` gives
 the grouping search the most to find; `--start first-fit` is what `Group`
 does, and reaches the same 25 cells here.
 
@@ -191,11 +191,19 @@ The top of the stack. `layout_gui.py` packs the objects you give it into
 many bins that takes, and which drawer each bin goes in — then draws the
 floorplan you print and lay in the drawer.
 
-Drawers are typed in millimeters (what a tape measure reads) and kept in
-whole Gridfinity cells (what the search uses). The list shows both,
-because the conversion is one-way: a 500mm drawer and a 504mm drawer are
-the same eleven cells. `Save...` writes the list as JSON in cells, and
-`--drawers FILE` loads one back at launch.
+Drawers are typed in either unit — `500x400` is a measurement in mm,
+`11x9 cells` is already counted — and always kept in whole Gridfinity
+cells. The list shows both, because the conversion is one-way: a 500mm
+drawer and a 504mm drawer are the same eleven cells. Bare numbers mean
+millimeters, so cells have to be asked for; that is the safer default,
+since cells read as mm are refused for holding no whole cell while the
+reverse would quietly produce a drawer the size of a room.
+
+`Save...` writes the list as JSON in cells (`{"units": "cells", ...}`),
+and `--drawers FILE` loads one back at launch. Both the contour dumps and
+the drawer lists are `.json`, so each records its own units and refuses
+the other — picking the wrong file in a dialog is reported, not
+misread.
 
 **This search takes minutes, and the window is built around that.** It
 runs on a worker thread, redraws the best arrangement it has found four

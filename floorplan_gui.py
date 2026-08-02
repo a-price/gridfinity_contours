@@ -16,9 +16,10 @@ has found every quarter second, and can be stopped - and stopping hands
 back the best grouping it had, because someone who has watched it for two
 minutes and seen the answer stop improving should be able to keep it.
 
-Drawers are measured in millimeters and stored in whole Gridfinity cells,
-which is the one conversion in this window that loses information: 500mm
-holds the same 11 cells as 504mm does. See `drawer.DrawerCells`.
+Drawers are typed either way - `500x400` is a measurement, `11x9 cells`
+is already counted - and always stored in cells. That conversion is the
+one thing in this window that loses information: 500mm holds the same 11
+cells as 504mm does. See `drawer.DrawerCells`.
 """
 
 import argparse
@@ -155,19 +156,20 @@ class FloorplanGui(QMainWindow):
         return widget
 
     def _CreateDrawerWidget(self) -> QWidget:
-        """The drawers, typed in millimeters or loaded from a saved list.
+        """The drawers, typed in either unit or loaded from a saved list.
 
-        Millimeters on the way in because that is what a tape measure
-        reads, whole cells everywhere after, and the list shows both so
-        the lossy step is visible rather than implied - a 500mm drawer and
-        a 504mm drawer are the same eleven cells, and somebody wondering
-        why should be able to see it.
+        Millimeters are what a tape measure reads and cells are what a
+        saved list holds, so the box takes both and the list always shows
+        both. That the two are shown together is what makes the lossy step
+        visible rather than implied - a 500mm drawer and a 504mm drawer
+        are the same eleven cells, and somebody wondering why should be
+        able to see it.
         """
         widget, layout = CreateGroupBox("Drawers")
 
         row = QHBoxLayout()
         self.drawer_edit = QLineEdit()
-        self.drawer_edit.setPlaceholderText("500x400 (mm)")
+        self.drawer_edit.setPlaceholderText("500x400  or  11x9 cells")
         self.drawer_edit.returnPressed.connect(self.add_drawer)
         row.addWidget(self.drawer_edit)
 
@@ -469,7 +471,7 @@ def main() -> None:
         "--drawer",
         action="append",
         metavar="WxH",
-        help="a drawer's interior in mm; repeat for several",
+        help="a drawer's interior, in mm or as '11x9 cells'; repeat for several",
     )
     args = parser.parse_args(sys.argv[1:])
 

@@ -5,6 +5,7 @@ the README still work end to end - not that any particular arrangement
 comes out, which is the solver's business and is pinned by its own tests.
 """
 
+import argparse
 import numpy as np
 import pytest
 from PIL import Image, ImageSequence
@@ -207,9 +208,18 @@ def test_a_drawer_is_given_in_millimeters():
     assert ParseDrawer("170X130") == Drawer(4, 3)
 
 
+def test_a_drawer_can_also_be_given_in_cells():
+    """Shared with the window through `drawer.ParseDrawer`, so the two
+    front ends cannot disagree about what a drawer is.
+    """
+    assert ParseDrawer("5x8 cells") == Drawer(5, 8)
+
+
 @pytest.mark.parametrize("text", ["500", "500x400x300", "widexdeep", "10x10"])
 def test_an_unusable_drawer_is_refused(text):
-    with pytest.raises(Exception, match="drawer"):
+    # argparse's own exception type, so a bad flag is a usage message
+    # rather than a traceback.
+    with pytest.raises(argparse.ArgumentTypeError, match="drawer"):
         ParseDrawer(text)
 
 

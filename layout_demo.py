@@ -299,7 +299,7 @@ def BuildParser() -> argparse.ArgumentParser:
         type=ParseDrawer,
         action="append",
         metavar="WxH",
-        help="a drawer's interior in mm; repeat for several (default: one 500x400)",
+        help="a drawer's interior, in mm or as '11x9 cells'; repeat for several (default: one 500x400)",
     )
     _AddAnimationArguments(drawer, DEFAULT_DRAWER_PIXELS_PER_MM)
     return parser

@@ -49,7 +49,7 @@ def _plan(gui) -> None:
 def test_a_drawer_is_typed_in_millimetres_and_kept_in_cells(gui):
     """Millimetres on the way in because that is what a tape measure
     reads; whole cells everywhere after, because that is what the search
-    speaks.
+    and the saved list both speak.
     """
     gui.drawer_edit.setText("500x400")
 
@@ -57,6 +57,26 @@ def test_a_drawer_is_typed_in_millimetres_and_kept_in_cells(gui):
 
     assert gui.floorplan_stage.drawers == [Drawer(11, 9)]
     assert gui.drawer_edit.text() == "", "the box should clear, ready for the next one"
+
+
+def test_a_drawer_can_be_typed_in_cells_instead(gui):
+    """The saved list is in cells, so adding one more drawer to a list you
+    just loaded should not mean converting it back to millimetres in your
+    head first.
+    """
+    gui.drawer_edit.setText("11x9 cells")
+
+    gui.add_drawer()
+
+    assert gui.floorplan_stage.drawers == [Drawer(11, 9)]
+
+
+def test_the_two_units_agree(gui):
+    for text in ("500x400", "11x9 cells"):
+        gui.drawer_edit.setText(text)
+        gui.add_drawer()
+
+    assert gui.floorplan_stage.drawers[0] == gui.floorplan_stage.drawers[1]
 
 
 def test_the_list_shows_both_units(gui):

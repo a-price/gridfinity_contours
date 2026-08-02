@@ -26,6 +26,7 @@ from pipeline.layout.drawer import (
     DrawerCells,
     FreeCells,
     LargestFreeRegion,
+    ParseDrawer,
     Slot,
     Trial,
     _Orientations,
@@ -79,6 +80,53 @@ def test_the_inter_bin_gap_comes_off_the_run_not_each_bin():
 def test_a_drawer_too_small_for_one_cell_is_refused():
     with pytest.raises(ValueError, match="no whole"):
         DrawerCells(30, 30)
+
+
+# ------------------------------------------------------------------ parsing
+
+
+def test_a_bare_drawer_is_millimetres():
+    """The default has to stay millimetres: it is what a tape measure
+    reads, what `--drawer` has always meant, and what the README
+    documents.
+    """
+    assert ParseDrawer("500x400") == Drawer(11, 9)
+    assert ParseDrawer("500x400mm") == Drawer(11, 9)
+    assert ParseDrawer("500 X 400 MM") == Drawer(11, 9)
+
+
+def test_cells_can_be_asked_for():
+    """A saved drawer list is in cells, so somebody adding one more drawer
+    to a list they just loaded should be able to say so in the same units
+    the list is written in.
+    """
+    assert ParseDrawer("11x9 cells") == Drawer(11, 9)
+    assert ParseDrawer("11x9cells") == Drawer(11, 9)
+    assert ParseDrawer("1x1 cell") == Drawer(1, 1)
+
+
+def test_cells_meant_as_millimetres_are_refused_rather_than_guessed():
+    """Which way round the bare default goes is a safety argument rather
+    than a taste one. Cells read as millimetres are refused outright -
+    11x9mm holds no whole cell - whereas millimetres read as cells would
+    quietly produce a drawer the size of a room.
+    """
+    with pytest.raises(ValueError, match="no whole"):
+        ParseDrawer("11x9")
+
+
+def test_a_fractional_cell_count_is_refused():
+    """Somebody who typed a measurement and labelled it cells. There is no
+    honest way to guess which half-cell they meant.
+    """
+    with pytest.raises(ValueError, match="whole numbers of cells"):
+        ParseDrawer("11.5x9 cells")
+
+
+@pytest.mark.parametrize("text", ["500", "500x400x300", "widexdeep", "500x", "", "x"])
+def test_a_drawer_that_does_not_parse_is_refused(text):
+    with pytest.raises(ValueError, match="drawer"):
+        ParseDrawer(text)
 
 
 def test_a_bin_has_two_distinct_turns_where_a_part_has_four():

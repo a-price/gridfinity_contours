@@ -103,26 +103,56 @@ def DrawerCells(width_mm: float, height_mm: float) -> Drawer:
     return Drawer(width, height)
 
 
+# Unit suffixes `ParseDrawer` understands. Cells are spelled out because
+# the abbreviation people reach for is "c", which is also how a tape
+# measure's centimeters are written - and a drawer given in centimeters
+# read as cells is off by a factor of seventeen.
+_MM_SUFFIX = "mm"
+_CELL_SUFFIXES = ("cells", "cell")
+
+
 def ParseDrawer(text: str) -> Drawer:
-    """A `WIDTHxHEIGHT` drawer interior in millimeters, as whole cells.
+    """A `WIDTHxHEIGHT` drawer, in millimeters or in whole grid cells.
 
-    Millimeters rather than cells, because that is what a tape measure
-    reads and the conversion is exactly where the Gridfinity footprint has
-    to be got right - see `DrawerCells`.
+    `500x400` and `500x400mm` are a measurement and get converted;
+    `11x9 cells` is already counted and is taken as it stands.
 
-    Here rather than in a front end because both of them need it and they
-    must not disagree: a drawer typed into a window and the same drawer
-    passed to the CLI have to come out the same number of cells. Raises
-    ValueError, which each front end presents in its own way.
+    **Bare numbers are millimeters.** That is what a tape measure reads,
+    what every existing caller passes, and what the README documents for
+    `--drawer`. Cells have to be asked for, which is the safer default of
+    the two: a drawer meant as cells and read as millimeters is refused
+    outright by `DrawerCells` for holding no whole cell, whereas the
+    reverse would quietly produce a drawer the size of a room.
+
+    Here rather than in a front end because both need it and they must not
+    disagree: a drawer typed into the window and the same drawer passed to
+    the CLI have to come out the same number of cells. Raises ValueError,
+    which each front end presents in its own way.
     """
-    parts = text.lower().replace(" ", "").split("x")
-    if len(parts) != 2:
-        raise ValueError(f"a drawer is WIDTHxHEIGHT in mm, e.g. 500x400 - got '{text}'")
-    try:
-        width, height = (float(value) for value in parts)
-    except ValueError:
-        raise ValueError(f"a drawer's sides must be numbers in mm - got '{text}'") from None
-    return DrawerCells(width, height)
+    cleaned = text.lower().replace(" ", "")
+    in_cells = next((suffix for suffix in _CELL_SUFFIXES if cleaned.endswith(suffix)), None)
+    if in_cells is not None:
+        cleaned = cleaned[: -len(in_cells)]
+    elif cleaned.endswith(_MM_SUFFIX):
+        cleaned = cleaned[: -len(_MM_SUFFIX)]
+
+    parts = cleaned.split("x")
+    if len(parts) != 2 or not all(parts):
+        raise ValueError(f"a drawer is WIDTHxHEIGHT in mm, or WIDTHxHEIGHT cells - got '{text}'")
+
+    if in_cells is None:
+        try:
+            width, height = (float(value) for value in parts)
+        except ValueError:
+            raise ValueError(f"a drawer's sides must be numbers in mm - got '{text}'") from None
+        return DrawerCells(width, height)
+
+    # Whole cells only, and refused rather than rounded: `11.5x9 cells` is
+    # somebody who meant millimeters, and guessing which half-cell they
+    # wanted would be inventing a drawer neither of us measured.
+    if not all(value.isdigit() for value in parts):
+        raise ValueError(f"a drawer's sides must be whole numbers of cells - got '{text}'")
+    return Drawer(int(parts[0]), int(parts[1]))
 
 
 @dataclass(frozen=True)
