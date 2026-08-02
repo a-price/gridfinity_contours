@@ -20,7 +20,7 @@ import pytest
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 import capture_demo
-from capture_demo import HANDLE, PHOTO, PHOTO_COLORS, Grab, Main, Recording
+from capture_demo import HANDLE, PHOTO, PHOTO_COLORS, SHADOW, Grab, Main, Recording
 
 
 class _Host(QWidget):
@@ -153,13 +153,64 @@ def test_the_photo_carries_a_calibration_sheet():
     assert calibration.GetTransform() is not None
 
 
-def test_the_click_lands_inside_the_photo():
+def test_both_clicks_land_inside_the_photo():
     import cv2
 
     height, width = cv2.imread(PHOTO).shape[:2]
 
-    assert 0 <= HANDLE[0] < width and 0 <= HANDLE[1] < height
-    assert all(isinstance(value, int) for value in HANDLE), "a real click gives ints; the mask is indexed with them"
+    for point in (HANDLE, SHADOW):
+        assert 0 <= point[0] < width and 0 <= point[1] < height
+        assert all(isinstance(value, int) for value in point), "a real click gives ints; the mask is indexed with them"
+
+
+def test_the_negative_click_is_off_the_object():
+    """It marks the drop shadow as exterior, so it has to be somewhere the
+    tool is not - a negative point on the handle would fight the positive
+    one and the animation would be demonstrating a mistake.
+    """
+    import cv2
+
+    photo = cv2.imread(PHOTO)
+    handle = photo[HANDLE[1], HANDLE[0]].astype(int)
+    shadow = photo[SHADOW[1], SHADOW[0]].astype(int)
+
+    assert handle[2] - handle[1] > 60, "the handle is red"
+    assert abs(shadow[2] - shadow[1]) < 30, "the shadow is grey paper, not the tool"
+
+
+def test_the_symmetry_checkbox_is_findable_by_its_caption(qapp):
+    """The demo ticks it by caption, because the stages build their own
+    controls and hand back a group box with no attribute to reach for. A
+    caption that drifted from the constant would make the animation skip
+    the step in silence, so both come from `morphology_stage`.
+    """
+    from PyQt5.QtWidgets import QCheckBox
+
+    from pipeline.morphology_stage import LATERAL_LABEL, MorphologyStage
+
+    widget = MorphologyStage().CreateWidget(on_change=lambda: None)
+
+    assert LATERAL_LABEL in [box.text() for box in widget.findChildren(QCheckBox)]
+
+
+def test_ticking_a_checkbox_that_is_not_there_is_refused(qapp):
+    """Silently doing nothing would drop a whole beat from the animation
+    and leave a GIF that still looked plausible.
+    """
+    host = _Host()
+
+    with pytest.raises(ValueError, match="no checkbox"):
+        capture_demo._Check(host, "Lateral symmetry (left/right)")
+
+
+def test_the_symmetry_it_demonstrates_is_the_union(qapp):
+    """"Or" takes the wider of the mask and its mirror at every point,
+    which is what puts back what the shadow cost. "And" would take the
+    narrower and eat into the tool instead.
+    """
+    from pipeline.morphology import MorphologyParameters
+
+    assert MorphologyParameters().symmetry_combine == "or"
 
 
 def test_the_palette_is_sized_for_a_photograph():
@@ -190,8 +241,33 @@ def test_the_animation_records_the_real_window(tmp_path, qapp):
     assert Main(["--out", path]) == 0
 
     frames = [np.array(frame.convert("RGB")) for frame in ImageSequence.Iterator(Image.open(path))]
-    assert len(frames) >= 3, "an empty window, a loaded photo, and a measured contour"
+    assert len(frames) >= 6, "empty, loaded, clicked, segmented, symmetrized, selected"
     assert len({frame.shape for frame in frames}) == 1, "a window that changes size reads as a jump"
+
+
+@pytest.mark.slow
+def test_every_beat_changes_something_visible(tmp_path, qapp):
+    """A beat that moves a handful of pixels is a fifth of the animation
+    spent on nothing, which is what the segmentation beat was before
+    annotations were sized in screen pixels: it moved 1099 pixels of a 1.2
+    megapixel window.
+
+    The floor only catches a beat being worth *nothing*, not being worth
+    little - what a beat is worth is a judgement no pixel count settles.
+    It is set well under the smallest real one because two click markers
+    legitimately are only a couple of hundred pixels; a cross is a small
+    thing and drawing it larger would not make the animation better.
+    Measured on the committed recording: 325492, 241, 2356, 752, 28156.
+    """
+    from PIL import Image, ImageSequence
+
+    path = str(tmp_path / "capture.gif")
+    assert Main(["--out", path]) == 0
+
+    frames = [np.array(frame.convert("RGB")).astype(int) for frame in ImageSequence.Iterator(Image.open(path))]
+    for index, (before, after) in enumerate(zip(frames, frames[1:])):
+        changed = int((np.abs(before - after).sum(axis=2) > 12).sum())
+        assert changed > 120, f"beat {index} -> {index + 1} changed only {changed} pixels"
 
 
 @pytest.mark.slow

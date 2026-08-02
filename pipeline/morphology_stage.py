@@ -5,6 +5,14 @@ from PyQt5.QtWidgets import QCheckBox, QComboBox, QLabel, QWidget
 from pipeline.morphology import Morphology
 from pipeline.core import CreateGroupBox, CreateSlider, Stage
 
+# The checkbox and combo captions, named here rather than written inline,
+# so anything that has to *find* one of these controls - a test, or the
+# script that records the capture animation - does it by the same string
+# the widget was built from rather than by a copy that can drift.
+LATERAL_LABEL = "Lateral symmetry (left/right)"
+LONGITUDINAL_LABEL = "Longitudinal symmetry (front/back)"
+COMBINE_LABEL = "Symmetry Combine:"
+
 
 class MorphologyStage(Stage):
     """Qt wiring for Morphology: debounced sliders controlling the closing
@@ -50,7 +58,7 @@ class MorphologyStage(Stage):
         )
         layout.addLayout(area_slider["layout"])
 
-        lateral_checkbox = QCheckBox("Lateral symmetry (left/right)")
+        lateral_checkbox = QCheckBox(LATERAL_LABEL)
         lateral_checkbox.setChecked(self.morphology.parameters.symmetrize_lateral)
 
         def apply_lateral(checked):
@@ -60,7 +68,7 @@ class MorphologyStage(Stage):
         lateral_checkbox.toggled.connect(apply_lateral)
         layout.addWidget(lateral_checkbox)
 
-        longitudinal_checkbox = QCheckBox("Longitudinal symmetry (front/back)")
+        longitudinal_checkbox = QCheckBox(LONGITUDINAL_LABEL)
         longitudinal_checkbox.setChecked(self.morphology.parameters.symmetrize_longitudinal)
 
         def apply_longitudinal(checked):
@@ -70,7 +78,7 @@ class MorphologyStage(Stage):
         longitudinal_checkbox.toggled.connect(apply_longitudinal)
         layout.addWidget(longitudinal_checkbox)
 
-        layout.addWidget(QLabel("Symmetry Combine:"))
+        layout.addWidget(QLabel(COMBINE_LABEL))
         combine_combo = QComboBox()
         combine_combo.addItems(["and", "or"])
         combine_combo.setCurrentText(self.morphology.parameters.symmetry_combine)

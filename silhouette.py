@@ -39,7 +39,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 
-from pipeline.click_recorder import WidgetToImageCoords
+from pipeline.click_recorder import ImagePixelsPerScreenPixel, WidgetToImageCoords
 from pipeline.segmenter import Segmenter
 from pipeline.segmenter_stage import SegmenterStage
 from pipeline.morphology_stage import MorphologyStage
@@ -51,6 +51,22 @@ from pipeline.svg_export_stage import SvgExportStage
 from pipeline.core import FixQtOpenCvPluginPath, Pipeline
 
 FixQtOpenCvPluginPath()
+
+# Everything the window draws over the photo, in *screen* pixels.
+#
+# The overlay is drawn into the full-resolution photo and only scaled to
+# fit afterwards, so a size fixed in image pixels has no fixed size on
+# screen - the old click marker was `min(height, width) // 80`, which is
+# 43px on a 5184px photograph and lands on four screen pixels once that
+# photo is displayed. These are converted at draw time by
+# `_in_image_pixels`, so a mark is the same size on screen whatever was
+# photographed and however big the window is.
+CLICK_MARKER_PX = 10
+CLICK_THICKNESS_PX = 3
+CONTOUR_THICKNESS_PX = 2
+SIMPLIFIED_THICKNESS_PX = 3
+BOX_THICKNESS_PX = 2
+CENTER_RADIUS_PX = 4
 
 # What a click on the image view does - one mode is active at a time, since
 # a click alone can't otherwise disambiguate "add a segmentation point" from
@@ -263,6 +279,17 @@ class SVGGui(QMainWindow):
                 self.pipeline.RunFrom("display")
             return
 
+    def _in_image_pixels(self, screen_pixels: float, image: np.ndarray) -> int:
+        """A size given in on-screen pixels, in the image pixels an overlay
+        has to be drawn at to come out that size.
+
+        At least one, because a line of thickness zero draws nothing and a
+        photo scaled far enough down would silently erase every
+        annotation on it.
+        """
+        factor = ImagePixelsPerScreenPixel(self.image_label, image.shape)
+        return max(1, round(screen_pixels * factor))
+
     def _draw_click_markers(self, image: np.ndarray) -> None:
         """A green '+' for each positive (label 1) segmentation click, a
         red '-' for each negative (label 0) one.
@@ -271,8 +298,8 @@ class SVGGui(QMainWindow):
         if click_recorder is None:
             return
 
-        marker_len = max(15, min(image.shape[:2]) // 80)
-        thickness = max(3, marker_len // 5)
+        marker_len = self._in_image_pixels(CLICK_MARKER_PX, image)
+        thickness = self._in_image_pixels(CLICK_THICKNESS_PX, image)
         for (x, y), label in zip(click_recorder.image_points, click_recorder.image_labels):
             color = (0, 255, 0) if label == 1 else (0, 0, 255)
             cv2.line(image, (x - marker_len, y), (x + marker_len, y), color, thickness)
@@ -286,9 +313,14 @@ class SVGGui(QMainWindow):
         its PCA-aligned box and center.
         """
         selected_objects = self.contour_selection_stage.contour_selection.selected
+        boundary = self._in_image_pixels(CONTOUR_THICKNESS_PX, image)
+        simplified_width = self._in_image_pixels(SIMPLIFIED_THICKNESS_PX, image)
+        box_width = self._in_image_pixels(BOX_THICKNESS_PX, image)
+        center_radius = self._in_image_pixels(CENTER_RADIUS_PX, image)
+
         for i, contour in enumerate(self.object_contours):
             color = (0, 255, 0) if i in selected_objects else (0, 255, 255)
-            cv2.drawContours(image, [contour], -1, color, 2)
+            cv2.drawContours(image, [contour], -1, color, boundary)
             if i not in selected_objects:
                 continue
 
@@ -299,9 +331,9 @@ class SVGGui(QMainWindow):
             if simplified_contour is None or pca_box is None:
                 continue
 
-            cv2.drawContours(image, [simplified_contour], -1, (255, 255, 0), 3)
-            cv2.drawContours(image, [pca_box.corners], -1, (255, 0, 255), 2)
-            cv2.circle(image, tuple(pca_box.center.astype(np.int32)), 5, (255, 0, 255), -1)
+            cv2.drawContours(image, [simplified_contour], -1, (255, 255, 0), simplified_width)
+            cv2.drawContours(image, [pca_box.corners], -1, (255, 0, 255), box_width)
+            cv2.circle(image, tuple(pca_box.center.astype(np.int32)), center_radius, (255, 0, 255), -1)
 
     def _to_pixmap(self, image: np.ndarray) -> QPixmap:
         height, width, _channels = image.shape

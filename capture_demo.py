@@ -48,9 +48,10 @@ if "--windowed" not in sys.argv:
 
 import numpy as np
 from PyQt5.QtGui import QImage
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QCheckBox
 
 from pipeline.gif_writer import WriteGif
+from pipeline.morphology_stage import LATERAL_LABEL
 from silhouette import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
 
 # The one photograph this demo can use, and where to click on it. Both are
@@ -59,10 +60,16 @@ from silhouette import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
 # flag inviting one without the other only produces an empty mask.
 PHOTO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_data", "screwdriver.jpg")
 
-# The screwdriver's handle, in the photo's own pixels. Ints, because that
-# is what a real click produces - `ClickRecorder` indexes the mask with
-# them.
+# Where to click, in the photo's own pixels. Ints, because that is what a
+# real click produces - `ClickRecorder` indexes the mask with them.
+#
+# `HANDLE` is the red grip: one left-click is enough to segment the whole
+# tool. `SHADOW` is the drop shadow just under it, right-clicked to mark
+# it exterior - the thing a soft shadow on white paper actually costs you.
+# Measured, it takes 31k pixels off the mask and the contour from 163.1mm
+# long to 162.5mm, which is the shadow's width and is the point.
 HANDLE = (2000, 1450)
+SHADOW = (2600, 1850)
 
 # Window size for the recording. Smaller than the 1300x800 the window
 # opens at, since a GIF in a README is read at a few hundred pixels wide
@@ -106,6 +113,22 @@ def Grab(window: SVGGui) -> np.ndarray:
     # Format_RGB32 is BGRA in memory on a little-endian machine, so the
     # first three channels are already the BGR the gif writer wants.
     return pixels[:, :width, :3].copy()
+
+
+def _Check(window: SVGGui, label: str) -> None:
+    """Tick the checkbox with that caption, as a person would.
+
+    Found by caption because the stages build their own controls and hand
+    back a group box, so there is no attribute to reach for - the caption
+    is the only handle, and it comes from the same constant the widget was
+    built from. Toggling rather than setting the parameter behind it is
+    what makes the box appear ticked *and* runs the stage, since the
+    widget's own handler does both.
+    """
+    matches = [box for box in window.findChildren(QCheckBox) if box.text() == label]
+    if not matches:
+        raise ValueError(f"no checkbox captioned {label!r} in the capture window")
+    matches[0].setChecked(True)
 
 
 class Recording:
@@ -181,27 +204,49 @@ def Record() -> "tuple[SVGGui, Recording]":
     window.load_image(PHOTO)
     recording.Hold()
 
-    # Click the handle, segment, and select the contour that comes out -
-    # all in one beat. The click is injected into the recorder rather than
-    # posted as a QMouseEvent, because the widget-to-image mapping depends
-    # on how the pixmap was scaled into a label that has never been laid
-    # out on a real screen, and the click's *position in the photo* is
-    # what this is demonstrating, not Qt's coordinate arithmetic.
+    # The clicks, drawn but not yet acted on. Left on the handle, right on
+    # the shadow under it - the two inputs the whole capture takes.
     #
-    # One beat rather than three, because the two intermediate states are
-    # not visible at the size a window shows a 5184px photo at. The click
-    # marker is sized against the photo, so it lands on about four screen
-    # pixels; an unselected contour is drawn two photo-pixels thick, so it
-    # lands on well under one. Measured, the whole segmentation step moved
-    # 1099 pixels of a 1.2 megapixel window - a beat that costs a fifth of
-    # the animation and shows nothing. Selection is what draws the filled
-    # overlay, the simplified outline and the PCA box, and what triggers
-    # the rectification that puts millimetres in the text panel.
+    # Injected into the recorder rather than posted as QMouseEvents,
+    # because the widget-to-image mapping depends on how the pixmap was
+    # scaled into a label that has never been laid out on a real screen,
+    # and the click's *position in the photo* is what this is
+    # demonstrating, not Qt's coordinate arithmetic.
+    #
+    # A beat of its own, which is only worth having because click markers
+    # are now sized in screen pixels: they used to be sized against the
+    # photo, landing on four screen pixels for a 5184px image, and this
+    # frame showed nothing at all.
     window.interaction_mode_combo.setCurrentText(_MODE_SEGMENT)
-    window.segmenter_stage.click_recorder.image_points.append(list(HANDLE))
-    window.segmenter_stage.click_recorder.image_labels.append(1)
-    window.pipeline.RunFrom("segmentation")
+    clicks = window.segmenter_stage.click_recorder
+    clicks.image_points.extend([list(HANDLE), list(SHADOW)])
+    clicks.image_labels.extend([1, 0])
+    window.pipeline.RunFrom("display")
+    recording.Hold()
 
+    # Segment. The mask reaches the screen as a contour drawn round what
+    # it found, in yellow because nothing is selected yet.
+    window.pipeline.RunFrom("segmentation")
+    recording.Hold()
+
+    # Mirror the mask across its long axis and union the two, which is
+    # what lateral symmetry with "or" means. A screwdriver is symmetric
+    # about that axis and the lighting is not, so the side in shadow
+    # segments a little thin; taking the wider of the two sides at every
+    # point puts back what the shadow cost. Measured on this photo: 11912
+    # pixels of mask returned, and the simplified outline drops from 73
+    # points to 67 as one-sided jitter stops being a feature to trace.
+    #
+    # Ticked through the checkbox rather than by setting the parameter,
+    # because the panel is half the picture. An outline that reshaped
+    # itself next to an unticked box would read as the tool doing
+    # something on its own.
+    _Check(window, LATERAL_LABEL)
+    recording.Hold()
+
+    # Select it, which fills it green and triggers the rectification that
+    # puts millimetres in the text panel. One object in frame, so there is
+    # one contour to select.
     window.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
     window.contour_selection_stage.contour_selection.selected.add(0)
     window.pipeline.RunFrom("selection")

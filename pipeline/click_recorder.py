@@ -1,9 +1,50 @@
+"""Clicks on a displayed image, and the geometry that relates the two.
+
+A photo is shown by scaling it to fit a widget, so widget coordinates and
+image coordinates differ by a factor that depends on the photo's
+resolution *and* the window's size. Two things need that factor and must
+agree about it: turning a click back into image coordinates, and sizing
+the marks drawn over the image so they are legible on screen. Both live
+here for that reason.
+"""
+
 import math
 from dataclasses import dataclass
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QMouseEvent
 from PyQt5.QtWidgets import QLabel
+
+
+def ImagePixelsPerScreenPixel(widget: QLabel, image_shape: tuple) -> float:
+    """How many image pixels one displayed pixel covers, if `image_shape`
+    were fitted into `widget` the way the window fits it.
+
+    The conversion every annotation has to be drawn through. Overlays are
+    drawn into the full-resolution photo and only scaled down afterwards,
+    so a mark sized in image pixels has no fixed size on screen: a 40px
+    cross is a fifth of a 200px thumbnail and four pixels of a 5184px
+    photograph. Sizing marks in *screen* pixels and multiplying by this is
+    what makes them legible whatever was photographed, at whatever window
+    size.
+
+    Derived from the widget rather than read back off the current pixmap,
+    so it is right on the first frame too - before anything has been
+    displayed there is no pixmap to measure, and a marker drawn then would
+    be sized against nothing. The two agree once a pixmap exists, since
+    that pixmap was produced by exactly this fit.
+
+    Returns 1.0 when there is nothing to scale against, which leaves sizes
+    in screen pixels unchanged rather than collapsing them to zero.
+    """
+    height, width = image_shape[0], image_shape[1]
+    if width <= 0 or height <= 0:
+        return 1.0
+
+    # `KeepAspectRatio` fits the larger relative dimension, so the scale is
+    # the smaller of the two ratios - the same rule `QPixmap.scaled` uses.
+    scale = min(widget.width() / width, widget.height() / height)
+    return 1.0 / scale if scale > 0 else 1.0
 
 
 def WidgetToImageCoords(widget: QLabel, image_shape: tuple, ev: QMouseEvent) -> tuple[int, int] | None:

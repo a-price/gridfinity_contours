@@ -15,14 +15,26 @@ objects. See [Design docs](#design-docs).
 
 Capturing a screwdriver — photo in, real-world outline out:
 
-![the capture window: an empty view, then a photo of a screwdriver on a calibration sheet with all four markers found, then the tool filled green with its millimetre outline listed in the panel](docs/media/capture.gif)
+![the capture window: an empty view, then a photo of a screwdriver on a calibration sheet, then a green plus on its handle and a red minus on its shadow, then a yellow outline round the segmented tool, then that outline evened up once lateral symmetry is ticked, then the tool filled green with its millimetre outline listed in the panel](docs/media/capture.gif)
 
-One left-click on the handle is the whole input. SAM2 segments from that
-point, the four ArUco markers fix the scale, and what lands in the panel
-is a contour in millimetres — 37 × 163 mm here — not in pixels. That last
-part is why the animation uses a photo with a calibration sheet in frame:
-without one the window falls back to pixel space by design, and the
-recording would look identical while meaning nothing.
+Two clicks and one checkbox are the whole input: left on the handle for a
+point inside the object, right on the drop shadow for a point outside it,
+then *Lateral symmetry*. SAM2 segments from the clicks, the four ArUco
+markers fix the scale, and what lands in the panel is a contour in
+millimetres — 37 × 163 mm here — not in pixels.
+
+Neither of the last two is decoration. A soft shadow on white paper is
+what SAM2 most reliably swallows, and right-clicking it takes 31 000
+pixels off the mask and half a millimetre off the length. Lateral
+symmetry then mirrors the mask across the tool's long axis and unions the
+two, which puts back the 11 900 pixels the shaded side lost — a
+manufactured object is symmetric and the lighting is not. The simplified
+outline drops from 73 points to 67 in the process, because one-sided
+segmentation jitter stops being a feature worth tracing.
+
+The millimetres are why the animation uses a photo with a calibration
+sheet in frame: without one the window falls back to pixel space by
+design, and the recording would look identical while meaning nothing.
 
 Unlike the three below it, this one is a **recording of the actual
 window** rather than a rendering of a search — `capture_demo.py` drives a
