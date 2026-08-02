@@ -11,7 +11,7 @@ DOT_SVGS := $(DOT_FILES:.dot=.svg)
 JOBS ?= 8
 
 .PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check \
-	gifs gif-pack gif-group gif-drawer previews
+	gifs gif-capture gif-pack gif-group gif-drawer previews
 
 format:
 	$(PYTHON) -m black $(PY_FILES)
@@ -90,7 +90,19 @@ previews:
 #
 # The same commands appear in README.md, where they document what the flags
 # mean; keep the two in step.
-gifs: gif-pack gif-group gif-drawer
+gifs: gif-capture gif-pack gif-group gif-drawer
+
+# ~10 seconds, and the only one that records a *window* rather than
+# rendering a search - see capture_demo.py.
+#
+# Two things it needs that the others do not. Qt, which it drives
+# offscreen so nothing pops open on whoever ran this. And a SAM2
+# checkpoint already in the local Hugging Face cache: the segmenter is
+# constructed with local_files_only, so on a machine that has never run
+# silhouette.py this target fails rather than quietly downloading a
+# few hundred megabytes mid-build.
+gif-capture:
+	$(PYTHON) capture_demo.py --out docs/media/capture.gif
 
 # ~15 seconds.
 gif-pack:

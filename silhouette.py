@@ -184,6 +184,12 @@ class SVGGui(QMainWindow):
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("background-color: #2b2b2b;")
+        # A QLabel holding a pixmap asks the layout for the pixmap's own
+        # size, so without this the window grows the moment a photo is
+        # loaded and can never be made smaller again. `_to_pixmap` already
+        # scales the image down to whatever room the label was given, so
+        # the label needs no size of its own.
+        self.image_label.setMinimumSize(1, 1)
         self.image_label.mousePressEvent = self.image_clicked
 
         layout.addWidget(control_panel, stretch=1)

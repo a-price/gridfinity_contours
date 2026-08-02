@@ -13,6 +13,23 @@ objects. See [Design docs](#design-docs).
 
 ## Watching it work
 
+Capturing a screwdriver — photo in, real-world outline out:
+
+![the capture window: an empty view, then a photo of a screwdriver on a calibration sheet with all four markers found, then the tool filled green with its millimetre outline listed in the panel](docs/media/capture.gif)
+
+One left-click on the handle is the whole input. SAM2 segments from that
+point, the four ArUco markers fix the scale, and what lands in the panel
+is a contour in millimetres — 37 × 163 mm here — not in pixels. That last
+part is why the animation uses a photo with a calibration sheet in frame:
+without one the window falls back to pixel space by design, and the
+recording would look identical while meaning nothing.
+
+Unlike the three below it, this one is a **recording of the actual
+window** rather than a rendering of a search — `capture_demo.py` drives a
+real `silhouette.py` offscreen and grabs its frames. A picture of a user
+flow assembled from separately-drawn panels would be a mock-up, and would
+keep looking right after the real window had stopped working.
+
 Four utensils looking for the smallest bin that holds them:
 
 ![four utensil outlines shoving each other inside a bin outline, failing twice, then settling into a larger bin](docs/media/pack.gif)
@@ -37,11 +54,14 @@ Bins land on whole 42mm cells, and the search takes one back out when a
 branch runs out. This is the only level that can prove a set of bins does
 not fit.
 
-All three come from `layout_demo.py`, which runs the same code as the CLI.
-`make gifs` regenerates all of them (`make -j3 gifs` to run them at once),
-or `make gif-pack` / `gif-group` / `gif-drawer` for one:
+Those three come from `layout_demo.py`, which runs the same code as the
+CLI. `make gifs` regenerates all four (`make -j4 gifs` to run them at
+once), or `make gif-capture` / `gif-pack` / `gif-group` / `gif-drawer`
+for one:
 
 ```
+.venv/bin/python3 capture_demo.py --out docs/media/capture.gif
+
 .venv/bin/python3 layout_demo.py pack \
     test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
     test_data/medium_fork.svg --out docs/media/pack.gif \
@@ -62,8 +82,13 @@ or `make gif-pack` / `gif-group` / `gif-drawer` for one:
     --out docs/media/drawer.gif
 ```
 
-About 15 seconds, 2.5 minutes, and 30 seconds. `--drawer` is a drawer's
-interior in millimeters (or `11x9 cells`) and can be repeated.
+About 10 seconds, 15 seconds, 2.5 minutes, and 30 seconds. `--drawer` is a
+drawer's interior in millimeters (or `11x9 cells`) and can be repeated.
+
+`gif-capture` is the one with extra requirements: it needs Qt (driven
+offscreen, so nothing pops open) and a SAM2 checkpoint already in the
+local Hugging Face cache. It is built to fail rather than download a few
+hundred megabytes in the middle of a build.
 
 `make previews` writes one still per drawing path into the same directory
 (`render_demo.py`). Those are committed for the same reason the GIFs are:

@@ -44,5 +44,9 @@ class ArucoCalibrationStage(Stage):
     def CreateWidget(self, on_change: Callable[[], None]) -> QWidget:
         widget, layout = CreateGroupBox("Calibration")
         self._status_label = QLabel("Calibration: ArUco markers (none detected yet)")
+        # Wrapped, because this label gets much longer once markers are
+        # found - and an unwrapped one widens the whole control panel to
+        # fit, shoving the image view sideways the moment a photo loads.
+        self._status_label.setWordWrap(True)
         layout.addWidget(self._status_label)
         return widget
