@@ -25,7 +25,8 @@ feedback edge in `BuildPlan` derives the admissible bin footprints from
 them - which makes them a parameter of the packing, not a display option.
 """
 
-from typing import Callable
+from dataclasses import replace
+from typing import Callable, Sequence
 
 import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
@@ -71,6 +72,12 @@ class FloorplanStage(Stage):
         # session is an input.
         self.resume: Grouping | None = None
         self.changes: tuple[list[int], list[int]] | None = None
+        # Bins held out of the search: already printed, or simply a
+        # grouping somebody liked. Held as layouts rather than as bin
+        # numbers because a bin number only means something relative to a
+        # plan, and every edit to the drawers or the library drops the
+        # plan - a pin has to outlive that, so it is an input.
+        self.pinned: list[Layout] = []
         self._status_label: QLabel | None = None
         self._plan_button: QPushButton | None = None
         self._cancel_button: QPushButton | None = None
@@ -104,7 +111,13 @@ class FloorplanStage(Stage):
         try:
             self._parts = BuildParts(contours, self.parameters)
             self.plan = BuildPlan(
-                self._parts, self.drawers, self.parameters, report=report, cancelled=cancelled, start=resume
+                self._parts,
+                self.drawers,
+                self.parameters,
+                report=report,
+                cancelled=cancelled,
+                start=resume,
+                pinned=self.pinned,
             )
             if resume is not None and self.plan.grouping is not None:
                 self.changes = Changes(resume, self.plan.grouping)
@@ -120,6 +133,47 @@ class FloorplanStage(Stage):
         self.error = None
         self.changes = None
         self._parts = {}
+
+    def Bins(self) -> dict[int, Layout]:
+        """The bins on offer to be pinned: the ones currently drawn.
+
+        A plan's if there is one, otherwise the best the search reached -
+        so a grouping you liked can be pinned from a stopped search as
+        readily as from a finished one.
+        """
+        return self._Bins()[0]
+
+    def Pin(self, bin_ids: Sequence[int]) -> None:
+        """Hold those bins of the current arrangement fixed from now on.
+
+        Taken by bin id because that is what the panel and every report
+        speak in, and resolved to layouts immediately because a bin id
+        stops meaning anything the moment the plan it indexed is dropped -
+        which the next edit to the drawers or the library will do.
+        """
+        bins = self.Bins()
+        unknown = sorted(set(bin_ids) - set(bins))
+        if unknown:
+            raise ValueError(f"there is no bin {unknown[0]} to pin")
+        self.pinned = [bins[bin_id] for bin_id in sorted(set(bin_ids))]
+
+    def PinnedIds(self) -> frozenset[int]:
+        """Which of the bins now drawn are pinned.
+
+        Matched by identity against the arrangement on screen rather than
+        remembered as numbers, because `BuildPlan` lays pinned bins down
+        first and a pin that reported the number it used to have would
+        point at somebody else's bin. Identity is exactly the right test:
+        a pinned bin is carried through as the same `Layout` object, which
+        is the property the whole feature rests on.
+
+        Deliberately not `plan.pinned`, which records what the last search
+        held. Ticking a box has to mark the bin at once - the answer to
+        "is this pinned" is the one just given, not the one the last run
+        was told.
+        """
+        held = {id(layout) for layout in self.pinned}
+        return frozenset(bin_id for bin_id, layout in self.Bins().items() if id(layout) in held)
 
     def SetProgress(self, progress: Progress) -> None:
         """Hold the latest report, so `Render` can draw a search still
@@ -150,7 +204,9 @@ class FloorplanStage(Stage):
 
         layouts, parts = self._Bins()
         result = self._Arrangement(layouts) if layouts else None
-        return RenderFloorplan(tuple(self.drawers), layouts, result, parts, pixels_per_mm)
+        return RenderFloorplan(
+            tuple(self.drawers), layouts, result, parts, pixels_per_mm, pinned=self.PinnedIds()
+        )
 
     def _Bins(self) -> tuple[dict[int, Layout], dict[int, Part]]:
         """The bins worth drawing right now, and the parts inside them.
@@ -204,7 +260,9 @@ class FloorplanStage(Stage):
         plan = self.plan
         if plan is None or not plan.layouts:
             raise ValueError("nothing planned to save")
-        SaveSession(path, plan, contours, self.parameters)
+        # The pins as they stand, not as the last search was told them, so
+        # ticking a box and saving does what it looks like it does.
+        SaveSession(path, replace(plan, pinned=self.PinnedIds()), contours, self.parameters)
 
     def Load(self, path: str) -> dict[int, np.ndarray]:
         """Read a session back, returning its contours for the window to
@@ -225,6 +283,7 @@ class FloorplanStage(Stage):
         self.parameters = session.parameters
         self.drawers = list(session.drawers)
         self.resume = session.grouping
+        self.pinned = [session.grouping.bins[index] for index in sorted(session.pinned)]
         self._parts = BuildParts(session.contours, session.parameters)
 
         problems = Verify(session, self._parts)
@@ -239,6 +298,7 @@ class FloorplanStage(Stage):
             assignment=session.assignment,
             grouping=session.grouping,
             footprints={index: layout.grid for index, layout in layouts.items()},
+            pinned=session.pinned,
         )
         return session.contours
 
@@ -254,7 +314,7 @@ class FloorplanStage(Stage):
             raise ValueError("nothing planned to export")
 
         (path,) = (f"{basename}{extension}" for extension in EXPORT_EXTENSIONS)
-        WriteFloorplanPdf(path, plan.drawers, plan.layouts, plan.assignment, plan.parts)
+        WriteFloorplanPdf(path, plan.drawers, plan.layouts, plan.assignment, plan.parts, self.PinnedIds())
         return [path]
 
     def Summary(self) -> str:
@@ -282,6 +342,8 @@ class FloorplanStage(Stage):
             return f"{summary}\nnot placed{reason}"
 
         summary = f"{summary}\n{plan.Report().splitlines()[-1]}"
+        if self.pinned:
+            summary += f"\n{len(self.pinned)} bin(s) pinned and left untouched"
         if self.changes is not None:
             # The question a resumed session is actually asked. A bin the
             # search could not improve is already sitting in the drawer.

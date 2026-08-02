@@ -73,6 +73,11 @@ class Session:
     grouping: Grouping
     parameters: LayoutParameters
     assignment: AssignmentResult | None = None
+    # Indices into `grouping.bins` that were held fixed rather than
+    # searched for. Saved because a pin is a statement about the physical
+    # world - "this one is printed, leave it alone" - and re-ticking a
+    # dozen boxes every time the file is opened is how a pin gets lost.
+    pinned: frozenset[int] = frozenset()
 
     def Grown(self, contours: dict[int, np.ndarray]) -> tuple["Session", list[int]]:
         """This session with more contours added, and the ids they got.
@@ -116,6 +121,10 @@ def SaveSession(path: str, plan: StoragePlan, contours: dict[int, np.ndarray], p
         },
         "drawers": [{"width": drawer.width, "height": drawer.height} for drawer in plan.drawers],
         "bins": [_BinPayload(plan.layouts[bin_id]) for bin_id in sorted(plan.layouts)],
+        # Positions in the `bins` list above, which is written in bin id
+        # order - so these stay meaningful without a second identity
+        # scheme for bins.
+        "pinned": sorted(plan.pinned),
     }
     if plan.assignment is not None:
         payload["assignment"] = {
@@ -160,6 +169,7 @@ def LoadSession(path: str) -> Session:
         grouping=Grouping(bins),
         parameters=_Parameters(payload.get("parameters")),
         assignment=_Assignment(payload.get("assignment"), len(bins)),
+        pinned=_Pinned(payload.get("pinned"), len(bins)),
     )
 
 
@@ -298,6 +308,25 @@ def _Parameters(raw: Any) -> LayoutParameters:
     known = {field.name for field in fields(LayoutParameters)}
     given = raw if isinstance(raw, dict) else {}
     return replace(LayoutParameters(), **{name: value for name, value in given.items() if name in known})
+
+
+def _Pinned(raw: Any, bins: int) -> frozenset[int]:
+    """The pinned bin indices, refused rather than clipped if they do not
+    name a bin this session has.
+
+    Silently dropping one would quietly unpin a bin somebody has already
+    printed, which is the failure this whole feature exists to prevent.
+    """
+    if not isinstance(raw, list):
+        return frozenset()
+
+    pinned = set()
+    for value in raw:
+        index = int(value)
+        if not 0 <= index < bins:
+            raise ValueError(f"bin {index} is pinned, but this session has {bins} bins")
+        pinned.add(index)
+    return frozenset(pinned)
 
 
 def _Assignment(raw: Any, bins: int) -> AssignmentResult | None:

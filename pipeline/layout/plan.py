@@ -248,6 +248,10 @@ class StoragePlan:
     grouping: Grouping | None = None
     cancelled: bool = False
     footprints: dict[int, tuple[int, int]] = field(default_factory=dict)
+    # Which of `layouts` were held fixed rather than searched for. Always
+    # the lowest ids, since `BuildPlan` lays them down first - so a pin
+    # survives a re-plan as the same bin number rather than moving about.
+    pinned: frozenset[int] = frozenset()
 
     @property
     def placed(self) -> bool:
@@ -270,7 +274,8 @@ class StoragePlan:
         for bin_id in sorted(self.layouts):
             n, m = self.layouts[bin_id].grid
             contents = ", ".join(str(part) for part in sorted(self.layouts[bin_id].placements))
-            lines.append(f"bin {bin_id}: {n}x{m} holding {contents}")
+            held = " (pinned)" if bin_id in self.pinned else ""
+            lines.append(f"bin {bin_id}: {n}x{m} holding {contents}{held}")
 
         if self.cancelled:
             lines.append("cancelled before the drawer search ran")
@@ -315,11 +320,18 @@ class _Watcher:
         cancelled: Callable[[], bool] | None,
         interval: float,
         expected: int,
+        pinned: Sequence[Layout] = (),
     ) -> None:
         self._report = report
         self._cancelled = cancelled
         self._interval = interval
         self._expected = expected
+        # Bins held out of the search entirely. They are still part of
+        # every report, because a pinned bin is one somebody already owns
+        # and dropping it from the picture would make the drawer on screen
+        # look emptier than the drawer in the room.
+        self._pinned = tuple(pinned)
+        self._held = sum(len(layout.placements) for layout in self._pinned)
         self._last = 0.0
         self._best_cells: int | None = None
         self.phase = FILLING
@@ -381,8 +393,11 @@ class _Watcher:
         self._Tick()
 
     def _Complete(self, step: Step) -> bool:
-        """Whether these bins account for every part being grouped."""
-        return sum(len(layout.placements) for layout in step.bins) == self._expected
+        """Whether these bins, plus the pinned ones, account for the whole
+        library. The search only sees the free parts, so the pinned ones
+        have to be counted back in or nothing would ever look complete.
+        """
+        return self._held + sum(len(layout.placements) for layout in step.bins) == self._expected
 
     def OnAssigning(self, trial: Trial) -> None:
         # The deepest partial assignment, which is the most complete
@@ -406,8 +421,17 @@ class _Watcher:
         self._last = now
         # The answer when there is one, the fragment being drawn when there
         # is not. `phase` is what tells them apart, and is FILLING for
-        # exactly as long as `bins` is empty.
-        self._report(Progress(self.phase, self.events, self.bins or self.opening, self.assignment, self._expected))
+        # exactly as long as `bins` is empty. Pinned bins lead, as they do
+        # in the finished plan.
+        self._report(
+            Progress(
+                self.phase,
+                self.events,
+                self._pinned + (self.bins or self.opening),
+                self.assignment,
+                self._expected,
+            )
+        )
 
 
 def BuildPlan(
@@ -418,6 +442,7 @@ def BuildPlan(
     cancelled: Callable[[], bool] | None = None,
     interval: float = DEFAULT_REPORT_INTERVAL,
     start: Grouping | None = None,
+    pinned: Sequence[Layout] = (),
 ) -> StoragePlan:
     """Group `parts` into bins and fit those bins into `drawers`.
 
@@ -434,6 +459,22 @@ def BuildPlan(
     exactly as it was. That is what makes adding one tool to a settled
     library a matter of printing one bin instead of twelve; see `_Regroup`.
 
+    `pinned` is stronger and simpler: those bins are held out of the search
+    altogether. `start` is a *hint* - a good starting point the search is
+    free to take apart, and usually does - whereas a pinned bin is a bin
+    that already exists, sitting printed in a drawer, and no arrangement
+    that broke it up would be worth having. So the parts inside one never
+    reach the grouping search at all, and come back in the answer exactly
+    as they went in. Pinning most of a settled library is also the cheapest
+    way to add one tool to it, since the search then has three parts to
+    think about instead of thirty.
+
+    Pinned bins are laid down first, so they hold bin ids 0..k-1 in the
+    result and a pin does not change bin number every time you re-plan.
+    What it does not pin is *where in the drawer* the bin goes: `Assign`
+    still places it, because sliding a bin along a shelf costs nothing and
+    refusing to would turn a pin into an obstacle.
+
     `report` sees a throttled `Progress` through all three phases;
     `cancelled` is polled at the same points. A cancelled run returns the
     best *complete* grouping it had found with no assignment, flagged as
@@ -447,29 +488,38 @@ def BuildPlan(
     if not drawers:
         raise ValueError("no drawers to plan into")
 
+    held = _Held(pinned, parts)
+    free = {part_id: part for part_id, part in parts.items() if part_id not in held}
+
     params = params or LayoutParameters()
     # The feedback edge, applied before grouping rather than after a failed
     # assignment: proposing a footprint no drawer can hold wastes the whole
     # stack below it, and the drawers are already known here.
     params = _RestrictedToDrawers(params, drawers)
 
-    watcher = _Watcher(report, cancelled, interval, expected=len(parts))
+    watcher = _Watcher(report, cancelled, interval, len(parts), pinned)
     try:
-        grouping = _Regroup(parts, params, start, watcher)
+        found = _Regroup(free, params, _Unpinned(start, held), watcher) if free else Grouping([])
     except _Cancelled:
+        # The pinned bins alone are not an arrangement of the library, so a
+        # search stopped before it completed one hands back nothing, exactly
+        # as it does without pins.
+        stopped = (tuple(pinned) + watcher.bins) if watcher.bins else ()
         return StoragePlan(
             drawers=tuple(drawers),
             parts=parts,
-            layouts=dict(enumerate(watcher.bins)),
-            footprints={index: layout.grid for index, layout in enumerate(watcher.bins)},
+            layouts=dict(enumerate(stopped)),
+            footprints={index: layout.grid for index, layout in enumerate(stopped)},
             cancelled=True,
+            pinned=frozenset(range(len(pinned))) if stopped else frozenset(),
         )
 
+    grouping = Grouping(list(pinned) + list(found.bins))
     layouts = dict(enumerate(grouping.bins))
     footprints = {index: layout.grid for index, layout in layouts.items()}
 
     watcher.phase = ASSIGNING
-    watcher.bins = tuple(grouping.bins)
+    watcher.bins = tuple(found.bins)
     try:
         assignment = Assign(footprints, drawers, observer=watcher.OnAssigning)
     except _Cancelled:
@@ -487,7 +537,49 @@ def BuildPlan(
         assignment=assignment,
         grouping=grouping,
         footprints=footprints,
+        pinned=frozenset(range(len(pinned))),
     )
+
+
+def _Held(pinned: Sequence[Layout], parts: dict[int, Part]) -> frozenset[int]:
+    """The parts the pinned bins account for, refusing any pin that could
+    not mean what it says.
+
+    A pin naming a part nobody loaded, or two pins claiming the same part,
+    would produce a plan that placed a part twice or placed one that does
+    not exist - and both would look plausible right up until the bins were
+    printed.
+    """
+    seen: set[int] = set()
+    for index, layout in enumerate(pinned):
+        missing = sorted(set(layout.placements) - set(parts))
+        if missing:
+            raise ValueError(f"pinned bin {index} holds parts {missing}, which are not in this library")
+        twice = sorted(seen & set(layout.placements))
+        if twice:
+            raise ValueError(f"pinned bin {index} holds parts {twice}, which another pinned bin already holds")
+        seen.update(layout.placements)
+    return frozenset(seen)
+
+
+def _Unpinned(start: Grouping | None, held: frozenset[int]) -> Grouping | None:
+    """`start` with every bin that touches a pinned part removed.
+
+    Resuming and pinning describe the same bins from opposite directions,
+    and handing the search a starting point that still contained the
+    pinned parts would have it group them a second time. Parts freed by
+    dropping such a bin are simply not in the starting point any more, so
+    `_Regroup` opens fresh bins for them - which is the right answer: their
+    old bin no longer exists.
+
+    Nothing left means no starting point at all, not an empty one: an
+    empty `Grouping` would send `_Regroup` down its resume path and open a
+    bin per part, which is a materially worse opening than first fit.
+    """
+    if start is None:
+        return None
+    kept = [layout for layout in start.bins if not (set(layout.placements) & held)]
+    return Grouping(kept) if kept else None
 
 
 def _Regroup(

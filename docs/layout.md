@@ -519,6 +519,36 @@ it stores neither `admissible_grids`, which `BuildPlan` derives from the
 drawers, nor the search budget, since how hard the last run looked says
 nothing about whether its answer still holds.
 
+#### Pinning a bin
+
+`start` is a *hint*. It gives the local search a good place to begin and
+the search is free to take it apart, which it usually does — that is the
+point of a search. A **pin** is the other thing: `BuildPlan(pinned=[...])`
+holds those bins out of the grouping search altogether, so the parts
+inside them never reach it and the bins come back in the answer as the
+same `Layout` objects that went in. There is no heuristic involved and
+nothing to tune; the guarantee is structural.
+
+That covers two cases the cell count cannot see. A bin already printed and
+sitting in a drawer, where no cheaper arrangement is worth the reprint.
+And a grouping that is right for reasons outside the model — objects used
+together, or one bin that has to stay shallow.
+
+It is also how a big library stays workable. Measured on a five-object
+library at the test parameters, pinning all but one bin cut the grouping
+search from 35 reported steps and 4.4s to 8 steps and 1.7s, reaching the
+same 2 bins / 6 cells. The saving scales with what you pin, which is why
+adding one tool to a settled library ought to be a search over one object.
+
+Two boundaries are worth naming. Pinned bins are laid down **first**, so
+they hold ids `0..k-1` and a pin does not change bin number every time you
+re-plan — otherwise the checklist in the window would tick a different bin
+each run. And a pin holds a bin *together*, not *still*: `Assign` still
+chooses which drawer cell it goes in, because sliding a bin along a shelf
+costs nothing and refusing to would turn a pin into an obstacle. Pins are
+saved with the session, since a pin is a claim about the physical world
+and re-ticking a dozen boxes on every open is how one gets lost.
+
 `Changes` compares two groupings by contents *and* placements. Same parts
 in different positions is a different bin as far as a printed pocket goes,
 and reporting one of those as unchanged is the single error it must not

@@ -260,6 +260,86 @@ def test_a_stopped_search_does_not_read_as_a_failure():
     assert "not placed" not in summary
 
 
+# ---------------------------------------------------------------- pinning
+
+
+def test_pinning_a_bin_keeps_it_across_a_replan():
+    stage = _stage()
+    stage.Run(_contours(4))
+    held = stage.Bins()[0]
+
+    stage.Pin([0])
+    stage.Run(_contours(4))
+
+    assert stage.plan is not None
+    assert stage.plan.layouts[0] is held
+    assert stage.PinnedIds() == frozenset([0])
+
+
+def test_a_pin_outlives_the_plan_it_was_made_against():
+    """Every edit to the drawers or the library drops the plan, and a pin
+    that went with it would be unticked by adding a drawer.
+    """
+    stage = _stage()
+    stage.Run(_contours(4))
+    held = stage.Bins()[0]
+    stage.Pin([0])
+
+    stage.drawers.append(Drawer(2, 2))
+    stage.Clear()
+
+    assert stage.pinned == [held], "Clear drops results, and a pin is an input"
+
+
+def test_pinning_survives_a_session(tmp_path):
+    stage = _stage()
+    contours = _contours(4)
+    stage.Run(contours)
+    stage.Pin([0])
+    stage.Run(contours)
+    path = str(tmp_path / "s.json")
+    stage.Save(path, contours)
+
+    reopened = _stage(drawers=[])
+    reopened.Load(path)
+
+    assert reopened.PinnedIds() == frozenset([0])
+    assert len(reopened.pinned) == 1
+
+
+def test_pinning_a_bin_that_is_not_there_is_refused():
+    stage = _stage()
+
+    with pytest.raises(ValueError, match="no bin 3"):
+        stage.Pin([3])
+
+
+def test_the_summary_says_how_much_was_left_alone():
+    stage = _stage()
+    stage.Run(_contours(4))
+    stage.Pin([0])
+
+    stage.Run(_contours(4))
+
+    assert "1 bin(s) pinned" in stage.Summary()
+
+
+def test_a_pinned_bin_is_drawn_differently():
+    """The picture has to say which bins you already own, or the pin is
+    invisible in the one place it matters most.
+    """
+    stage = _stage()
+    stage.Run(_contours(4))
+    plain = stage.Render()
+
+    stage.Pin([0])
+    marked = stage.Render()
+
+    assert plain is not None and marked is not None
+    assert plain.shape == marked.shape
+    assert not np.array_equal(plain, marked)
+
+
 # ----------------------------------------------------------------- export
 
 

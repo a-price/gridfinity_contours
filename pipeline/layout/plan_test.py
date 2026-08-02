@@ -293,6 +293,202 @@ def test_resuming_with_a_part_no_drawer_can_hold_says_which():
         BuildPlan(grown, [Drawer(6, 6)], params, start=first.grouping)
 
 
+# ---------------------------------------------------------------- pinning
+
+
+def test_a_pinned_bin_comes_back_exactly_as_it_went_in():
+    """The whole claim. A pinned bin is one already printed and sitting in
+    a drawer, so an arrangement that improved it by rearranging it would
+    be describing a bin nobody owns.
+    """
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+    held = first.grouping.bins[0]
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, pinned=[held])
+
+    assert plan.layouts[0] is held, "not merely equal - the same bin"
+    assert plan.pinned == frozenset([0])
+
+
+def test_pinned_bins_lead_so_a_pin_keeps_its_number():
+    """Re-planning renumbers bins. If a pin moved with them, the panel
+    would tick a different bin every time and nobody could follow it.
+    """
+    parts, params = _parts(5)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None and len(first.grouping.bins) > 1
+    held = first.grouping.bins[-1]
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, pinned=[held])
+    again = BuildPlan(parts, [Drawer(6, 6)], params, pinned=[held])
+
+    assert plan.pinned == again.pinned == frozenset([0])
+    assert plan.layouts[0] is again.layouts[0] is held
+
+
+def test_the_parts_in_a_pinned_bin_are_placed_exactly_once():
+    """They are held out of the grouping search entirely, so the danger is
+    the opposite of losing them - grouping them a second time would place
+    the same object in two bins.
+    """
+    parts, params = _parts(5)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, pinned=[first.grouping.bins[0]])
+
+    placed = [part_id for layout in plan.layouts.values() for part_id in layout.placements]
+    assert sorted(placed) == sorted(parts)
+    assert len(placed) == len(set(placed))
+
+
+def test_pinning_every_bin_runs_no_grouping_search_at_all():
+    """Nothing left to group. The drawer search still runs, since where a
+    pinned bin sits on the shelf is not what was pinned.
+    """
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+    seen: list[Progress] = []
+
+    plan = BuildPlan(
+        parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0, pinned=list(first.grouping.bins)
+    )
+
+    assert list(plan.layouts.values()) == list(first.grouping.bins)
+    assert plan.placed
+    assert {progress.phase for progress in seen} == {ASSIGNING}
+
+
+def test_a_pinned_bin_is_still_given_a_drawer_slot():
+    """Pinning holds the bin together, not still. Sliding a bin along a
+    shelf costs nothing, and refusing to would turn a pin into an
+    obstacle.
+    """
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, pinned=[first.grouping.bins[0]])
+
+    assert plan.assignment is not None
+    assert 0 in plan.assignment.slots
+
+
+def test_pinned_bins_are_in_every_report():
+    """A pinned bin is one somebody owns. Dropping it from the picture
+    while the search ran would make the drawer on screen look emptier than
+    the drawer in the room.
+    """
+    parts, params = _parts(5)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+    held = first.grouping.bins[0]
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0, pinned=[held])
+
+    assert seen
+    for progress in seen:
+        assert progress.bins[0] is held
+    assert seen[-1].placed == len(parts), "and the count reaches the whole library"
+
+
+def test_pinning_narrows_what_the_search_has_to_think_about():
+    """The other half of why this is worth having: adding one tool to a
+    settled library should be a search over one part, not over thirty.
+    Measured against the same search unpinned, since a fixed threshold
+    would drift with the tuning and prove nothing either way.
+    """
+    parts, params = _parts(5)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    def _steps(pinned) -> int:
+        seen: list[Progress] = []
+        BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0, pinned=pinned)
+        return len([progress for progress in seen if progress.phase != ASSIGNING])
+
+    assert _steps(list(first.grouping.bins[:-1])) < _steps([]) / 2
+
+
+def test_pinning_and_resuming_together_do_not_group_a_part_twice():
+    """They describe the same bins from opposite directions, and a start
+    still holding the pinned parts would have the search group them a
+    second time.
+    """
+    parts, params = _parts(5)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    plan = BuildPlan(
+        parts, [Drawer(6, 6)], params, start=first.grouping, pinned=[first.grouping.bins[0]]
+    )
+
+    placed = [part_id for layout in plan.layouts.values() for part_id in layout.placements]
+    assert sorted(placed) == sorted(parts)
+    assert len(placed) == len(set(placed))
+
+
+def test_a_pin_naming_a_part_nobody_loaded_is_refused():
+    """It would place a part that does not exist, and look plausible right
+    up until the bins were printed.
+    """
+    parts, params = _parts(3)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+    fewer = {0: parts[0]}
+
+    with pytest.raises(ValueError, match="not in this library"):
+        BuildPlan(fewer, [Drawer(6, 6)], params, pinned=list(first.grouping.bins))
+
+
+def test_two_pins_claiming_the_same_part_are_refused():
+    parts, params = _parts(3)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+    twice = [first.grouping.bins[0], first.grouping.bins[0]]
+
+    with pytest.raises(ValueError, match="already holds"):
+        BuildPlan(parts, [Drawer(6, 6)], params, pinned=twice)
+
+
+def test_stopping_before_a_complete_grouping_hands_back_no_pinned_bins_either():
+    """The pinned bins alone are not an arrangement of the library, and a
+    plan that looked like one would be saved and printed as one.
+    """
+    parts, params = _parts(5)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+    seen: list[Progress] = []
+
+    plan = BuildPlan(
+        parts,
+        [Drawer(6, 6)],
+        params,
+        report=seen.append,
+        cancelled=lambda: bool(seen),
+        interval=0.0,
+        pinned=[first.grouping.bins[0]],
+    )
+
+    assert plan.cancelled
+    assert plan.layouts == {}
+    assert plan.pinned == frozenset()
+
+
+def test_the_report_names_the_pinned_bins():
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, pinned=[first.grouping.bins[0]])
+
+    assert "(pinned)" in plan.Report()
+
+
 # ------------------------------------------------------------------ progress
 
 

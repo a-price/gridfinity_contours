@@ -36,8 +36,10 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -50,6 +52,10 @@ from pipeline.layout.plan import ReadDrawers, SaveDrawers
 from pipeline.floorplan_stage import EXPORT_EXTENSIONS, FloorplanStage
 
 FixQtOpenCvPluginPath()
+
+# Room for the panel's vertical scroll bar, so appearing it does not
+# squeeze the controls it is scrolling.
+PANEL_SCROLLBAR_PX = 24
 
 CONTOUR_FILE_FILTER = "Contours (*.json *.svg);;Contour dumps (*.json);;SVG files (*.svg)"
 DRAWER_FILE_FILTER = "Drawer lists (*.json)"
@@ -125,6 +131,9 @@ class FloorplanGui(QMainWindow):
 
         control_layout.addWidget(self.floorplan_stage.CreateWidget(on_change=self.plan, on_cancel=self.cancel_plan))
 
+        self.pin_group = self._CreatePinWidget()
+        control_layout.addWidget(self.pin_group)
+
         self.session_group = self._CreateSessionWidget()
         control_layout.addWidget(self.session_group)
 
@@ -135,8 +144,25 @@ class FloorplanGui(QMainWindow):
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("background-color: #2b2b2b;")
+        # A QLabel holding a pixmap asks for the pixmap's own size, which
+        # would make the window's minimum grow with the floorplan it is
+        # showing. `_DrawImage` scales to whatever room it is given, so it
+        # needs none of its own.
+        self.image_label.setMinimumSize(1, 1)
 
-        layout.addWidget(control_panel, stretch=1)
+        # The panel scrolls rather than setting the window's minimum
+        # height. Six group boxes stacked up want about 1300px, which is
+        # taller than a 1080p screen has room for - and a window whose
+        # minimum exceeds the display cannot be maximized or made full
+        # screen at all. This window in particular is one people leave
+        # open and full screen for minutes while the search runs.
+        panel_area = QScrollArea()
+        panel_area.setWidget(control_panel)
+        panel_area.setWidgetResizable(True)
+        panel_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        panel_area.setMinimumWidth(control_panel.sizeHint().width() + PANEL_SCROLLBAR_PX)
+
+        layout.addWidget(panel_area, stretch=1)
         layout.addWidget(self.image_label, stretch=3)
 
         self.update_display()
@@ -201,6 +227,41 @@ class FloorplanGui(QMainWindow):
         self.drawer_label.setWordWrap(True)
         layout.addWidget(self.drawer_label)
         self._RefreshDrawers()
+
+        return widget
+
+    def _CreatePinWidget(self) -> QWidget:
+        """Tick the bins to leave alone.
+
+        The bins you have already printed, or a grouping that happens to
+        be right for reasons the cell count cannot see - a set of things
+        used together, or one bin that has to stay shallow. A pinned bin
+        is held out of the search entirely rather than merely preferred,
+        so it comes back exactly as it went in.
+
+        A checklist rather than clicking bins in the picture: the bins
+        move around between plans, the picture is scaled to fit, and the
+        thing being pinned is a *grouping* - which is a list of contents,
+        and reads as one.
+        """
+        widget, layout = CreateGroupBox("Pinned Bins")
+
+        self.pin_list = QListWidget()
+        self.pin_list.setMaximumHeight(130)
+        self.pin_list.itemChanged.connect(self._OnPinChanged)
+        layout.addWidget(self.pin_list)
+
+        buttons = QHBoxLayout()
+        for text, slot in (("Pin All", self.pin_all), ("Unpin All", self.unpin_all)):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+
+        self.pin_label = QLabel()
+        self.pin_label.setWordWrap(True)
+        layout.addWidget(self.pin_label)
+        self._RefreshPins()
 
         return widget
 
@@ -285,6 +346,11 @@ class FloorplanGui(QMainWindow):
         self.contours = {}
         self.sources = []
         self.floorplan_stage.Clear()
+        # The pins go too. They name bins made of parts that no longer
+        # exist, and holding them would refuse the next search rather than
+        # preserve anything.
+        self.floorplan_stage.pinned = []
+        self.floorplan_stage.resume = None
         self._UpdateSourceLabel()
         self.update_display()
 
@@ -372,6 +438,64 @@ class FloorplanGui(QMainWindow):
             return
         cells = sum(drawer.cells for drawer in drawers)
         self.drawer_label.setText(f"{len(drawers)} drawer(s), {cells} cells of space")
+
+    # ------------------------------------------------------------ pinning
+
+    def _RefreshPins(self) -> None:
+        """Rebuild the checklist from the arrangement now on screen.
+
+        Signals are blocked while it is rebuilt, since setting a check
+        state fires `itemChanged` and would write the half-built list back
+        over the pins it is being built from.
+        """
+        bins = self.floorplan_stage.Bins()
+        pinned = self.floorplan_stage.PinnedIds()
+
+        self.pin_list.blockSignals(True)
+        self.pin_list.clear()
+        for bin_id in sorted(bins):
+            n, m = bins[bin_id].grid
+            contents = ", ".join(str(part_id) for part_id in sorted(bins[bin_id].placements))
+            item = QListWidgetItem(f"bin {bin_id}  {n}x{m}  holding {contents}")
+            item.setData(Qt.ItemDataRole.UserRole, bin_id)
+            item.setCheckState(Qt.CheckState.Checked if bin_id in pinned else Qt.CheckState.Unchecked)
+            self.pin_list.addItem(item)
+        self.pin_list.blockSignals(False)
+
+        if not bins:
+            self.pin_label.setText("Plan or load a floorplan, then tick the bins to keep as they are.")
+            return
+        held = len(self.floorplan_stage.pinned)
+        self.pin_label.setText(
+            f"{held} of {len(bins)} bin(s) pinned - held out of the next search entirely."
+            if held
+            else "Nothing pinned; every bin is up for regrouping."
+        )
+
+    def _OnPinChanged(self, _item) -> None:
+        self._CommitPins()
+
+    def _CommitPins(self) -> None:
+        items = [self.pin_list.item(row) for row in range(self.pin_list.count())]
+        checked = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in items
+            if item is not None and item.checkState() == Qt.CheckState.Checked
+        ]
+        try:
+            self.floorplan_stage.Pin(checked)
+        except ValueError as error:
+            self.pin_label.setText(str(error))
+            return
+        self.update_display()
+
+    def pin_all(self) -> None:
+        self.floorplan_stage.Pin(sorted(self.floorplan_stage.Bins()))
+        self.update_display()
+
+    def unpin_all(self) -> None:
+        self.floorplan_stage.Pin([])
+        self.update_display()
 
     # -------------------------------------------------------------- session
 
@@ -463,6 +587,9 @@ class FloorplanGui(QMainWindow):
     def _SetInputsEditable(self, editable: bool) -> None:
         self.source_group.setEnabled(editable)
         self.drawer_group.setEnabled(editable)
+        # A pin is an input to the search that is running; the bins it
+        # lists are about to be renumbered anyway.
+        self.pin_group.setEnabled(editable)
         self.session_group.setEnabled(editable)
         self.export_group.setEnabled(editable)
 
@@ -497,6 +624,7 @@ class FloorplanGui(QMainWindow):
 
     def update_display(self) -> None:
         self.floorplan_stage.RefreshStatus()
+        self._RefreshPins()
         self._DrawImage()
 
     def _DrawImage(self) -> None:

@@ -229,6 +229,19 @@ and the status line says so. Anything the search is holding but has not
 placed is drawn beside the drawers rather than dropped, so the picture
 always accounts for every bin.
 
+**Pin the bins you have already printed.** Tick them in the *Pinned Bins*
+list and they are held out of the next search entirely — same grid, same
+placements, the same bin object carried straight through into the answer,
+not an equally good rearrangement of it. It also makes the search much
+smaller: pinning a settled library and adding one tool is a search over
+one object rather than over thirty. Pinned bins are drawn with a heavy
+green outline, on screen and on the exported sheet, so "which of these do
+I already own" is answerable from the page you carry to the printer.
+
+Pinning holds a bin *together*, not *still* — the drawer search may still
+slide it to a different cell, because moving a bin along a shelf costs
+nothing while reprinting it does not.
+
 **Save the session, and resume it when the next tool arrives.** `Save...`
 writes the floorplan, its contours, its drawers and the settings it was
 solved under; `Load...` (or `--session FILE`) brings all of that back and

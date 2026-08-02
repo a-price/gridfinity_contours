@@ -19,6 +19,7 @@ import pytest
 from pipeline.layout.container import GRID_PITCH_MM
 from pipeline.layout.drawer import Assign, AssignmentResult, Drawer, Slot
 from pipeline.layout.floorplan import (
+    PINNED_COLOR,
     DrawerPage,
     FloorplanPages,
     PlacedBinShapes,
@@ -28,7 +29,7 @@ from pipeline.layout.floorplan import (
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.preview import OuterFootprint
+from pipeline.layout.preview import BIN_COLOR, PART_COLOR, OuterFootprint
 from conftest import QuickParameters, Rectangle as _rectangle
 
 
@@ -231,6 +232,54 @@ def test_a_bin_that_was_placed_is_not_also_drawn_beside_them():
     placed = RenderFloorplan(drawers, {0: layout}, result, parts, pixels_per_mm=1.0)
 
     assert placed.shape == empty.shape, "it is in the drawer, so the page has not grown"
+
+
+# -------------------------------------------------------------- pinned bins
+
+
+def test_a_pinned_bin_is_drawn_in_its_own_colour():
+    """Only the bin's own outlines change. The objects inside are still
+    the subject of the drawing, pinned or not.
+    """
+    params = _quick()
+    parts, layout = _one_bin(params)
+
+    plain = PlacedBinShapes(layout, Slot(0, 0, (0, 0)), parts)
+    marked = PlacedBinShapes(layout, Slot(0, 0, (0, 0)), parts, pinned=True)
+
+    assert {shape.stroke for shape in plain if shape.stroke == BIN_COLOR}
+    assert not [shape for shape in marked if shape.stroke == BIN_COLOR]
+    assert [shape.stroke for shape in marked].count(PINNED_COLOR) == [s.stroke for s in plain].count(BIN_COLOR)
+    assert [shape.stroke for shape in marked if shape.stroke == PART_COLOR] == [
+        shape.stroke for shape in plain if shape.stroke == PART_COLOR
+    ]
+
+
+def test_pinning_moves_nothing():
+    """The pin is about the search, not the geometry. A bin that shifted
+    when it was ticked would be a bin nobody could trust."""
+    params = _quick()
+    parts, layout = _one_bin(params)
+
+    plain = PlacedBinShapes(layout, Slot(0, 0, (1, 2)), parts)
+    marked = PlacedBinShapes(layout, Slot(0, 0, (1, 2)), parts, pinned=True)
+
+    for before, after in zip(plain, marked):
+        assert np.array_equal(before.points, after.points)
+
+
+def test_the_page_marks_only_the_pinned_bin():
+    """Named by bin id rather than by position in the contents, since the
+    slots already carry the id - one list to keep in step, not two.
+    """
+    params = _quick()
+    parts, layout = _one_bin(params)
+    contents = [(layout, Slot(0, 0, (0, 0))), (layout, Slot(1, 0, (1, 0)))]
+
+    page = DrawerPage(Drawer(3, 3), contents, parts, pinned=frozenset([1]))
+
+    assert [shape.stroke for shape in page.shapes].count(PINNED_COLOR) > 0
+    assert [shape.stroke for shape in page.shapes].count(BIN_COLOR) > 0
 
 
 # ------------------------------------------------------------------ refusals

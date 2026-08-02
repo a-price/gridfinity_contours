@@ -6,6 +6,7 @@ stays interruptible and keeps showing what it has found.
 """
 
 import pytest
+from PyQt5.QtCore import Qt
 
 from pipeline.contour_io import SaveContours
 from pipeline.layout.drawer import Drawer
@@ -269,6 +270,106 @@ def test_a_session_replaces_rather_than_accumulates(gui, tmp_path):
     assert len(gui.contours) == 3
 
 
+# ---------------------------------------------------------------- pinning
+
+
+def _pin(gui, row: int) -> None:
+    gui.pin_list.item(row).setCheckState(Qt.CheckState.Checked)
+
+
+def test_the_bin_list_appears_once_there_is_something_to_pin(gui, tmp_path):
+    _loaded(gui, tmp_path, count=4)
+    assert gui.pin_list.count() == 0, "nothing planned, so nothing to pin"
+
+    _plan(gui)
+
+    assert gui.pin_list.count() == len(gui.floorplan_stage.Bins())
+    assert "holding" in gui.pin_list.item(0).text()
+
+
+def test_ticking_a_bin_pins_it_at_once(gui, tmp_path):
+    """Before any re-plan. The answer to "is this pinned" is the one just
+    given, not the one the last search was told.
+    """
+    _loaded(gui, tmp_path, count=4)
+    _plan(gui)
+
+    _pin(gui, 0)
+
+    assert gui.floorplan_stage.PinnedIds() == frozenset([0])
+    assert "1 of" in gui.pin_label.text()
+
+
+def test_a_pinned_bin_survives_the_next_plan(gui, tmp_path):
+    """The whole point. It was already printed, so it comes back as the
+    same bin rather than as an equally good rearrangement of it.
+    """
+    _loaded(gui, tmp_path, count=4)
+    _plan(gui)
+    _pin(gui, 0)
+    held = gui.floorplan_stage.Bins()[0]
+
+    gui.load_contours([_dump(tmp_path, "newtool.json", {0: _rectangle(50.0, 25.0)})])
+    _plan(gui)
+
+    assert gui.floorplan_stage.plan is not None
+    assert gui.floorplan_stage.plan.layouts[0] is held
+    assert "pinned" in gui.floorplan_stage.Summary()
+
+
+def test_pinning_everything_leaves_nothing_to_search(gui, tmp_path):
+    _loaded(gui, tmp_path, count=4)
+    _plan(gui)
+    before = list(gui.floorplan_stage.Bins().values())
+
+    gui.pin_all()
+    _plan(gui)
+
+    assert list(gui.floorplan_stage.Bins().values()) == before
+    assert all(
+        gui.pin_list.item(row).checkState() == Qt.CheckState.Checked for row in range(gui.pin_list.count())
+    )
+
+
+def test_unpinning_puts_the_bins_back_in_play(gui, tmp_path):
+    _loaded(gui, tmp_path, count=4)
+    _plan(gui)
+    gui.pin_all()
+
+    gui.unpin_all()
+
+    assert gui.floorplan_stage.pinned == []
+    assert "Nothing pinned" in gui.pin_label.text()
+
+
+def test_clearing_the_library_drops_the_pins(gui, tmp_path):
+    """They name bins made of parts that no longer exist, and keeping them
+    would refuse the next search rather than preserve anything.
+    """
+    _loaded(gui, tmp_path, count=4)
+    _plan(gui)
+    gui.pin_all()
+
+    gui.clear_contours()
+
+    assert gui.floorplan_stage.pinned == []
+    assert gui.pin_list.count() == 0
+
+
+def test_pins_come_back_with_a_session(gui, tmp_path):
+    _loaded(gui, tmp_path, count=4)
+    _plan(gui)
+    _pin(gui, 0)
+    path = str(tmp_path / "s.json")
+    gui.floorplan_stage.Save(path, gui.contours)
+
+    later = FloorplanGui()
+    later.load_session(path)
+
+    assert later.floorplan_stage.PinnedIds() == frozenset([0])
+    assert later.pin_list.item(0).checkState() == Qt.CheckState.Checked
+
+
 # ------------------------------------------------------------ searching
 
 
@@ -337,6 +438,26 @@ def test_closing_the_window_does_not_leave_a_thread_running(gui, tmp_path):
 
 
 # -------------------------------------------------------------- display
+
+
+def test_the_window_fits_on_a_screen(gui):
+    """A window whose minimum size is larger than the display cannot be
+    maximized or made full screen at all, and this one is left open full
+    screen for the minutes a search takes.
+
+    Six group boxes stacked up want about 1300px, which a 1080p screen has
+    no room for once decorations are counted. The panel scrolls, so how
+    tall it wants to be is its own problem rather than the window's - and
+    the image label is told it needs no room of its own, since a QLabel
+    holding a pixmap otherwise asks for the whole floorplan's size.
+    """
+    minimum = gui.minimumSizeHint()
+
+    assert minimum.height() < 720, f"{minimum.height()}px will not fit a laptop screen"
+    assert minimum.width() < 800, f"{minimum.width()}px is wider than half of one"
+
+    gui.resize(700, 400)
+    assert (gui.width(), gui.height()) == (700, 400), "the window must be free to shrink"
 
 
 def test_the_view_prompts_before_anything_is_found(gui):

@@ -29,7 +29,7 @@ from pipeline.layout.container import GRID_PITCH_MM
 from pipeline.layout.drawer import AssignmentResult, Drawer, Slot
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout, RotatePoints
-from pipeline.layout.preview import CellBoundaries, ClosedRing, LayoutShapes, OuterFootprint
+from pipeline.layout.preview import BIN_COLOR, CellBoundaries, ClosedRing, LayoutShapes, OuterFootprint
 from pipeline.layout.render import Bordered, RenderLayout, RenderShapes, SideBySide
 from pipeline.pdf_writer import Page, WriteShapesPdfPages
 from pipeline.svg_writer import Shape
@@ -41,6 +41,13 @@ from pipeline.svg_writer import Shape
 DRAWER_STROKE_MM = 0.4
 DRAWER_COLOR = "#404040"
 
+# A bin held out of the search: one that already exists, printed, in a
+# drawer. Darker and heavier than `preview.BIN_COLOR` so it separates from
+# the bins around it at a floorplan's scale, where an ordinary bin outline
+# lands on about one pixel and a colour change alone would not read.
+PINNED_COLOR = "#1f5c2e"
+PINNED_STROKE_MM = 0.5
+
 # Screen pixels per millimeter for a whole floorplan. A drawer is several
 # bins across, so a single bin's scale would produce an image thousands of
 # pixels wide; this keeps a 500x400mm drawer around 700px.
@@ -51,13 +58,19 @@ def _Rectangle(width: float, height: float) -> np.ndarray:
     return np.array([[0.0, 0.0], [width, 0.0], [width, height], [0.0, height]], dtype=np.float64)
 
 
-def PlacedBinShapes(layout: Layout, slot: Slot, parts: dict[int, Part]) -> list[Shape]:
+def PlacedBinShapes(layout: Layout, slot: Slot, parts: dict[int, Part], pinned: bool = False) -> list[Shape]:
     """One bin's drawing, moved to where the assignment put it.
 
     A turned slot rotates the drawing rather than re-deriving it, using
     the same exact quarter turn a part uses inside a bin. The page goes
     from `w x h` to `h x w` with its corner still at the origin, ready to
     translate onto the lattice.
+
+    A pinned bin is drawn with a heavier, darker outline. It is the same
+    drawing - the pin is about the search, not the geometry - restyled so
+    that "this one is already printed, do not make it again" is legible
+    from across the room, on screen and on the printed sheet alike. Only
+    the bin's own outlines change; the objects inside stay the subject.
     """
     shapes, width, height = LayoutShapes(layout, parts)
     size = np.array([width, height])
@@ -66,11 +79,19 @@ def PlacedBinShapes(layout: Layout, slot: Slot, parts: dict[int, Part]) -> list[
     placed = []
     for shape in shapes:
         points = RotatePoints(np.asarray(shape.points, dtype=np.float64), 1, size) if slot.turned else shape.points
-        placed.append(replace(shape, points=np.asarray(points, dtype=np.float64) + offset))
+        moved = replace(shape, points=np.asarray(points, dtype=np.float64) + offset)
+        if pinned and shape.stroke == BIN_COLOR:
+            moved = replace(moved, stroke=PINNED_COLOR, stroke_width=PINNED_STROKE_MM)
+        placed.append(moved)
     return placed
 
 
-def DrawerPage(drawer: Drawer, contents: Sequence[tuple[Layout, Slot]], parts: dict[int, Part]) -> Page:
+def DrawerPage(
+    drawer: Drawer,
+    contents: Sequence[tuple[Layout, Slot]],
+    parts: dict[int, Part],
+    pinned: frozenset[int] = frozenset(),
+) -> Page:
     """Everything to draw for one drawer, as a page in millimeters.
 
     Drawn back to front: the cell grid first so it sits under everything,
@@ -78,6 +99,10 @@ def DrawerPage(drawer: Drawer, contents: Sequence[tuple[Layout, Slot]], parts: d
     rather than only the occupied part, which is the point - it is what
     shows where a free cell is, and free cells are the question you take to
     a drawer floorplan.
+
+    `pinned` names bin ids rather than positions in `contents`, which the
+    slots already carry - so a caller does not have to keep a second list
+    in step with this one.
     """
     width, height = OuterFootprint(drawer.width, drawer.height)
 
@@ -91,7 +116,7 @@ def DrawerPage(drawer: Drawer, contents: Sequence[tuple[Layout, Slot]], parts: d
         )
     )
     for layout, slot in contents:
-        shapes.extend(PlacedBinShapes(layout, slot, parts))
+        shapes.extend(PlacedBinShapes(layout, slot, parts, slot.bin_id in pinned))
 
     return Page(shapes, width, height)
 
@@ -101,6 +126,7 @@ def FloorplanPages(
     layouts: dict[int, Layout] | None = None,
     result: AssignmentResult | None = None,
     parts: dict[int, Part] | None = None,
+    pinned: frozenset[int] = frozenset(),
 ) -> list[Page]:
     """One page per drawer, in the order the drawers were given.
 
@@ -128,7 +154,7 @@ def FloorplanPages(
             raise ValueError(f"bin {bin_id} is assigned to drawer {slot.drawer}, which was not given")
         contents[slot.drawer].append((layouts[bin_id], slot))
 
-    return [DrawerPage(drawer, contents[index], parts) for index, drawer in enumerate(drawers)]
+    return [DrawerPage(drawer, contents[index], parts, pinned) for index, drawer in enumerate(drawers)]
 
 
 def RenderFloorplan(
@@ -138,6 +164,7 @@ def RenderFloorplan(
     parts: dict[int, Part] | None = None,
     pixels_per_mm: float = DEFAULT_DRAWER_PIXELS_PER_MM,
     gap: int = 12,
+    pinned: frozenset[int] = frozenset(),
 ) -> np.ndarray:
     """The whole floorplan as one BGR image: every drawer side by side, and
     any bin not in one of them alongside.
@@ -166,7 +193,7 @@ def RenderFloorplan(
     parts = parts or {}
     slots = {} if result is None else result.slots
 
-    pages = FloorplanPages(drawers, layouts, result, parts)
+    pages = FloorplanPages(drawers, layouts, result, parts, pinned)
     images = [RenderShapes(page.shapes, page.width, page.height, pixels_per_mm) for page in pages]
     images.extend(
         Bordered(RenderLayout(layouts[bin_id], parts, pixels_per_mm)) for bin_id in sorted(set(layouts) - set(slots))
@@ -180,10 +207,15 @@ def WriteFloorplanPdf(
     layouts: dict[int, Layout],
     result: AssignmentResult,
     parts: dict[int, Part],
+    pinned: frozenset[int] = frozenset(),
 ) -> None:
     """Write the drawer floorplan: one true-scale page per drawer.
 
     A PDF because the page size is the whole point here, and an SVG's is
     not reliably honoured - see `pdf_writer.WriteShapesPdf`.
+
+    Pinned bins are marked on the sheet as well as on screen, since the
+    sheet is what you carry to the printer - and "which of these do I
+    already own" is the question you are carrying it to answer.
     """
-    WriteShapesPdfPages(path, FloorplanPages(drawers, layouts, result, parts))
+    WriteShapesPdfPages(path, FloorplanPages(drawers, layouts, result, parts, pinned))

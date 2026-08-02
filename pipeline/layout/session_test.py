@@ -125,6 +125,58 @@ def test_the_assignment_travels_with_it(tmp_path):
         assert session.assignment.slots[bin_id].drawer == slot.drawer
 
 
+# ----------------------------------------------------------------- pinning
+
+
+def test_pins_survive_a_round_trip(tmp_path):
+    """A pin is a statement about the physical world - this one is printed,
+    leave it alone - so re-ticking a dozen boxes every time the file is
+    opened is how a pin gets lost.
+    """
+    contours = _library()
+    params = _quick(max_grid=3)
+    plan = BuildPlan(BuildParts(contours, params), [Drawer(6, 6)], params)
+    held = BuildPlan(BuildParts(contours, params), [Drawer(6, 6)], params, pinned=[plan.layouts[0]])
+    path = str(tmp_path / "pinned.json")
+    SaveSession(path, held, contours, params)
+
+    session = LoadSession(path)
+
+    assert session.pinned == held.pinned
+    assert sorted(session.grouping.bins[0].placements) == sorted(held.layouts[0].placements)
+
+
+def test_a_session_with_nothing_pinned_says_so(tmp_path):
+    path, _, _, _ = _planned(tmp_path)
+
+    assert LoadSession(path).pinned == frozenset()
+
+
+def test_a_pin_naming_a_bin_the_session_does_not_have_is_refused(tmp_path):
+    """Clipping it would quietly unpin a bin somebody has already printed,
+    which is the failure the whole feature exists to prevent.
+    """
+    path, _, _, _ = _planned(tmp_path)
+    payload = json.loads(open(path).read())
+    payload["pinned"] = [99]
+    (tmp_path / "broken.json").write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="is pinned"):
+        LoadSession(str(tmp_path / "broken.json"))
+
+
+def test_an_older_session_without_pins_still_loads(tmp_path):
+    """The field was added after the format; a file written before it is
+    a file with nothing pinned, not a broken one.
+    """
+    path, _, _, _ = _planned(tmp_path)
+    payload = json.loads(open(path).read())
+    del payload["pinned"]
+    (tmp_path / "older.json").write_text(json.dumps(payload))
+
+    assert LoadSession(str(tmp_path / "older.json")).pinned == frozenset()
+
+
 # ---------------------------------------------------------------- refusals
 
 
