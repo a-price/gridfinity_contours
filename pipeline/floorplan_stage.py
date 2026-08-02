@@ -32,7 +32,9 @@ from pipeline.layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorp
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
+from pipeline.layout.grouping import Grouping
 from pipeline.layout.plan import BuildPlan, Progress, StoragePlan
+from pipeline.layout.session import Changes, LoadSession, SaveSession, Verify
 from pipeline.layout.render import RenderLayouts
 
 # One page per drawer, so a floorplan is a PDF and not an SVG - see
@@ -59,6 +61,12 @@ class FloorplanStage(Stage):
         # exists. Rebuilding them per repaint would rasterize the whole
         # library to draw one frame.
         self._parts: dict[int, Part] = {}
+        # The floorplan a loaded session brought with it, and the thing
+        # the next search resumes from rather than rediscovers. Held
+        # across Clear, which drops results and not inputs - a reloaded
+        # session is an input.
+        self.resume: Grouping | None = None
+        self.changes: tuple[list[int], list[int]] | None = None
         self._status_label: QLabel | None = None
         self._plan_button: QPushButton | None = None
         self._cancel_button: QPushButton | None = None
@@ -83,6 +91,7 @@ class FloorplanStage(Stage):
         arrive from a file dialog or a text box, and none of them should
         take the window down.
         """
+        resume = self.resume
         self.Clear()
         if not contours or not self.drawers:
             self.error = "load some contours and add at least one drawer"
@@ -90,14 +99,22 @@ class FloorplanStage(Stage):
 
         try:
             self._parts = BuildParts(contours, self.parameters)
-            self.plan = BuildPlan(self._parts, self.drawers, self.parameters, report=report, cancelled=cancelled)
+            self.plan = BuildPlan(
+                self._parts, self.drawers, self.parameters, report=report, cancelled=cancelled, start=resume
+            )
+            if resume is not None and self.plan.grouping is not None:
+                self.changes = Changes(resume, self.plan.grouping)
         except ValueError as error:
             self.error = str(error)
 
     def Clear(self) -> None:
+        """Drop the current result. Inputs - the drawers, and the session
+        being resumed - survive, since they are what a rerun runs *on*.
+        """
         self.plan = None
         self.progress = None
         self.error = None
+        self.changes = None
         self._parts = {}
 
     def SetProgress(self, progress: Progress) -> None:
@@ -146,6 +163,54 @@ class FloorplanStage(Stage):
         """
         return self.plan.parts if self.plan is not None else self._parts
 
+    def Save(self, path: str, contours: dict[int, np.ndarray]) -> None:
+        """Write the current floorplan and its inputs to a session file.
+
+        Takes the contours because the window owns them and a
+        `StoragePlan` cannot give them back - `BuildPart` PCA-aligns and
+        resamples on the way in, so a part is not a contour.
+        """
+        plan = self.plan
+        if plan is None or not plan.layouts:
+            raise ValueError("nothing planned to save")
+        SaveSession(path, plan, contours, self.parameters)
+
+    def Load(self, path: str) -> dict[int, np.ndarray]:
+        """Read a session back, returning its contours for the window to
+        adopt.
+
+        The floorplan is reconstructed as saved rather than re-solved, so
+        it can be looked at - and printed - without running anything. It
+        also becomes the arrangement the next search resumes from, which
+        is the whole point of having saved it.
+
+        Verified on the way in against the parameters it was made with. A
+        session outlives its settings, and one whose clearances no longer
+        hold should say so rather than look settled.
+        """
+        session = LoadSession(path)
+
+        self.Clear()
+        self.parameters = session.parameters
+        self.drawers = list(session.drawers)
+        self.resume = session.grouping
+        self._parts = BuildParts(session.contours, session.parameters)
+
+        problems = Verify(session, self._parts)
+        if problems:
+            self.error = f"{len(problems)} clearance problem(s) in the saved floorplan: {problems[0]}"
+
+        layouts = dict(enumerate(session.grouping.bins))
+        self.plan = StoragePlan(
+            drawers=tuple(session.drawers),
+            parts=self._parts,
+            layouts=layouts,
+            assignment=session.assignment,
+            grouping=session.grouping,
+            footprints={index: layout.grid for index, layout in layouts.items()},
+        )
+        return session.contours
+
     def Export(self, basename: str) -> list[str]:
         """Write the floorplan: one true-scale page per drawer.
 
@@ -184,7 +249,16 @@ class FloorplanStage(Stage):
         if assignment is None or not assignment.placed:
             reason = "" if assignment is None else f" - {assignment.detail}"
             return f"{summary}\nnot placed{reason}"
-        return f"{summary}\n{plan.Report().splitlines()[-1]}"
+
+        summary = f"{summary}\n{plan.Report().splitlines()[-1]}"
+        if self.changes is not None:
+            # The question a resumed session is actually asked. A bin the
+            # search could not improve is already sitting in the drawer.
+            kept, changed = self.changes
+            summary += f"\nresumed: {len(kept)} bin(s) unchanged, {len(changed)} to reprint"
+            if changed:
+                summary += " (" + ", ".join(str(index) for index in changed) + ")"
+        return summary
 
     def SetStatus(self, text: str) -> None:
         """Put arbitrary text in the panel - progress, while a search runs.

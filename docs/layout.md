@@ -423,6 +423,7 @@ pipeline/layout/solid.py       the printable bin, as OpenSCAD
 pipeline/layout/render.py      the same drawing, rasterized for a screen
 pipeline/layout/field.py       a part's distance field, false-colored
 pipeline/layout/plan.py        the whole stack: parts to bins to drawers
+pipeline/layout/session.py     saving a floorplan and resuming it
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
 render_demo.py                 one committed still per drawing path
@@ -447,8 +448,8 @@ Dependencies run one way: `container` and `part` depend on nothing local,
 `descent` on those, `loading`, `spacing`, `solver`, `packer`, `preview`,
 `render`, `field` and `solid` above that, `grouping` on top of `packer`,
 `drawer` on top of that, `floorplan` on top of `drawer`, `preview` and
-`render`, `plan` on top of everything, and `verify` deliberately to one
-side.
+`render`, `plan` above those, `session` on top of `plan`, and `verify`
+deliberately to one side.
 
 `plan` is the top, and it exists because the join between grouping and
 the drawer level was the one seam
@@ -477,6 +478,41 @@ Cancellation rides the same channel, because `Group` takes no `cancelled`
 predicate and the observer is the only hook into it. The best grouping
 seen is kept as the search runs, so stopping costs the time the search
 had left rather than the answer it had found.
+
+#### Resuming a floorplan
+
+A library grows one object at a time, and by the time the second one
+arrives half the answer is already printed and sitting in a drawer. So
+the question is not "where does everything go" but *"where does this go,
+and what do I have to reprint"* — which is what
+[session.py](../pipeline/layout/session.py) makes askable.
+
+`BuildPlan` takes an optional `start` grouping. Given one, it opens a bin
+for any part the grouping does not account for and hands the whole thing
+to `Improve` rather than to `Group`. **The stability that buys is a
+property of `Improve`, not of anything in `plan`**: the local search only
+ever accepts a move that lowers the total cell count, and a bin no
+accepted move touched is carried through as the very same `Layout` — same
+grid, same placements, to the millimetre. Measured on a four-object
+library, adding a fifth left one bin untouched and changed one. Starting
+over would have found an equally good answer sharing nothing with the
+bins already on the shelf.
+
+Three things follow for the file format. It stores the **contours
+themselves, not paths** — part ids come from the order `ReadContours`
+encounters files, so a grouping referring to source files would silently
+mean something else after a rename. It stores the **geometry parameters**,
+because placements satisfied the clearances they were solved against and
+reopening at a wider pocket offset yields a floorplan that looks settled
+and is not — `Verify` runs `CheckLayout` on the way in and says so. And
+it stores neither `admissible_grids`, which `BuildPlan` derives from the
+drawers, nor the search budget, since how hard the last run looked says
+nothing about whether its answer still holds.
+
+`Changes` compares two groupings by contents *and* placements. Same parts
+in different positions is a different bin as far as a printed pocket goes,
+and reporting one of those as unchanged is the single error it must not
+make.
 
 `field` is the odd one out in that it consumes nothing and is consumed by
 nothing — it exists to be *looked at*. Both phases of the search read a

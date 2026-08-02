@@ -203,6 +203,61 @@ def test_a_drawer_too_small_for_any_bin_refuses_before_searching():
         BuildPlan(parts, [Drawer(1, 1)], params)
 
 
+# --------------------------------------------------------------- resuming
+
+
+def test_resuming_leaves_an_unimproved_bin_byte_identical():
+    """The stability the resume flow rests on, and it is a property of
+    `Improve` rather than of anything in `plan`: a bin no accepted move
+    touched is carried through as the very same `Layout`. That is what
+    makes adding one tool a matter of printing one bin.
+    """
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+
+    resumed = BuildPlan(parts, [Drawer(6, 6)], params, start=first.grouping)
+
+    assert first.grouping is not None and resumed.grouping is not None
+    kept = [layout for layout in resumed.grouping.bins if any(layout is before for before in first.grouping.bins)]
+    assert kept, "resuming an already-settled grouping should change nothing"
+
+
+def test_resuming_opens_a_bin_for_a_part_it_does_not_know():
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    grown = dict(parts)
+    grown[99] = BuildParts({99: _rectangle(50.0, 25.0)}, params)[99]
+    resumed = BuildPlan(grown, [Drawer(6, 6)], params, start=first.grouping)
+
+    assert resumed.grouping is not None
+    assert resumed.grouping.PartIds() == set(grown)
+
+
+def test_resuming_never_loses_a_part():
+    parts, params = _parts(3)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    resumed = BuildPlan(parts, [Drawer(6, 6)], params, start=first.grouping)
+
+    assert resumed.grouping is not None
+    assert resumed.grouping.PartIds() == set(parts)
+
+
+def test_resuming_with_a_part_no_drawer_can_hold_says_which():
+    parts, params = _parts(2, _quick(max_grid=6))
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert first.grouping is not None
+
+    grown = dict(parts)
+    grown[99] = BuildParts({99: _rectangle(400.0, 30.0)}, params)[99]
+
+    with pytest.raises(ValueError, match="cannot be added to this floorplan|does not fit"):
+        BuildPlan(grown, [Drawer(6, 6)], params, start=first.grouping)
+
+
 # ------------------------------------------------------------------ progress
 
 

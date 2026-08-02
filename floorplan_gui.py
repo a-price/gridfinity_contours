@@ -53,6 +53,7 @@ FixQtOpenCvPluginPath()
 
 CONTOUR_FILE_FILTER = "Contours (*.json *.svg);;Contour dumps (*.json);;SVG files (*.svg)"
 DRAWER_FILE_FILTER = "Drawer lists (*.json)"
+SESSION_FILE_FILTER = "Floorplan sessions (*.json)"
 
 
 class FloorplanWorker(QThread):
@@ -123,6 +124,9 @@ class FloorplanGui(QMainWindow):
         control_layout.addWidget(self.drawer_group)
 
         control_layout.addWidget(self.floorplan_stage.CreateWidget(on_change=self.plan, on_cancel=self.cancel_plan))
+
+        self.session_group = self._CreateSessionWidget()
+        control_layout.addWidget(self.session_group)
 
         self.export_group = self._CreateExportWidget()
         control_layout.addWidget(self.export_group)
@@ -197,6 +201,31 @@ class FloorplanGui(QMainWindow):
         self.drawer_label.setWordWrap(True)
         layout.addWidget(self.drawer_label)
         self._RefreshDrawers()
+
+        return widget
+
+    def _CreateSessionWidget(self) -> QWidget:
+        """Save the floorplan, and pick it up again months later.
+
+        The flow this exists for: a new tool arrives, you load the
+        floorplan you already printed, add the one contour, and press
+        Plan. The search resumes from what you had instead of
+        rediscovering it, so the bins already in your drawer stay as they
+        are and the panel says which ones have to come off the printer
+        again.
+        """
+        widget, layout = CreateGroupBox("Session")
+
+        row = QHBoxLayout()
+        for text, slot in (("Save...", self.save_session), ("Load...", self.browse_for_session)):
+            button = QPushButton(text)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        layout.addLayout(row)
+
+        self.session_label = QLabel("No session loaded.")
+        self.session_label.setWordWrap(True)
+        layout.addWidget(self.session_label)
 
         return widget
 
@@ -319,6 +348,11 @@ class FloorplanGui(QMainWindow):
             return
         self.drawer_label.setText(f"Wrote {os.path.basename(path)}")
 
+    def _RepopulateDrawers(self) -> None:
+        """Redraw the drawer panel after something replaced the list
+        wholesale - loading a session, which brings its own drawers."""
+        self._RefreshDrawers()
+
     def _RefreshDrawers(self) -> None:
         """Rebuild the list, showing each drawer in cells and in the
         millimeters those cells actually span.
@@ -338,6 +372,51 @@ class FloorplanGui(QMainWindow):
             return
         cells = sum(drawer.cells for drawer in drawers)
         self.drawer_label.setText(f"{len(drawers)} drawer(s), {cells} cells of space")
+
+    # -------------------------------------------------------------- session
+
+    def load_session(self, path: str) -> None:
+        """Adopt a saved floorplan: its contours, drawers, parameters, and
+        the arrangement itself.
+
+        Replaces rather than accumulating, unlike loading contours. A
+        session is a whole state, and merging two of them would produce a
+        grouping describing parts from both with ids that meant different
+        things in each.
+        """
+        try:
+            contours = self.floorplan_stage.Load(path)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            self.session_label.setText(f"Could not load: {error}")
+            return
+
+        self.contours = dict(contours)
+        self.sources = [path]
+        stage = self.floorplan_stage
+        bins = 0 if stage.resume is None else len(stage.resume.bins)
+        self.session_label.setText(
+            f"Resuming {os.path.basename(path)}: {len(self.contours)} objects in {bins} bins.\n"
+            "Add a contour and press Plan to fit it in."
+        )
+        self._RepopulateDrawers()
+        self._UpdateSourceLabel()
+        self.update_display()
+
+    def browse_for_session(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Load Session", "", SESSION_FILE_FILTER)
+        if path:
+            self.load_session(path)
+
+    def save_session(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Save Session", "floorplan.json", SESSION_FILE_FILTER)
+        if not path:
+            return
+        try:
+            self.floorplan_stage.Save(path, self.contours)
+        except (OSError, ValueError) as error:
+            self.session_label.setText(f"Could not save: {error}")
+            return
+        self.session_label.setText(f"Wrote {os.path.basename(path)}")
 
     # ------------------------------------------------------------ searching
 
@@ -384,6 +463,7 @@ class FloorplanGui(QMainWindow):
     def _SetInputsEditable(self, editable: bool) -> None:
         self.source_group.setEnabled(editable)
         self.drawer_group.setEnabled(editable)
+        self.session_group.setEnabled(editable)
         self.export_group.setEnabled(editable)
 
     def WaitForPlan(self, timeout_ms: int = 600000) -> None:
@@ -466,6 +546,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Plan a floorplan for a library of objects across your drawers.")
     parser.add_argument("inputs", nargs="*", metavar="FILE", help="contour dumps (.json) or SVGs to load at launch")
+    parser.add_argument("--session", metavar="FILE", help="a saved floorplan to resume at launch")
     parser.add_argument("--drawers", metavar="FILE", help="a saved drawer list to load at launch")
     parser.add_argument(
         "--drawer",
@@ -477,6 +558,8 @@ def main() -> None:
 
     window = FloorplanGui()
     window.show()
+    if args.session:
+        window.load_session(os.path.abspath(os.path.expanduser(args.session)))
     if args.drawers:
         window.load_drawers(os.path.abspath(os.path.expanduser(args.drawers)))
     for text in args.drawer or []:

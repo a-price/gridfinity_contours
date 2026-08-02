@@ -220,6 +220,14 @@ runs on a worker thread, redraws the best arrangement it has found four
 times a second, and can be stopped — stopping keeps the best grouping it
 had, so once the answer stops improving you can take it.
 
+**Save the session, and resume it when the next tool arrives.** `Save...`
+writes the floorplan, its contours, its drawers and the settings it was
+solved under; `Load...` (or `--session FILE`) brings all of that back and
+draws it without re-running anything. Add the new contour, press Plan, and
+the search resumes from the arrangement you already printed instead of
+rediscovering it — so the panel says which bins are unchanged and which
+have to come off the printer again.
+
 ### `field_gui.py` — look at the distance field
 
 ```

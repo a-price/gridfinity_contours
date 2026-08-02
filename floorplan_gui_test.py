@@ -199,6 +199,76 @@ def test_loading_more_contours_drops_a_stale_plan(gui, tmp_path):
     assert gui.floorplan_stage.plan is None
 
 
+# --------------------------------------------------------------- session
+
+
+def test_a_session_reloads_into_a_drawn_floorplan(gui, tmp_path):
+    """The flow: plan a library, save it, come back to it later and see
+    what you had without re-running anything.
+    """
+    _loaded(gui, tmp_path)
+    _plan(gui)
+    path = str(tmp_path / "s.json")
+    gui.floorplan_stage.Save(path, gui.contours)
+
+    later = FloorplanGui()
+    later.load_session(path)
+
+    assert len(later.contours) == len(gui.contours)
+    assert later.floorplan_stage.drawers == gui.floorplan_stage.drawers
+    assert later.floorplan_stage.resume is not None
+    pixmap = later.image_label.pixmap()
+    assert pixmap is not None and not pixmap.isNull()
+    assert "Resuming" in later.session_label.text()
+
+
+def test_adding_a_tool_to_a_reloaded_session_reprints_only_what_moved(gui, tmp_path):
+    """The whole point. A new tool arrives; the bins already in the drawer
+    should mostly stay as they are.
+    """
+    _loaded(gui, tmp_path)
+    _plan(gui)
+    path = str(tmp_path / "s.json")
+    gui.floorplan_stage.Save(path, gui.contours)
+
+    later = FloorplanGui()
+    later.floorplan_stage.parameters = _quick(max_grid=3)
+    later.load_session(path)
+    later.load_contours([_dump(tmp_path, "newtool.json", {0: _rectangle(50.0, 25.0)})])
+    _plan(later)
+
+    changes = later.floorplan_stage.changes
+    assert changes is not None
+    kept, changed = changes
+    assert kept, "adding one tool should not invalidate every bin"
+    assert "unchanged" in later.floorplan_stage.Summary()
+
+
+def test_an_unreadable_session_is_reported_not_raised(gui, tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not json")
+
+    gui.load_session(str(bad))
+
+    assert "Could not load" in gui.session_label.text()
+
+
+def test_a_session_replaces_rather_than_accumulates(gui, tmp_path):
+    """Unlike loading contours. A session is a whole state, and merging
+    two would produce a grouping whose ids meant different things in each.
+    """
+    _loaded(gui, tmp_path)
+    _plan(gui)
+    path = str(tmp_path / "s.json")
+    gui.floorplan_stage.Save(path, gui.contours)
+    gui.load_contours([_dump(tmp_path, "extra.json", {0: _rectangle(18.0, 12.0)})])
+    assert len(gui.contours) == 4
+
+    gui.load_session(path)
+
+    assert len(gui.contours) == 3
+
+
 # ------------------------------------------------------------ searching
 
 

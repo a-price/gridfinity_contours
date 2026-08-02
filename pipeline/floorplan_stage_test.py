@@ -214,6 +214,75 @@ def test_exporting_a_cancelled_search_is_refused(tmp_path):
         stage.Export(str(tmp_path / "plan"))
 
 
+# ---------------------------------------------------------------- session
+
+
+def test_a_session_round_trips_through_the_stage(tmp_path):
+    stage = _stage()
+    contours = _contours()
+    stage.Run(contours)
+    path = str(tmp_path / "s.json")
+
+    stage.Save(path, contours)
+    reopened = _stage(drawers=[])
+    returned = reopened.Load(path)
+
+    assert sorted(returned) == sorted(contours)
+    assert reopened.drawers == stage.drawers
+    assert reopened.resume is not None
+
+
+def test_a_loaded_session_draws_without_searching(tmp_path):
+    """The floorplan was printed from these placements, so it can be
+    looked at - and exported - without running anything.
+    """
+    stage = _stage()
+    contours = _contours()
+    stage.Run(contours)
+    path = str(tmp_path / "s.json")
+    stage.Save(path, contours)
+
+    reopened = _stage(drawers=[])
+    reopened.Load(path)
+
+    assert reopened.Render() is not None
+    assert reopened.Export(str(tmp_path / "plan")) == [str(tmp_path / "plan.pdf")]
+
+
+def test_saving_before_planning_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="nothing planned"):
+        _stage().Save(str(tmp_path / "s.json"), _contours())
+
+
+def test_resuming_reports_which_bins_have_to_be_reprinted(tmp_path):
+    """The question the whole flow exists to answer."""
+    stage = _stage()
+    contours = _contours(3)
+    stage.Run(contours)
+    path = str(tmp_path / "s.json")
+    stage.Save(path, contours)
+
+    reopened = _stage(drawers=[])
+    grown = dict(reopened.Load(path))
+    grown[max(grown) + 1] = _rectangle(50.0, 25.0)
+    reopened.Run(grown)
+
+    assert reopened.changes is not None
+    assert "to reprint" in reopened.Summary()
+
+
+def test_a_rerun_without_a_session_reports_no_churn():
+    """Nothing to compare against, so the panel must not invent a
+    baseline.
+    """
+    stage = _stage()
+
+    stage.Run(_contours())
+
+    assert stage.changes is None
+    assert "reprint" not in stage.Summary()
+
+
 # ------------------------------------------------------------------ panel
 
 

@@ -46,7 +46,8 @@ from pipeline.layout.drawer import (
     LargestFreeRegion,
     Trial,
 )
-from pipeline.layout.grouping import Group, Grouping, Step
+from pipeline.layout.grouping import Group, Grouping, Improve, Step
+from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
@@ -342,6 +343,7 @@ def BuildPlan(
     report: Reporter | None = None,
     cancelled: Callable[[], bool] | None = None,
     interval: float = DEFAULT_REPORT_INTERVAL,
+    start: Grouping | None = None,
 ) -> StoragePlan:
     """Group `parts` into bins and fit those bins into `drawers`.
 
@@ -350,6 +352,13 @@ def BuildPlan(
     edge applied in front of both: grouping is restricted to footprints
     some drawer could hold, so the stochastic search never spends itself
     on a bin that could not be stored anyway.
+
+    `start`, if given, is a grouping to resume from rather than to
+    rediscover - the arrangement a previous session settled on. Parts it
+    does not account for are opened into bins of their own and the local
+    search takes it from there, which leaves every bin it cannot improve
+    exactly as it was. That is what makes adding one tool to a settled
+    library a matter of printing one bin instead of twelve; see `_Regroup`.
 
     `report` sees a throttled `Progress` through both phases; `cancelled`
     is polled at the same points. A cancelled run returns the best
@@ -370,7 +379,7 @@ def BuildPlan(
 
     watcher = _Watcher(report, cancelled, interval, expected=len(parts))
     try:
-        grouping = Group(parts, params, observer=watcher.OnGrouping)
+        grouping = _Regroup(parts, params, start, watcher)
     except _Cancelled:
         return StoragePlan(
             drawers=tuple(drawers),
@@ -403,6 +412,48 @@ def BuildPlan(
         grouping=grouping,
         footprints=footprints,
     )
+
+
+def _Regroup(
+    parts: dict[int, Part],
+    params: LayoutParameters,
+    start: Grouping | None,
+    watcher: "_Watcher",
+) -> Grouping:
+    """Partition `parts` into bins, from scratch or from `start`.
+
+    From scratch is `Group`: first-fit for a starting point, then local
+    search. From `start` is the same local search on an arrangement
+    somebody already has, with any part `start` does not account for
+    opened into a bin of its own first.
+
+    **The stability this buys is the point, and it is a property of
+    `Improve` rather than of anything here.** The local search only ever
+    accepts a move that lowers the total cell count, and a bin no accepted
+    move touched is carried through as the very same `Layout` object - the
+    same grid, the same placements, to the millimetre. So adding one tool
+    to a settled library reprints the bins the search could genuinely
+    improve and leaves every other bin exactly as it was printed. Starting
+    over would re-derive an equally good answer that shared nothing with
+    the shelf of bins already sitting in the drawer.
+    """
+    if start is None:
+        return Group(parts, params, observer=watcher.OnGrouping)
+
+    missing = sorted(set(parts) - start.PartIds())
+    bins = list(start.bins)
+    for part_id in missing:
+        # One bin each, at its own smallest size - the same baseline
+        # `OnePerBin` uses, and the honest starting point for a part
+        # nothing has yet decided anything about.
+        opened = Pack({part_id: parts[part_id]}, params).layout
+        if opened is None:
+            raise ValueError(
+                f"part {part_id} does not fit any bin these drawers can hold, so it cannot be added to this floorplan"
+            )
+        bins.append(opened)
+
+    return Improve(parts, Grouping(bins), params, observer=watcher.OnGrouping)
 
 
 def _RestrictedToDrawers(params: LayoutParameters, drawers: Sequence[Drawer]) -> LayoutParameters:
