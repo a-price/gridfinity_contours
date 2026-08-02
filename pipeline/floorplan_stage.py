@@ -25,14 +25,14 @@ feedback edge in `BuildPlan` derives the admissible bin footprints from
 them - which makes them a parameter of the packing, not a display option.
 """
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from typing import Callable, Sequence
 
 import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
-from pipeline.layout.drawer import AssignmentResult, Drawer, FirstFit
+from pipeline.layout.drawer import Assign, AssignmentResult, Drawer, FirstFit
 from pipeline.layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.parameters import LayoutParameters
@@ -40,11 +40,52 @@ from pipeline.layout.part import Part
 from pipeline.layout.grouping import Grouping
 from pipeline.layout.placement import Layout
 from pipeline.layout.plan import BuildPlan, Progress, StoragePlan
+from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
 from pipeline.layout.session import Changes, LoadSession, SaveSession, Verify
+from pipeline.layout.solid import WriteScad
 
 # One page per drawer, so a floorplan is a PDF and not an SVG - see
 # `pdf_writer.WriteShapesPdf` on why the page size has to be unambiguous.
 EXPORT_EXTENSIONS = (".pdf",)
+
+# What every bin in the plan gets alongside it: the sheet to print and lay
+# on the bin, and the solid to print the bin from. The same three
+# `LayoutStage` writes for a single bin, for the same reasons - the map
+# says where bins go, but what you actually make is a bin.
+BIN_EXTENSIONS = (".svg", ".pdf", ".scad")
+
+
+@dataclass(frozen=True)
+class ExportReport:
+    """What an export produced, and what it could not.
+
+    A list of paths cannot say "and one solid was not cut", which is the
+    single outcome somebody has to be told about: the sheets are written
+    either way, so an export missing one `.scad` looks complete.
+    """
+
+    written: list[str]
+    bins: int = 0
+    # Why each bin's solid could not be cut, by bin id. Kept apart rather
+    # than pre-formatted, so a caller can say which bins without parsing
+    # a sentence back apart.
+    problems: dict[int, str] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        line = f"Wrote {len(self.written)} file(s): the floorplan and {self.bins} bin(s)."
+        if not self.problems:
+            return line
+
+        # Every affected bin named, but the explanation given once. A bad
+        # pocket offset fails most bins the same way, and repeating four
+        # hundred characters of it per bin buries the bin numbers - which
+        # are the part somebody has to act on.
+        failed = sorted(self.problems)
+        names = ", ".join(str(bin_id) for bin_id in failed)
+        return (
+            f"{line}\n{len(failed)} of {self.bins} solid(s) could not be cut - bin {names}."
+            f"\nbin {failed[0]}: {self.problems[failed[0]]}"
+        )
 
 
 class FloorplanStage(Stage):
@@ -300,22 +341,87 @@ class FloorplanStage(Stage):
             footprints={index: layout.grid for index, layout in layouts.items()},
             pinned=session.pinned,
         )
+        # A session saved from a stopped search carries bins and no
+        # assignment. Filling it in here rather than at each use means a
+        # reopened floorplan is a whole one however it was saved - drawn,
+        # exported and reported the same as any other.
+        self.plan = replace(self.plan, assignment=self._Assigned(self.plan))
         return session.contours
 
-    def Export(self, basename: str) -> list[str]:
-        """Write the floorplan: one true-scale page per drawer.
+    def _Assigned(self, plan: StoragePlan) -> AssignmentResult:
+        """`plan`'s drawer assignment, searched for now if it has none.
 
-        Lives here rather than in the window because the writer needs the
-        drawers, the layouts, the assignment and the parts, and this is
-        what holds all four.
+        A plan reaches here without one whenever the search was stopped
+        during grouping: `BuildPlan` returns the bins it had found and no
+        assignment, since a grouping still being improved says nothing
+        about drawers. A session saved from that state records none
+        either, and reloading it used to leave a floorplan that could be
+        looked at but not exported - "nothing planned to export" about
+        five perfectly good bins.
+
+        Running it instead of refusing is the obvious trade once the two
+        halves are priced: grouping is stochastic and takes minutes, the
+        drawer search is exact and took 0.1ms on that five-bin, six-drawer
+        floorplan. The expensive half is what the session saved; the cheap
+        half is not worth a person's time to redo.
+        """
+        if plan.assignment is not None:
+            return plan.assignment
+        return Assign(plan.footprints, plan.drawers)
+
+    def Export(self, basename: str) -> ExportReport:
+        """Write the whole plan: the drawer map, and every bin on it.
+
+        **The map alone cannot be acted on.** It says where bins go; what
+        you make is a bin, and nothing else in the project writes a solid
+        for a bin the *grouping* search produced. Without this, turning a
+        library plan into something printable meant re-packing each bin by
+        hand in `layout_gui` - a different search over the same objects,
+        which yields a different arrangement, so the bin coming off the
+        printer would not match the map printed to lay it out with.
+
+        Writing them here is correct by construction instead: these are
+        the layouts the plan actually chose, drawn and cut as they stand.
+
+        Pinned bins are written too. A pin says the search may not change
+        a bin, not that the file is already on disk somewhere - and an
+        export that silently skipped some of its bins is the more
+        expensive mistake by far. Filenames stay the same either way, so
+        ticking a box does not leave a second copy under a second name.
+
+        A solid that cannot be cut at this tolerance is *reported* rather
+        than raised. Wall thickness is a property of one bin, the sheets
+        for it are already written, and every other bin is fine - so
+        losing an eleven-bin export over the twelfth would be the wrong
+        trade. The message names the measurement that failed.
         """
         plan = self.plan
-        if plan is None or plan.assignment is None:
+        if plan is None or not plan.layouts:
             raise ValueError("nothing planned to export")
 
         (path,) = (f"{basename}{extension}" for extension in EXPORT_EXTENSIONS)
-        WriteFloorplanPdf(path, plan.drawers, plan.layouts, plan.assignment, plan.parts, self.PinnedIds())
-        return [path]
+        WriteFloorplanPdf(path, plan.drawers, plan.layouts, self._Assigned(plan), plan.parts, self.PinnedIds())
+
+        written: list[str] = [path]
+        problems: dict[int, str] = {}
+        # Numbered to a fixed width, so a directory of a dozen bins sorts
+        # the way the report lists them rather than putting bin10 second.
+        digits = len(str(max(plan.layouts)))
+        for bin_id in sorted(plan.layouts):
+            layout = plan.layouts[bin_id]
+            svg, pdf, scad = (f"{basename}_bin{bin_id:0{digits}d}{ext}" for ext in BIN_EXTENSIONS)
+
+            WriteLayoutSvg(svg, layout, plan.parts)
+            WriteLayoutPdf(pdf, layout, plan.parts)
+            written.extend([svg, pdf])
+            try:
+                WriteScad(scad, layout, plan.parts, pocket_offset=self.parameters.pocket_offset)
+            except ValueError as error:
+                problems[bin_id] = str(error)
+                continue
+            written.append(scad)
+
+        return ExportReport(written, len(plan.layouts), problems)
 
     def Summary(self) -> str:
         """One block for the panel: what was found, or why nothing was."""

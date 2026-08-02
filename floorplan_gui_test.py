@@ -506,15 +506,35 @@ def test_a_report_with_an_answer_draws_it_mid_search(gui, tmp_path):
 # --------------------------------------------------------------- export
 
 
-def test_exporting_writes_the_floorplan(gui, tmp_path):
+def test_exporting_writes_the_floorplan_and_the_bins(gui, tmp_path):
     _loaded(gui, tmp_path)
     _plan(gui)
     gui.export_edit.setText(str(tmp_path / "plan"))
 
     gui.export_plan()
 
-    assert (tmp_path / "plan.pdf").exists()
+    assert (tmp_path / "plan.pdf").exists(), "the drawer map"
+    assert (tmp_path / "plan_bin0.scad").exists(), "and something you can actually print"
     assert "Wrote" in gui.export_label.text()
+
+
+def test_a_solid_that_cannot_be_cut_is_an_alert_not_a_failure(gui, tmp_path):
+    """Everything else was written, and the message names the wall
+    thickness that stopped it - so the offset can be changed and the
+    export repeated.
+    """
+    _loaded(gui, tmp_path)
+    _plan(gui)
+    gui.floorplan_stage.parameters.pocket_offset = 20.0
+    gui.export_edit.setText(str(tmp_path / "plan"))
+
+    gui.export_plan()
+
+    assert (tmp_path / "plan.pdf").exists()
+    assert not (tmp_path / "plan_bin0.scad").exists()
+    text = gui.export_label.text()
+    assert "Wrote" in text and "could not be cut" in text
+    assert "Could not export" not in text, "the export as a whole did not fail"
 
 
 def test_exporting_before_planning_is_reported_not_raised(gui, tmp_path):

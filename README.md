@@ -229,6 +229,19 @@ and the status line says so. Anything the search is holding but has not
 placed is drawn beside the drawers rather than dropped, so the picture
 always accounts for every bin.
 
+**Export writes the map and every bin on it** — `NAME.pdf` for the drawer
+floorplan, then `NAME_bin0.svg`, `NAME_bin0.pdf` and `NAME_bin0.scad` for
+each bin, so a library plan turns straight into things you can print. The
+solids are cut from *the layouts the plan chose*, which matters: re-packing
+the same objects in `layout_gui.py` is a different stochastic search, so a
+bin exported that way would not match the floorplan you printed to lay it
+out with. Pinned bins are written too — a pin says the search may not
+change a bin, not that the file is already on disk.
+
+A bin whose solid cannot be cut at the current pocket offset is an alert,
+not a failure: its sheets are written, every other bin is finished, and
+the message names the wall thickness that stopped it.
+
 **Pin the bins you have already printed.** Tick them in the *Pinned Bins*
 list and they are held out of the next search entirely — same grid, same
 placements, the same bin object carried straight through into the answer,

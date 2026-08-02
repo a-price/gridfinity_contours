@@ -8,6 +8,9 @@ the three states it passes through (grouping, assigning, done) each learn
 a little more about where the bins go.
 """
 
+import json
+from dataclasses import replace
+
 import numpy as np
 import pytest
 from PyQt5.QtWidgets import QLabel, QPushButton
@@ -343,14 +346,96 @@ def test_a_pinned_bin_is_drawn_differently():
 # ----------------------------------------------------------------- export
 
 
-def test_exporting_writes_one_floorplan(tmp_path):
+def test_exporting_writes_the_floorplan_and_every_bin_on_it(tmp_path):
+    """The map says where bins go; what you make is a bin. Nothing else in
+    the project writes a solid for a bin the grouping search produced, so
+    without this a library plan cannot be turned into anything printable.
+    """
     stage = _stage()
-    stage.Run(_contours())
+    stage.Run(_contours(4))
+    bins = len(stage.Bins())
 
-    written = stage.Export(str(tmp_path / "plan"))
+    report = stage.Export(str(tmp_path / "plan"))
 
-    assert written == [str(tmp_path / "plan.pdf")]
+    assert (tmp_path / "plan.pdf").exists(), "the drawer map"
+    for bin_id in range(bins):
+        for extension in (".svg", ".pdf", ".scad"):
+            assert (tmp_path / f"plan_bin{bin_id}{extension}").exists()
+    assert report.bins == bins
+    assert report.problems == {}
+
+
+def test_an_exported_bin_is_the_one_the_plan_chose(tmp_path):
+    """Correct by construction, and the reason this belongs here rather
+    than being done by hand in layout_gui: re-packing the same objects is
+    a different stochastic search, so the bin coming off the printer
+    would not match the map printed to lay it out with.
+    """
+    stage = _stage()
+    stage.Run(_contours(4))
+    assert stage.plan is not None
+    layout = stage.plan.layouts[0]
+
+    stage.Export(str(tmp_path / "plan"))
+
+    scad = (tmp_path / "plan_bin0.scad").read_text()
+    n, m = layout.grid
+    assert f"{n}" in scad and f"{m}" in scad
+    assert scad.count("polygon") == len(layout.placements), "one pocket per object in that bin"
+
+
+def test_the_bin_files_sort_the_way_the_report_lists_them(tmp_path):
+    """A directory of a dozen bins fed to a slicer should not put bin10
+    between bin1 and bin2.
+    """
+    # Eleven objects too fat to share a one-cell bin, so there are eleven
+    # bins and the numbering goes into two digits.
+    stage = _stage(max_grid=1)
+    stage.Run({index: _rectangle(24.0, 24.0) for index in range(11)})
+    assert stage.plan is not None and len(stage.plan.layouts) == 11
+
+    stage.Export(str(tmp_path / "plan"))
+
+    scads = sorted(path.stem for path in tmp_path.glob("plan_bin*.scad"))
+    assert scads[1] == "plan_bin01", f"got {scads[:3]}"
+
+
+def test_pinned_bins_are_exported_too(tmp_path):
+    """A pin says the search may not change a bin, not that the file is
+    already on disk. An export that silently skipped bins would be the
+    more expensive mistake.
+    """
+    stage = _stage()
+    stage.Run(_contours(4))
+    stage.Pin([0])
+
+    report = stage.Export(str(tmp_path / "plan"))
+
+    assert (tmp_path / "plan_bin0.scad").exists()
+    assert report.bins == len(stage.Bins())
+
+
+def test_a_solid_that_cannot_be_cut_is_reported_not_raised(tmp_path):
+    """Wall thickness is a property of one bin. The sheets for it are
+    already written and every other bin is fine, so losing the whole
+    export over one would be the wrong trade.
+    """
+    stage = _stage()
+    stage.Run(_contours(4))
+    bins = len(stage.Bins())
+    # Far more than the layout reserved room for, so no pocket in it can
+    # be cut without eating the dividers.
+    stage.parameters.pocket_offset = 20.0
+
+    report = stage.Export(str(tmp_path / "plan"))
+
     assert (tmp_path / "plan.pdf").exists()
+    assert (tmp_path / "plan_bin0.svg").exists(), "the sheets still land"
+    assert not (tmp_path / "plan_bin0.scad").exists()
+    assert sorted(report.problems) == list(range(bins)), "named by bin, so a caller can say which"
+    assert "mm" in report.problems[0], "the message should name the measurement that failed"
+    assert "could not be cut" in str(report)
+    assert str(report).count("pocket offset") == 1, "every bin named, the explanation given once"
 
 
 def test_exporting_before_planning_is_refused(tmp_path):
@@ -358,12 +443,29 @@ def test_exporting_before_planning_is_refused(tmp_path):
         _stage().Export(str(tmp_path / "plan"))
 
 
-def test_exporting_a_cancelled_search_is_refused(tmp_path):
-    """The bins are real but no drawer search ran, so there is no
-    floorplan to write - only a grouping.
+def test_exporting_a_search_stopped_before_the_drawers_still_works(tmp_path):
+    """The bins are settled and only the drawer search is missing - and
+    that half is exact and takes microseconds, against the minutes the
+    grouping took. Refusing to draw a map for bins that exist made a
+    person redo the expensive half to recover the cheap one.
     """
     stage = _stage()
+    stage.Run(_contours(4))
+    grouped = stage.plan
+    assert grouped is not None
+    stage.plan = replace(grouped, assignment=None, cancelled=True)
+
+    report = stage.Export(str(tmp_path / "plan"))
+
+    assert (tmp_path / "plan.pdf").exists()
+    assert report.bins == len(grouped.layouts)
+
+
+def test_exporting_a_search_stopped_before_any_bins_is_refused(tmp_path):
+    """Nothing was found, so there is genuinely nothing to write."""
+    stage = _stage()
     stage.Run(_contours(), cancelled=lambda: True)
+    assert stage.plan is not None and not stage.plan.layouts
 
     with pytest.raises(ValueError, match="nothing planned"):
         stage.Export(str(tmp_path / "plan"))
@@ -401,7 +503,33 @@ def test_a_loaded_session_draws_without_searching(tmp_path):
     reopened.Load(path)
 
     assert reopened.Render() is not None
-    assert reopened.Export(str(tmp_path / "plan")) == [str(tmp_path / "plan.pdf")]
+    assert (tmp_path / "plan.pdf") not in tmp_path.iterdir()
+    assert reopened.Export(str(tmp_path / "plan")).written[0] == str(tmp_path / "plan.pdf")
+
+
+def test_a_session_saved_from_a_stopped_search_reopens_whole(tmp_path):
+    """The bug this came from: Stop after the grouping lands but before
+    the drawers are searched, Save, reopen - and the floorplan could be
+    looked at but not exported, "nothing planned to export" about five
+    perfectly good bins. The drawer search is filled in on the way back
+    in, so a reopened floorplan is a whole one however it was saved.
+    """
+    stage = _stage()
+    contours = _contours(4)
+    stage.Run(contours)
+    assert stage.plan is not None
+    stage.plan = replace(stage.plan, assignment=None, cancelled=True)
+    path = str(tmp_path / "stopped.json")
+    stage.Save(path, contours)
+    assert "assignment" not in json.loads(open(path).read()), "the file genuinely has none"
+
+    reopened = _stage(drawers=[])
+    reopened.Load(path)
+
+    assert reopened.plan is not None and reopened.plan.assignment is not None
+    assert reopened.plan.assignment.placed
+    assert "not placed" not in reopened.Summary()
+    assert reopened.Export(str(tmp_path / "plan")).bins == len(reopened.Bins())
 
 
 def test_saving_before_planning_is_refused(tmp_path):

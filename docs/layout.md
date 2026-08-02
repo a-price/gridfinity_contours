@@ -519,6 +519,45 @@ it stores neither `admissible_grids`, which `BuildPlan` derives from the
 drawers, nor the search budget, since how hard the last run looked says
 nothing about whether its answer still holds.
 
+#### Getting the bins out
+
+The drawer map says where bins go. What you *make* is a bin, and until
+`FloorplanStage.Export` wrote them, nothing in the project produced a
+solid for a bin the **grouping** search had chosen — `LayoutStage` and
+`layout_cli` both hold exactly one bin, packed directly.
+
+That left one route from a library plan to something printable: read the
+plan's report, load those objects into `layout_gui.py`, and pack them
+again. It does not work. `Pack` runs its own grid search and its own
+stochastic solve, so the same objects come back in a different
+arrangement — and the bin coming off the printer would not match the
+floorplan printed to lay it out with. The failure is silent and only
+shows up when the tools do not sit in their pockets.
+
+So the export writes them: `NAME.pdf` for the map, then `NAME_bin0.svg`,
+`NAME_bin0.pdf` and `NAME_bin0.scad` per bin, cut from the layouts the
+plan actually chose. Bin numbers are zero-padded to a fixed width so a
+directory of a dozen sorts the way the report lists them.
+
+`WriteScad` can refuse a layout whose dividers are thinner than the
+minimum at the current pocket offset. That is a property of one bin, so
+it is collected per bin and reported rather than raised — the sheets are
+already written and the other bins are finished, and losing an eleven-bin
+export over the twelfth would be the wrong trade.
+
+**A plan can arrive here with no drawer assignment.** Stop the search
+after the grouping lands but before the drawers are searched and
+`BuildPlan` returns bins and no assignment — correctly, since a grouping
+still being improved says nothing about drawers. Save from that state and
+the session records none either, so reopening it gave a floorplan that
+could be looked at but not exported: *"nothing planned to export"* about
+five perfectly good bins. The fix is to run the drawer search rather than
+refuse, which is obvious once the two halves are priced — grouping is
+stochastic and takes minutes, while `Assign` is exact and took 0.1ms on
+that same five-bin, six-drawer floorplan. The session saved the expensive
+half; the cheap half is not worth a person's time to redo. It is filled in
+at `Load`, so a reopened floorplan is a whole one however it was saved.
+
 #### Pinning a bin
 
 `start` is a *hint*. It gives the local search a good place to begin and

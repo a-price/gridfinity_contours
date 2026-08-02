@@ -302,7 +302,10 @@ class FloorplanGui(QMainWindow):
         row.addWidget(browse_button)
         layout.addLayout(row)
 
-        self.export_button = QPushButton("Export " + " + ".join(e.lstrip(".").upper() for e in EXPORT_EXTENSIONS))
+        # Named for what comes out rather than for the file types, because
+        # what comes out is the point: the drawer map, and a sheet and a
+        # solid for every bin on it.
+        self.export_button = QPushButton("Export Floorplan + Every Bin")
         self.export_button.clicked.connect(self.export_plan)
         layout.addWidget(self.export_button)
 
@@ -661,12 +664,19 @@ class FloorplanGui(QMainWindow):
             self.export_edit.setText(base if extension.lower() in EXPORT_EXTENSIONS else path)
 
     def export_plan(self) -> None:
+        """Write the map and every bin on it.
+
+        A bin whose solid could not be cut is an alert rather than a
+        failure: everything else was written, and the message names the
+        wall thickness that stopped it so the pocket offset can be
+        changed and the export repeated.
+        """
         try:
-            written = self.floorplan_stage.Export(self.export_edit.text())
+            report = self.floorplan_stage.Export(self.export_edit.text())
         except (OSError, ValueError) as error:
             self.export_label.setText(f"Could not export: {error}")
             return
-        self.export_label.setText("Wrote " + ", ".join(os.path.basename(path) for path in written))
+        self.export_label.setText(str(report))
 
 
 def main() -> None:
