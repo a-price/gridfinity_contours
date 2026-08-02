@@ -24,6 +24,7 @@ from pipeline.layout.drawer import (
     AssignmentResult,
     Drawer,
     DrawerCells,
+    FirstFit,
     FreeCells,
     LargestFreeRegion,
     ParseDrawer,
@@ -480,3 +481,96 @@ def test_a_search_that_never_starts_reports_nothing():
     that did not happen.
     """
     assert _trials({0: (5, 5)}, [Drawer(2, 2)]) == []
+
+
+# --------------------------------------------------------------- first fit
+
+
+def test_first_fit_places_bins_where_they_really_go():
+    """It is a sketch rather than a search, but the positions it produces
+    have to be legal ones - the picture it draws is of real drawers.
+    """
+    footprints = {0: (2, 1), 1: (1, 1), 2: (2, 2)}
+    drawers = [Drawer(3, 3)]
+
+    result = FirstFit(footprints, drawers)
+
+    assert result.placed
+    covered = _occupied(footprints, result, drawers)
+    assert len(covered[0]) == sum(n * m for n, m in footprints.values()), "bins overlap"
+    assert all(0 <= x < 3 and 0 <= y < 3 for x, y in covered[0])
+
+
+def test_first_fit_turns_a_bin_when_that_is_the_only_way_it_fits():
+    """Quarter turns come from the same `_Positions` the real search uses,
+    so the two cannot disagree about what a legal position is.
+    """
+    result = FirstFit({0: (3, 1)}, [Drawer(1, 3)])
+
+    assert result.placed
+    assert result.slots[0].turned
+
+
+def test_first_fit_failing_is_not_evidence_that_the_bins_do_not_fit():
+    """The distinction the whole module rests on. This one does not
+    backtrack, so its failures are about the algorithm rather than about
+    the geometry, and it must never claim INFEASIBLE.
+    """
+    result = FirstFit({0: (3, 3)}, [Drawer(2, 2)])
+
+    assert result.outcome == EXHAUSTED
+    assert result.unplaced == [0]
+    assert "not evidence" in result.detail
+
+
+def test_first_fit_keeps_the_bins_it_could_place():
+    """A partial sketch is still worth drawing, and the bins it did place
+    are the ones the picture can show in a drawer.
+    """
+    result = FirstFit({0: (2, 2), 1: (4, 4)}, [Drawer(2, 2)])
+
+    assert set(result.slots) == {0}
+    assert result.unplaced == [1]
+
+
+def test_first_fit_spreads_across_drawers():
+    result = FirstFit({0: (2, 2), 1: (2, 2)}, [Drawer(2, 2), Drawer(2, 2)])
+
+    assert result.placed
+    assert {slot.drawer for slot in result.slots.values()} == {0, 1}
+
+
+def test_first_fit_is_deterministic():
+    """It is redrawn several times a second under a running search, so a
+    picture that shuffled between frames would read as the search moving
+    things it had not moved.
+    """
+    footprints = {0: (2, 1), 1: (1, 2), 2: (1, 1)}
+    drawers = [Drawer(3, 2), Drawer(2, 2)]
+
+    assert FirstFit(footprints, drawers) == FirstFit(footprints, drawers)
+
+
+def test_first_fit_is_cheap_enough_to_redraw():
+    """The reason it exists at all: `Assign` can spend two hundred
+    thousand nodes on a hard instance, and this has to keep up with a
+    window redrawing four times a second.
+    """
+    import time
+
+    footprints = {index: (2, 1) for index in range(24)}
+    drawers = [Drawer(8, 8), Drawer(8, 8)]
+
+    start = time.monotonic()
+    FirstFit(footprints, drawers)
+
+    assert time.monotonic() - start < 0.1
+
+
+def test_first_fit_refuses_the_same_nonsense_the_search_does():
+    for footprints, drawers in (({}, [Drawer(2, 2)]), ({0: (1, 1)}, [])):
+        with pytest.raises(ValueError):
+            FirstFit(footprints, drawers)
+
+    with pytest.raises(ValueError, match="whole cells"):
+        FirstFit({0: (0, 2)}, [Drawer(2, 2)])

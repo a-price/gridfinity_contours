@@ -18,7 +18,13 @@ import pytest
 
 from pipeline.layout.container import GRID_PITCH_MM
 from pipeline.layout.drawer import Assign, AssignmentResult, Drawer, Slot
-from pipeline.layout.floorplan import FloorplanPages, DrawerPage, PlacedBinShapes, WriteFloorplanPdf
+from pipeline.layout.floorplan import (
+    DrawerPage,
+    FloorplanPages,
+    PlacedBinShapes,
+    RenderFloorplan,
+    WriteFloorplanPdf,
+)
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
@@ -182,6 +188,49 @@ def test_the_objects_are_the_only_closed_shapes():
     shapes = PlacedBinShapes(layout, Slot(0, 0, (0, 0)), parts)
 
     assert sum(1 for shape in shapes if shape.closed) == 2
+
+
+# ------------------------------------------------------ before anything fits
+
+
+def test_drawers_draw_themselves_with_nothing_assigned():
+    """What a drawer looks like the moment you tell the tools it exists.
+    Worth drawing on its own: the cell grid is what the whole system is
+    measured against, and seeing it is how a mistyped drawer is caught.
+    """
+    pages = FloorplanPages([Drawer(3, 2), Drawer(2, 2)])
+
+    assert len(pages) == 2
+    assert (pages[0].width, pages[0].height) == OuterFootprint(3, 2)
+    assert pages[0].shapes, "the outline and the cell grid are the drawing"
+
+
+def test_a_bin_with_no_slot_is_drawn_beside_the_drawers():
+    """Three quite different things produce a bin with nowhere to go - a
+    search still working, one that proved it does not fit, and a
+    provisional first fit that gave up - and in all three the bin is real.
+    Leaving it out would make the picture disagree with the bin count.
+    """
+    params = _quick()
+    parts, layout = _one_bin(params)
+    drawers = [Drawer(3, 3)]
+
+    empty = RenderFloorplan(drawers, pixels_per_mm=1.0)
+    loose = RenderFloorplan(drawers, {0: layout}, None, parts, pixels_per_mm=1.0)
+
+    assert loose.shape[1] > empty.shape[1]
+
+
+def test_a_bin_that_was_placed_is_not_also_drawn_beside_them():
+    params = _quick()
+    parts, layout = _one_bin(params)
+    drawers = [Drawer(3, 3)]
+    result = AssignmentResult("placed", {0: Slot(0, 0, (0, 0))})
+
+    empty = RenderFloorplan(drawers, pixels_per_mm=1.0)
+    placed = RenderFloorplan(drawers, {0: layout}, result, parts, pixels_per_mm=1.0)
+
+    assert placed.shape == empty.shape, "it is in the drawer, so the page has not grown"
 
 
 # ------------------------------------------------------------------ refusals

@@ -474,6 +474,16 @@ library. That is not a worse answer, it is not an answer, and the filter
 against it is the part of the progress channel most likely to be
 "simplified" back out.
 
+Those fragments are still *drawn*, though, under a phase of their own
+(`FILLING`). They are made of real bins holding real parts, and they exist
+within a pack or two of pressing Plan where the first complete grouping is
+a minute away — so a window that ignored them would have nothing to show
+for the minute it can least afford to look hung. The distinction is kept
+where it belongs: the report describes them as a fraction of the library
+rather than as an arrangement of it, and `BuildPlan` never hands one back
+as a plan, so a search stopped mid-fill returns no floorplan rather than
+half of one.
+
 Cancellation rides the same channel, because `Group` takes no `cancelled`
 predicate and the observer is the only hook into it. The best grouping
 seen is kept as the search runs, so stopping costs the time the search

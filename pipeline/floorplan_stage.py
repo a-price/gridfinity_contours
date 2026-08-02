@@ -11,6 +11,10 @@ long it waits. Two things follow:
   one for whole minutes. `plan.BuildPlan` reports a throttled best-so-far
   and this holds the most recent, so `Render` always has something honest
   to draw.
+* **And what it draws is always the drawers.** Empty from the moment one
+  is typed in, then filling as bins are found for them. The subject of
+  this stage is the drawer, so it is on screen at every stage rather than
+  only at the end - see `Render`.
 * **Stopping has to give you something.** A cancelled search returns the
   best grouping it had found, flagged, rather than nothing - so a person
   who has seen enough can take what is on screen.
@@ -27,15 +31,15 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
-from pipeline.layout.drawer import Drawer
+from pipeline.layout.drawer import AssignmentResult, Drawer, FirstFit
 from pipeline.layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.grouping import Grouping
+from pipeline.layout.placement import Layout
 from pipeline.layout.plan import BuildPlan, Progress, StoragePlan
 from pipeline.layout.session import Changes, LoadSession, SaveSession, Verify
-from pipeline.layout.render import RenderLayouts
 
 # One page per drawer, so a floorplan is a PDF and not an SVG - see
 # `pdf_writer.WriteShapesPdf` on why the page size has to be unambiguous.
@@ -124,44 +128,71 @@ class FloorplanStage(Stage):
         self.progress = progress
 
     def Render(self, pixels_per_mm: float = DEFAULT_DRAWER_PIXELS_PER_MM) -> np.ndarray | None:
-        """The best answer so far as a BGR image, or None if there is not
-        one yet.
+        """The drawers and everything known to go in them, as a BGR image -
+        or None when there are no drawers to draw.
 
-        Three pictures for three states, because the search genuinely has
-        three different kinds of answer at different times and drawing a
-        floorplan before anything has been assigned would be drawing an
-        empty drawer as though it were the result. Once the plan exists it
-        is the floorplan; while the drawer search runs it is the partial
-        floorplan; while grouping runs it is the bins themselves, which
-        exist before any drawer has been chosen for them.
+        **Always the drawers.** They appear empty the moment you say you
+        own one and fill as the search finds bins for them, rather than
+        arriving whole at the end. The drawer is what is being planned; a
+        window that only drew it once every search had finished would spend
+        the interesting minutes showing a strip of loose bins instead of
+        the picture the person is waiting for, and would show nothing at
+        all for a drawer just typed in - which is exactly when a
+        mistyped one is cheapest to notice.
+
+        What that costs is that the bins' positions are provisional until
+        the drawer search has actually run. `_Arrangement` says where they
+        come from at each stage, and `Progress.__str__` says as much in the
+        status line beside the picture.
+        """
+        if not self.drawers:
+            return None
+
+        layouts, parts = self._Bins()
+        result = self._Arrangement(layouts) if layouts else None
+        return RenderFloorplan(tuple(self.drawers), layouts, result, parts, pixels_per_mm)
+
+    def _Bins(self) -> tuple[dict[int, Layout], dict[int, Part]]:
+        """The bins worth drawing right now, and the parts inside them.
+
+        A finished or reloaded plan's bins if there are any, otherwise the
+        best arrangement the search has reached. Empty when there is
+        neither - which draws the bare drawers, and is the honest picture.
+
+        A report can outlive the parts it describes: clearing the stage
+        while a stale one is still held, say. This is a repaint path, so
+        that case drops the bins and draws the drawers alone rather than
+        raising up through Qt.
+        """
+        plan = self.plan
+        if plan is not None and plan.layouts:
+            layouts, parts = plan.layouts, plan.parts
+        elif self.progress is not None and self.progress.bins:
+            layouts, parts = dict(enumerate(self.progress.bins)), self._parts
+        else:
+            return {}, {}
+
+        placed = {part_id for layout in layouts.values() for part_id in layout.placements}
+        return (layouts, parts) if placed <= set(parts) else ({}, {})
+
+    def _Arrangement(self, layouts: dict[int, Layout]) -> AssignmentResult:
+        """Where those bins sit, from the best source available.
+
+        Three sources for the three states the search passes through, in
+        descending order of how much is actually known. A finished drawer
+        search is the answer. A running one has reached a partial
+        assignment, which is real as far as it goes. Before it starts there
+        is nothing but the bins, so `FirstFit` puts them somewhere legal to
+        be looked at - fast enough to redo on every frame, and no more than
+        a sketch, which is why the status line says the drawers have not
+        been searched.
         """
         plan = self.plan
         if plan is not None and plan.assignment is not None:
-            return RenderFloorplan(plan.drawers, plan.layouts, plan.assignment, plan.parts, pixels_per_mm)
-
-        progress = self.progress
-        if progress is None or not progress.bins:
-            return None
-
-        # A report can outlive the parts it describes - clearing the stage
-        # while a stale report is still held, say. This is a repaint path,
-        # so it declines to draw rather than raising up through Qt.
-        parts = self._ProgressParts()
-        if not set(part_id for layout in progress.bins for part_id in layout.placements) <= set(parts):
-            return None
-
-        layouts = dict(enumerate(progress.bins))
-        if progress.assignment is not None:
-            return RenderFloorplan(tuple(self.drawers), layouts, progress.assignment, parts, pixels_per_mm)
-        return RenderLayouts(list(progress.bins), parts, pixels_per_mm=pixels_per_mm)
-
-    def _ProgressParts(self) -> dict[int, Part]:
-        """The parts a mid-search drawing needs.
-
-        A running or cancelled search has no finished `StoragePlan`, so
-        these come from the set `Run` built on its way in.
-        """
-        return self.plan.parts if self.plan is not None else self._parts
+            return plan.assignment
+        if self.progress is not None and self.progress.assignment is not None:
+            return self.progress.assignment
+        return FirstFit({bin_id: layout.grid for bin_id, layout in layouts.items()}, self.drawers)
 
     def Save(self, path: str, contours: dict[int, np.ndarray]) -> None:
         """Write the current floorplan and its inputs to a session file.

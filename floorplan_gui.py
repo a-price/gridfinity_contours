@@ -502,8 +502,10 @@ class FloorplanGui(QMainWindow):
     def _DrawImage(self) -> None:
         image = self.floorplan_stage.Render()
         if image is None:
+            # The only way back is an empty drawer list: a drawer draws
+            # itself whether or not anything has been planned into it.
             self.image_label.setPixmap(QPixmap())
-            self.image_label.setText("Load contours, add a drawer, then press Plan.")
+            self.image_label.setText("Add a drawer, then load contours and press Plan.")
             return
 
         height, width, _ = image.shape

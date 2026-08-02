@@ -24,6 +24,15 @@ of thousands per second and in two different vocabularies. This narrows
 them to one throttled `Progress` carrying the best answer so far, which
 is the only thing a person watching actually wants.
 
+The one thing it carries that is *not* an answer is first fit's opening
+pass, under its own phase. Those bins hold only part of the library, but
+they are real bins and they exist within a second of pressing Plan, where
+the first complete grouping is a minute away on a real library. A window
+with nothing to draw for that minute is the problem `Progress` exists to
+solve, so the fragment is reported - labelled as a fraction of the
+library rather than as an arrangement of it, and never handed back as a
+plan.
+
 Cancellation rides the same channel, because `Group` has no `cancelled`
 parameter to plumb one through and the observer is the only hook into it.
 The best grouping seen is kept as it goes, so a cancelled run still
@@ -46,13 +55,16 @@ from pipeline.layout.drawer import (
     LargestFreeRegion,
     Trial,
 )
-from pipeline.layout.grouping import Group, Grouping, Improve, Step
+from pipeline.layout.grouping import FILLING, Group, Grouping, Improve, Step
 from pipeline.layout.packer import Pack
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
 
-# The two phases a caller can be told about, in the order they happen.
+# The three phases a caller can be told about, in the order they happen.
+# `FILLING` is grouping's own opening pass under grouping's own name, so
+# the two modules cannot come to spell it differently; the other two are
+# this module's, since nothing below reports in these terms.
 GROUPING = "grouping"
 ASSIGNING = "assigning"
 
@@ -160,29 +172,52 @@ class Progress:
     thousands of arrangements nobody chose. What a person watching wants
     to know is "what would I get if I stopped it now", which is this.
 
-    `bins` is populated in both phases; `assignment` only once the drawer
-    search starts, since until then there is nothing assigned. A caller
-    can therefore draw bins during grouping and a floorplan during
-    assignment off the same object.
+    `bins` means something different in each phase, which is what `phase`
+    is for. In FILLING it is the bins opened so far and accounts for only
+    some of the library; from GROUPING onward it is a complete arrangement
+    and therefore an answer. `assignment` arrives only once the drawer
+    search starts, since until then nothing has been assigned.
     """
 
     phase: str
     events: int
     bins: tuple[Layout, ...] = ()
     assignment: AssignmentResult | None = None
+    expected: int = 0
 
     @property
     def cells(self) -> int:
         return sum(layout.cells for layout in self.bins)
 
+    @property
+    def placed(self) -> int:
+        """Objects accounted for by `bins`. Every one of them from GROUPING
+        onward; only the ones first fit has reached before that.
+        """
+        return sum(len(layout.placements) for layout in self.bins)
+
     def __str__(self) -> str:
+        if self.phase == FILLING:
+            # Deliberately not phrased as an answer. These bins hold real
+            # parts and are worth drawing - it is the earliest picture
+            # there is - but the library is not all in them yet, and a
+            # cell count over a fragment would flatter it badly.
+            total = f"/{self.expected}" if self.expected else ""
+            return f"first fit: {self.placed}{total} objects into {len(self.bins)} bin(s) ({self.events} steps)"
+
         if self.phase == GROUPING:
             if not self.bins:
-                # First-fit has not finished its first complete grouping.
-                # There is genuinely no answer yet, and saying so is better
-                # than reporting the fragment it is holding.
+                # No arrangement at all yet, complete or partial.
                 return f"grouping: building the first arrangement ({self.events} steps)"
-            return f"grouping: best so far {len(self.bins)} bins / {self.cells} cells ({self.events} steps)"
+            # The caption for a picture that already shows these bins lying
+            # in drawers, which is a provisional first fit and not an
+            # answer - so the line has to say the drawers are still an open
+            # question, or the picture claims more than the search knows.
+            return (
+                f"grouping: best so far {len(self.bins)} bins / {self.cells} cells "
+                f"({self.events} steps); drawers not searched yet"
+            )
+
         placed = 0 if self.assignment is None else len(self.assignment.slots)
         return f"assigning: {placed}/{len(self.bins)} bins placed ({self.events} nodes)"
 
@@ -287,26 +322,62 @@ class _Watcher:
         self._expected = expected
         self._last = 0.0
         self._best_cells: int | None = None
-        self.phase = GROUPING
+        self.phase = FILLING
         self.events = 0
+        # The best complete grouping seen, which is an answer and is what a
+        # cancelled run is given. `opening` is first fit's fragment, which
+        # is not an answer and is only ever drawn - keeping the two apart
+        # is what stops a search stopped halfway through its opening pass
+        # from handing back a floorplan missing half the library.
         self.bins: tuple[Layout, ...] = ()
+        self.opening: tuple[Layout, ...] = ()
         self.assignment: AssignmentResult | None = None
 
-    def OnGrouping(self, step: Step) -> None:
-        """Keep the cheapest *complete* grouping seen.
+    def Resume(self, start: Grouping) -> None:
+        """Begin from an arrangement somebody already has.
 
-        Two filters, and both are load-bearing. Accepted steps only,
-        because the search reports everything it tries and rejects nearly
-        all of it. And complete ones only: first-fit builds its answer up
-        a part at a time, so its early steps describe a few parts in a few
-        bins and score wonderfully by cell count while holding almost
-        nothing. Taking those as "best so far" reported one bin and two
-        cells for a four-part library, which is not a worse answer - it is
-        not an answer.
+        Without this, pressing Plan on a reloaded session would blank the
+        floorplan on screen and leave it blank until the local search
+        happened to improve something - which on a settled library may be
+        never. The resumed arrangement is complete and is an answer, so it
+        is the best so far from the first frame, and `Improve` only ever
+        accepts something strictly cheaper than it.
         """
-        if step.accepted and self._Complete(step):
+        self.phase = GROUPING
+        self.bins = tuple(start.bins)
+        self._best_cells = start.cells
+
+    def OnGrouping(self, step: Step) -> None:
+        """Keep the cheapest *complete* grouping seen, and before there is
+        one, whatever first fit has opened so far.
+
+        Accepted steps only, in both cases: the search reports everything
+        it tries and rejects nearly all of it.
+
+        The complete/partial split is what the phase is for. First fit
+        builds its answer a part at a time, so its early steps hold a few
+        parts in a few bins and score wonderfully by cell count while
+        accounting for almost nothing - offering those as "best so far"
+        reported one bin and two cells for a four-part library, which is
+        not a worse answer but not an answer at all. They are still worth
+        *drawing*, since they are the first picture the search can produce
+        and they are made of real bins; so they are kept, under FILLING,
+        where the report describes them as a fraction of the library
+        rather than as an arrangement of it.
+        """
+        if not step.accepted:
+            self._Tick()
+            return
+
+        if self._Complete(step):
+            self.phase = GROUPING
             if self._best_cells is None or step.cells < self._best_cells:
                 self._best_cells, self.bins = step.cells, step.bins
+        elif self._best_cells is None:
+            # Still opening bins. Once a complete grouping has been seen
+            # there is a real answer to show, and a fragment must never
+            # replace it.
+            self.opening = step.bins
         self._Tick()
 
     def _Complete(self, step: Step) -> bool:
@@ -333,7 +404,10 @@ class _Watcher:
         if now - self._last < self._interval:
             return
         self._last = now
-        self._report(Progress(self.phase, self.events, self.bins, self.assignment))
+        # The answer when there is one, the fragment being drawn when there
+        # is not. `phase` is what tells them apart, and is FILLING for
+        # exactly as long as `bins` is empty.
+        self._report(Progress(self.phase, self.events, self.bins or self.opening, self.assignment, self._expected))
 
 
 def BuildPlan(
@@ -360,11 +434,13 @@ def BuildPlan(
     exactly as it was. That is what makes adding one tool to a settled
     library a matter of printing one bin instead of twelve; see `_Regroup`.
 
-    `report` sees a throttled `Progress` through both phases; `cancelled`
-    is polled at the same points. A cancelled run returns the best
-    grouping it had found with no assignment, flagged as `cancelled` - not
-    an exception, because the partial answer is worth showing and a person
-    who pressed Stop is not handling an error.
+    `report` sees a throttled `Progress` through all three phases;
+    `cancelled` is polled at the same points. A cancelled run returns the
+    best *complete* grouping it had found with no assignment, flagged as
+    `cancelled` - not an exception, because the partial answer is worth
+    showing and a person who pressed Stop is not handling an error. What it
+    never returns is one of first fit's fragments, however far along the
+    report on screen had got: that is a picture, not a floorplan.
     """
     if not parts:
         raise ValueError("nothing to plan")
@@ -453,7 +529,13 @@ def _Regroup(
             )
         bins.append(opened)
 
-    return Improve(parts, Grouping(bins), params, observer=watcher.OnGrouping)
+    # Seeded with the grown arrangement rather than the saved one, so the
+    # first frame accounts for every part - including the tool just added,
+    # sitting in a bin of its own until the search finds it somewhere
+    # better. The saved floorplan alone would under-count the library.
+    resumed = Grouping(bins)
+    watcher.Resume(resumed)
+    return Improve(parts, resumed, params, observer=watcher.OnGrouping)
 
 
 def _RestrictedToDrawers(params: LayoutParameters, drawers: Sequence[Drawer]) -> LayoutParameters:

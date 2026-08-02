@@ -16,6 +16,7 @@ from pipeline.layout.loading import BuildParts
 from pipeline.layout.plan import (
     ASSIGNING,
     DRAWER_FORMAT_VERSION,
+    FILLING,
     GROUPING,
     BuildPlan,
     Progress,
@@ -246,6 +247,40 @@ def test_resuming_never_loses_a_part():
     assert resumed.grouping.PartIds() == set(parts)
 
 
+def test_resuming_reports_the_floorplan_it_started_from():
+    """Pressing Plan on a reloaded session must not blank the picture. The
+    arrangement being resumed is already an answer, so it is the best so
+    far from the first report - never a FILLING fragment, since first fit
+    does not run at all here.
+    """
+    parts, params = _parts(4)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0, start=first.grouping)
+
+    assert seen
+    assert seen[0].phase == GROUPING
+    assert seen[0].placed == len(parts), "every object accounted for from the first frame"
+    assert not any(progress.phase == FILLING for progress in seen)
+
+
+def test_a_resumed_report_counts_a_newly_added_tool():
+    """Seeded with the grown arrangement rather than the saved one, so the
+    new tool shows in a bin of its own until the search finds it somewhere
+    better. The saved floorplan alone would under-count the library.
+    """
+    parts, params = _parts(3)
+    first = BuildPlan(parts, [Drawer(6, 6)], params)
+    grown = dict(parts)
+    grown[99] = BuildParts({99: _rectangle(50.0, 25.0)}, params)[99]
+    seen: list[Progress] = []
+
+    BuildPlan(grown, [Drawer(6, 6)], params, report=seen.append, interval=0.0, start=first.grouping)
+
+    assert seen and seen[0].placed == len(grown)
+
+
 def test_resuming_with_a_part_no_drawer_can_hold_says_which():
     parts, params = _parts(2, _quick(max_grid=6))
     first = BuildPlan(parts, [Drawer(6, 6)], params)
@@ -261,32 +296,62 @@ def test_resuming_with_a_part_no_drawer_can_hold_says_which():
 # ------------------------------------------------------------------ progress
 
 
-def test_progress_arrives_from_both_phases():
+def test_progress_arrives_from_every_phase():
     parts, params = _parts(3)
     seen: list[Progress] = []
 
     BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
 
     phases = {progress.phase for progress in seen}
-    assert phases == {GROUPING, ASSIGNING}
+    assert phases == {FILLING, GROUPING, ASSIGNING}
 
 
-def test_the_best_so_far_always_holds_every_part():
-    """First-fit builds its answer up a part at a time, so its early steps
-    describe a few parts in a few bins and score wonderfully on cells
-    while holding almost nothing. Reporting one of those as "best so far"
-    said 1 bin / 2 cells for a four-part library, which is not a worse
-    answer - it is not an answer.
+def test_the_first_bins_are_reported_before_any_complete_grouping():
+    """The earliest picture there is. On a real library the first complete
+    grouping is a minute away, and a window with nothing to draw for that
+    minute is indistinguishable from a hung one.
     """
     parts, params = _parts(4)
     seen: list[Progress] = []
 
     BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
 
-    reported = [progress for progress in seen if progress.bins]
+    opening = [progress for progress in seen if progress.phase == FILLING and progress.bins]
+    assert opening, "first fit's bins should be drawable as it opens them"
+    assert seen.index(opening[0]) < next(i for i, p in enumerate(seen) if p.phase == GROUPING)
+
+
+def test_the_opening_pass_is_reported_as_a_fraction_not_an_arrangement():
+    """These bins hold real parts, but not all of them, and a cell count
+    over a fragment flatters it badly - 1 bin / 2 cells for a four-part
+    library is not a worse answer, it is not an answer.
+    """
+    parts, params = _parts(4)
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
+
+    partial = [progress for progress in seen if progress.phase == FILLING and progress.bins]
+    assert partial
+    assert any(progress.placed < len(parts) for progress in partial), "it should be caught mid-fill"
+    for progress in partial:
+        assert "best so far" not in str(progress)
+        assert f"/{len(parts)} objects" in str(progress)
+
+
+def test_the_best_so_far_always_holds_every_part():
+    """Whatever is labelled GROUPING is an answer, and an answer accounts
+    for the whole library. That is the line between the two phases.
+    """
+    parts, params = _parts(4)
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
+
+    reported = [progress for progress in seen if progress.phase == GROUPING and progress.bins]
     assert reported, "the search should reach a complete grouping"
     for progress in reported:
-        assert sum(len(layout.placements) for layout in progress.bins) == len(parts)
+        assert progress.placed == len(parts)
 
 
 def test_the_best_so_far_never_gets_worse():
@@ -357,7 +422,7 @@ def test_cancelling_keeps_the_best_answer_so_far():
         [Drawer(6, 6)],
         params,
         report=seen.append,
-        cancelled=lambda: any(progress.bins for progress in seen),
+        cancelled=lambda: any(progress.phase == GROUPING and progress.bins for progress in seen),
         interval=0.0,
     )
 
@@ -366,6 +431,27 @@ def test_cancelling_keeps_the_best_answer_so_far():
     assert sum(len(layout.placements) for layout in plan.layouts.values()) == len(parts)
     assert plan.assignment is None, "a grouping still being improved says nothing about drawers"
     assert "cancelled" in plan.Report()
+
+
+def test_stopping_during_the_opening_pass_hands_back_no_floorplan():
+    """The fragment on screen is a picture, not an answer. Handing it back
+    would produce a session holding half a library that reads as a whole
+    one - and the bins in it would be printed.
+    """
+    parts, params = _parts(4)
+    seen: list[Progress] = []
+
+    plan = BuildPlan(
+        parts,
+        [Drawer(6, 6)],
+        params,
+        report=seen.append,
+        cancelled=lambda: any(progress.phase == FILLING and progress.bins for progress in seen),
+        interval=0.0,
+    )
+
+    assert plan.cancelled
+    assert plan.layouts == {}, "a fragment must never survive as a plan"
 
 
 def test_cancelling_immediately_still_returns_a_plan():

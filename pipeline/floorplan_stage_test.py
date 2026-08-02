@@ -2,9 +2,10 @@
 
 The property that matters here is that there is always something honest to
 draw. This search runs for minutes, so a stage that could only render a
-finished plan would leave the window blank for the whole of it - and the
-three states it can be in (grouping, assigning, done) each have a
-different picture.
+finished plan would leave the window blank for the whole of it. What it
+draws is the drawers - empty before anything is planned, then filling as
+the three states it passes through (grouping, assigning, done) each learn
+a little more about where the bins go.
 """
 
 import numpy as np
@@ -12,7 +13,7 @@ import pytest
 from PyQt5.QtWidgets import QLabel, QPushButton
 
 from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot
-from pipeline.layout.plan import ASSIGNING, GROUPING, Progress
+from pipeline.layout.plan import ASSIGNING, FILLING, GROUPING, Progress
 from pipeline.floorplan_stage import EXPORT_EXTENSIONS, FloorplanStage
 from conftest import QuickParameters as _quick, Rectangle as _rectangle
 
@@ -100,32 +101,67 @@ def test_a_library_no_drawer_could_store_is_reported_not_raised():
 # --------------------------------------------------------------- rendering
 
 
-def test_nothing_renders_before_anything_has_been_found():
-    assert _stage().Render() is None
+def test_a_drawer_draws_itself_before_anything_is_planned():
+    """The drawer is the subject, so it is on screen from the moment you
+    say you own one - which is also when a mistyped size is cheapest to
+    notice.
+    """
+    image = _stage().Render()
 
-
-def test_a_finished_plan_renders_as_a_floorplan():
-    stage = _stage()
-
-    stage.Run(_contours())
-
-    image = stage.Render()
     assert image is not None and image.shape[2] == 3
 
 
-def test_a_grouping_in_progress_renders_as_bins():
-    """There is no assignment yet, so drawing a floorplan would be drawing
-    an empty drawer as though it were the answer.
+def test_nothing_renders_without_a_drawer():
+    """The one remaining blank state, and the only honest one: there is no
+    drawer to draw.
+    """
+    assert _stage(drawers=[]).Render() is None
+
+
+def test_every_drawer_is_drawn_including_the_empty_ones():
+    """All of them, not only the ones something went into. A drawer left
+    out of the picture is a drawer nobody remembers they have.
+    """
+    one = _stage(drawers=[Drawer(6, 6)]).Render()
+    two = _stage(drawers=[Drawer(6, 6), Drawer(2, 2)]).Render()
+
+    assert one is not None and two is not None
+    assert two.shape[1] > one.shape[1]
+
+
+def test_planning_fills_the_drawers_rather_than_replacing_them():
+    """The picture is the drawers throughout. Finding an answer puts
+    objects in them; it does not swap the drawing for a different one.
+    """
+    stage = _stage()
+    empty = stage.Render()
+
+    stage.Run(_contours())
+
+    planned = stage.Render()
+    assert empty is not None and planned is not None
+    assert planned.shape == empty.shape, "the same drawers at the same scale"
+    assert not np.array_equal(planned, empty), "with something in them now"
+
+
+def test_a_grouping_in_progress_is_drawn_in_the_drawers():
+    """The drawer search has not run, so the positions are a provisional
+    first fit - but bins lying in drawers is the picture somebody watching
+    a five minute search is waiting for, and a strip of loose bins is not.
     """
     stage = _stage()
     stage.Run(_contours())
     bins = tuple(stage.plan.layouts.values()) if stage.plan else ()
+    empty = _stage().Render()
     plan, stage.plan = stage.plan, None
-    assert plan is not None
+    assert plan is not None and empty is not None
 
     stage.SetProgress(Progress(GROUPING, 5, bins))
 
-    assert stage.Render() is not None
+    image = stage.Render()
+    assert image is not None
+    assert image.shape == empty.shape, "drawn into the drawers, not as a strip beside them"
+    assert not np.array_equal(image, empty)
 
 
 def test_an_assignment_in_progress_renders_as_a_partial_floorplan():
@@ -142,12 +178,51 @@ def test_an_assignment_in_progress_renders_as_a_partial_floorplan():
     assert stage.Render() is not None
 
 
-def test_a_report_with_no_answer_yet_draws_nothing():
+def test_a_bin_with_no_slot_is_drawn_beside_the_drawers():
+    """Nothing the search is holding may vanish from the picture. A bin
+    with nowhere to go is exactly the one a person is looking for.
+    """
+    stage = _stage()
+    stage.Run(_contours())
+    bins = tuple(stage.plan.layouts.values()) if stage.plan else ()
+    stage.plan = None
+    stage.drawers = [Drawer(1, 1)]  # nothing here can hold those bins
+    bare = _stage(drawers=[Drawer(1, 1)]).Render()
+
+    stage.SetProgress(Progress(GROUPING, 5, bins))
+
+    image = stage.Render()
+    assert image is not None and bare is not None
+    assert image.shape[1] > bare.shape[1]
+
+
+def test_first_fits_opening_bins_are_drawn_as_they_are_opened():
+    """The earliest picture there is. These bins hold only part of the
+    library, but they are real bins and they exist seconds after Plan is
+    pressed - where the first complete grouping is minutes away.
+    """
+    stage = _stage()
+    stage.Run(_contours())
+    one_bin = tuple(stage.plan.layouts.values())[:1] if stage.plan else ()
+    empty = _stage().Render()
+    stage.plan = None
+    assert one_bin and empty is not None
+
+    stage.SetProgress(Progress(FILLING, 2, one_bin, expected=3))
+
+    image = stage.Render()
+    assert image is not None
+    assert image.shape == empty.shape, "drawn in the drawer, like everything else"
+    assert not np.array_equal(image, empty), "and the bin should be visible in it"
+    assert "/3 objects into 1 bin(s)" in stage.Summary(), "a fraction of the library, not an arrangement of it"
+
+
+def test_a_report_with_no_answer_yet_still_draws_the_drawers():
     stage = _stage()
 
     stage.SetProgress(Progress(GROUPING, 3))
 
-    assert stage.Render() is None
+    assert stage.Render() is not None
 
 
 # ---------------------------------------------------------------- summary

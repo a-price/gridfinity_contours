@@ -220,6 +220,15 @@ runs on a worker thread, redraws the best arrangement it has found four
 times a second, and can be stopped — stopping keeps the best grouping it
 had, so once the answer stops improving you can take it.
 
+**What it draws is always the drawers.** They appear empty as soon as you
+add one, which is the cheapest moment to notice you typed the size wrong,
+and they fill as the search works: the first bin lands seconds after Plan,
+the rest join it, and the arrangement settles. The bins' positions in the
+drawer are a provisional first fit until the drawer search itself runs,
+and the status line says so. Anything the search is holding but has not
+placed is drawn beside the drawers rather than dropped, so the picture
+always accounts for every bin.
+
 **Save the session, and resume it when the next tool arrives.** `Save...`
 writes the floorplan, its contours, its drawers and the settings it was
 solved under; `Load...` (or `--session FILE`) brings all of that back and

@@ -41,6 +41,13 @@ Occupancy is one integer per drawer: a row-major bitmask, one bit per
 cell, so "does this bin fit here" is a shift and an AND. Python's integers
 are arbitrary precision, so this holds at any drawer size - a 500 x 750mm
 drawer is 11 x 17 cells, past a machine word and still a single value.
+
+`FirstFit` is the one thing here that is not exact, and it is named so
+that nothing mistakes it for `Assign`. It is a drawing aid: the grouping
+search takes minutes, and something has to put the bins somewhere
+plausible so a person can watch drawers fill rather than watch a strip of
+loose bins. It reuses this module's stability rule so the provisional
+picture and the real one cannot disagree about what a legal position is.
 """
 
 from dataclasses import dataclass, field
@@ -492,6 +499,70 @@ def Assign(
         placed,
         unplaced,
         f"no arrangement fits every bin; bin {sizes} has to go somewhere else",
+    )
+
+
+def FirstFit(footprints: dict[int, tuple[int, int]], drawers: Sequence[Drawer]) -> AssignmentResult:
+    """Drop each bin into the first spot that will take it, largest first.
+
+    **Not a search, and its failures prove nothing.** `Assign` backtracks,
+    which is what lets it report INFEASIBLE as a fact; this takes the first
+    position it is offered and never reconsiders, so a bin it cannot place
+    may still have somewhere perfectly good to go. It reports EXHAUSTED for
+    exactly that reason - the outcome that means the question is still
+    open.
+
+    It exists because the grouping search runs for minutes, and the picture
+    on screen for those minutes should be of drawers with objects in them
+    rather than of bins floating unattached to anything. Placing a dozen
+    bins costs microseconds, so this can be redrawn several times a second
+    underneath a running search - which `Assign`, at up to two hundred
+    thousand nodes, cannot.
+
+    Positions come from the same `_Positions` the exhaustive search uses,
+    so stability, quarter turns and overlap obey identical rules in the
+    provisional picture and the final one. A bin therefore moves between
+    them only because the search found somewhere better, never because a
+    different function drew it.
+    """
+    if not footprints:
+        raise ValueError("nothing to assign")
+    if not drawers:
+        raise ValueError("no drawers to assign into")
+    for bin_id, (n, m) in sorted(footprints.items()):
+        if n < 1 or m < 1:
+            raise ValueError(f"bin {bin_id} has a {n}x{m} footprint; grid sizes are whole cells")
+
+    # Largest first, as in `Assign`: the big bins are the constrained ones,
+    # and a greedy pass that left them to last would strand them far more
+    # often than it needs to.
+    ordered = sorted(((bin_id, n, m) for bin_id, (n, m) in footprints.items()), key=lambda f: (-f[1] * f[2], f[0]))
+    # A budget of zero is honest rather than a placeholder: nothing here
+    # recurses, so there are no search nodes to spend.
+    context = _Context(ordered, drawers, budget=0)
+
+    state = [0] * len(drawers)
+    placed: dict[int, Slot] = {}
+    for index, (bin_id, n, m) in enumerate(ordered):
+        spot = next(_Positions(context, index, tuple(state)), None)
+        if spot is None:
+            continue
+
+        drawer_index, x, y, turned = spot
+        slot = Slot(bin_id, drawer_index, (x, y), turned)
+        width, height = slot.Footprint((n, m))
+        state[drawer_index] |= _Mask(drawers[drawer_index], x, y, width, height)
+        placed[bin_id] = slot
+
+    if len(placed) == len(footprints):
+        return AssignmentResult(PLACED, placed)
+
+    unplaced = sorted(set(footprints) - set(placed))
+    return AssignmentResult(
+        EXHAUSTED,
+        placed,
+        unplaced,
+        "first fit found nowhere for these; it does not backtrack, so this is not evidence that they do not fit",
     )
 
 
