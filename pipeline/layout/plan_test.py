@@ -1,0 +1,334 @@
+"""Tests for the whole-stack plan: parts to bins to drawers.
+
+Two things carry the value here. The feedback edge - grouping must never
+be allowed to propose a bin no drawer could hold - and progress, which is
+not decoration at this level: the search runs for minutes, so "what would
+I get if I stopped now" has to be a real answer at every moment rather
+than something only the end produces.
+"""
+
+import json
+
+import pytest
+
+from pipeline.layout.drawer import Drawer
+from pipeline.layout.loading import BuildParts
+from pipeline.layout.plan import (
+    ASSIGNING,
+    DRAWER_FORMAT_VERSION,
+    GROUPING,
+    BuildPlan,
+    Progress,
+    ReadDrawers,
+    SaveDrawers,
+)
+from conftest import QuickParameters as _quick, Rectangle as _rectangle
+
+
+def _parts(count: int = 4, params=None):
+    params = params or _quick(max_grid=3)
+    return BuildParts({index: _rectangle(60.0 - 8.0 * index, 30.0) for index in range(count)}, params), params
+
+
+# ------------------------------------------------------------ drawer files
+
+
+def test_a_drawer_list_round_trips(tmp_path):
+    path = str(tmp_path / "drawers.json")
+    drawers = [Drawer(11, 9), Drawer(4, 3)]
+
+    SaveDrawers(path, drawers)
+
+    assert ReadDrawers(path) == drawers
+
+
+def test_a_drawer_file_records_cells_not_millimetres(tmp_path):
+    """The mm-to-cells conversion is one-way and lossy, so millimetres in
+    the file would record a number the system never uses again - and two
+    drawers that behave identically would be stored differently.
+    """
+    path = str(tmp_path / "drawers.json")
+    SaveDrawers(path, [Drawer(11, 9)])
+
+    payload = json.loads((tmp_path / "drawers.json").read_text())
+
+    assert payload["units"] == "cells"
+    assert payload["version"] == DRAWER_FORMAT_VERSION
+    assert payload["drawers"] == [{"width": 11, "height": 9}]
+
+
+def test_saving_no_drawers_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="no drawers"):
+        SaveDrawers(str(tmp_path / "drawers.json"), [])
+
+
+def test_a_file_from_a_future_format_is_refused(tmp_path):
+    path = tmp_path / "drawers.json"
+    path.write_text(json.dumps({"version": 99, "units": "cells", "drawers": [{"width": 2, "height": 2}]}))
+
+    with pytest.raises(ValueError, match="format version"):
+        ReadDrawers(str(path))
+
+
+def test_a_file_in_the_wrong_units_is_refused(tmp_path):
+    """The whole risk with a drawer file is reading one kind of number as
+    another: 500x400 is a fine drawer in mm and an absurd one in cells.
+    """
+    path = tmp_path / "drawers.json"
+    path.write_text(json.dumps({"version": DRAWER_FORMAT_VERSION, "units": "mm", "drawers": [{"width": 500}]}))
+
+    with pytest.raises(ValueError, match="expected 'cells'"):
+        ReadDrawers(str(path))
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"width": 2.5, "height": 2},
+        {"width": True, "height": 2},
+        {"width": 2},
+        {"width": 0, "height": 2},
+        [2, 2],
+    ],
+)
+def test_a_drawer_that_is_not_whole_cells_is_refused(tmp_path, entry):
+    """Everything above this shifts bitmasks by these integers, so a bad
+    one has to be caught here rather than surfacing as an empty search.
+    """
+    path = tmp_path / "drawers.json"
+    path.write_text(json.dumps({"version": DRAWER_FORMAT_VERSION, "units": "cells", "drawers": [entry]}))
+
+    with pytest.raises(ValueError, match="drawer 0"):
+        ReadDrawers(str(path))
+
+
+def test_an_empty_drawer_list_is_refused(tmp_path):
+    path = tmp_path / "drawers.json"
+    path.write_text(json.dumps({"version": DRAWER_FORMAT_VERSION, "units": "cells", "drawers": []}))
+
+    with pytest.raises(ValueError, match="no drawers"):
+        ReadDrawers(str(path))
+
+
+# ------------------------------------------------------------ the feedback edge
+
+
+def test_grouping_is_restricted_to_footprints_a_drawer_can_hold():
+    """The edge the architecture describes: a bin longer than the drawer
+    is wasted work at every level below, so it is ruled out before the
+    stochastic search ever sees it.
+    """
+    parts, params = _parts(2, _quick(max_grid=6))
+    drawers = [Drawer(2, 2)]
+
+    plan = BuildPlan(parts, drawers, params)
+
+    for layout in plan.layouts.values():
+        assert drawers[0].Holds(layout.grid), f"{layout.grid} cannot go in a 2x2 drawer"
+
+
+def test_an_explicit_admissible_set_is_not_widened():
+    """A caller who has already narrowed the footprints has made a
+    stronger statement than this one can; quietly widening it back out
+    would let a bin they had ruled out reappear.
+
+    Pinned to 2x2 rather than 1x1 so the test can tell obedience from
+    coincidence: these parts would otherwise pack into a single cell, so
+    an ignored restriction would still produce a plausible answer.
+    """
+    params = _quick(max_grid=3, admissible_grids=frozenset({(2, 2)}))
+    parts = BuildParts({0: _rectangle(20.0, 20.0)}, params)
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params)
+
+    assert [layout.grid for layout in plan.layouts.values()] == [(2, 2)]
+
+
+# ------------------------------------------------------------------- planning
+
+
+def test_a_plan_places_every_bin_when_there_is_room():
+    parts, params = _parts(4)
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params)
+
+    assert plan.placed
+    assert plan.assignment is not None
+    assert set(plan.assignment.slots) == set(plan.layouts)
+    assert not plan.cancelled
+
+
+def test_a_plan_reports_where_everything_went():
+    parts, params = _parts(3)
+
+    report = BuildPlan(parts, [Drawer(6, 6)], params).Report()
+
+    assert "bins" in report
+    assert "cells free" in report
+    assert "in one piece" in report, "free space is useless unless it is connected"
+
+
+def test_planning_with_no_parts_or_no_drawers_is_refused():
+    parts, params = _parts(2)
+
+    with pytest.raises(ValueError, match="nothing to plan"):
+        BuildPlan({}, [Drawer(4, 4)], params)
+    with pytest.raises(ValueError, match="no drawers"):
+        BuildPlan(parts, [], params)
+
+
+def test_bins_that_do_not_all_fit_are_reported_not_raised():
+    """Bins that individually could go in the drawer but together cannot
+    is an answer, not an error - and the one answer that justifies buying
+    another drawer. Only this level can state it as a fact.
+    """
+    parts, params = _parts(4)
+
+    plan = BuildPlan(parts, [Drawer(3, 1)], params)
+
+    assert not plan.placed
+    assert plan.assignment is not None
+    assert plan.assignment.detail
+
+
+def test_a_drawer_too_small_for_any_bin_refuses_before_searching():
+    """Different from the above, and worth keeping apart: here no bin the
+    parts could ever occupy is storable at all, so the feedback edge
+    leaves grouping with nothing to choose from. That is a broken request
+    rather than a negative answer, and it says which part caused it.
+    """
+    parts, params = _parts(4)
+
+    with pytest.raises(ValueError, match="does not fit"):
+        BuildPlan(parts, [Drawer(1, 1)], params)
+
+
+# ------------------------------------------------------------------ progress
+
+
+def test_progress_arrives_from_both_phases():
+    parts, params = _parts(3)
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
+
+    phases = {progress.phase for progress in seen}
+    assert phases == {GROUPING, ASSIGNING}
+
+
+def test_the_best_so_far_always_holds_every_part():
+    """First-fit builds its answer up a part at a time, so its early steps
+    describe a few parts in a few bins and score wonderfully on cells
+    while holding almost nothing. Reporting one of those as "best so far"
+    said 1 bin / 2 cells for a four-part library, which is not a worse
+    answer - it is not an answer.
+    """
+    parts, params = _parts(4)
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
+
+    reported = [progress for progress in seen if progress.bins]
+    assert reported, "the search should reach a complete grouping"
+    for progress in reported:
+        assert sum(len(layout.placements) for layout in progress.bins) == len(parts)
+
+
+def test_the_best_so_far_never_gets_worse():
+    parts, params = _parts(4)
+    seen: list[Progress] = []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0)
+
+    cells = [progress.cells for progress in seen if progress.phase == GROUPING and progress.bins]
+    assert cells == sorted(cells, reverse=True)
+
+
+def test_progress_is_throttled():
+    """The searches report thousands of times a second and no front end can
+    draw at that rate, so the throttle is at the source rather than left
+    for every caller to reinvent.
+    """
+    parts, params = _parts(4)
+    every, throttled = [], []
+
+    BuildPlan(parts, [Drawer(6, 6)], params, report=every.append, interval=0.0)
+    BuildPlan(parts, [Drawer(6, 6)], params, report=throttled.append, interval=60.0)
+
+    assert len(throttled) < len(every)
+
+
+def test_a_progress_line_distinguishes_having_no_answer_yet():
+    """Before first-fit completes there is genuinely nothing to report,
+    and saying so beats reporting the fragment it is holding.
+    """
+    parts, params = _parts(2)
+    plan = BuildPlan(parts, [Drawer(6, 6)], params)
+
+    empty = str(Progress(GROUPING, 12))
+    found = str(Progress(GROUPING, 13, tuple(plan.layouts.values())))
+
+    assert "building the first" in empty
+    assert "best so far" in found
+    assert f"{plan.cells} cells" in found
+
+
+def test_a_progress_line_counts_placed_bins_while_assigning():
+    parts, params = _parts(2)
+    plan = BuildPlan(parts, [Drawer(6, 6)], params)
+    assert plan.assignment is not None
+
+    line = str(Progress(ASSIGNING, 9, tuple(plan.layouts.values()), plan.assignment))
+
+    assert f"{len(plan.assignment.slots)}/{len(plan.layouts)} bins placed" in line
+
+
+# --------------------------------------------------------------- cancelling
+
+
+def test_cancelling_keeps_the_best_answer_so_far():
+    """Someone who has watched for two minutes and seen the answer stop
+    improving should be able to keep it. Stopping costs the time the
+    search had left, not the answer it had found.
+    """
+    parts, params = _parts(4)
+    seen: list[Progress] = []
+
+    # Stop on the first event after a complete grouping has been reported,
+    # rather than after a fixed count - the search is stochastic and a
+    # count that lands past the end of it would test nothing.
+    plan = BuildPlan(
+        parts,
+        [Drawer(6, 6)],
+        params,
+        report=seen.append,
+        cancelled=lambda: any(progress.bins for progress in seen),
+        interval=0.0,
+    )
+
+    assert plan.cancelled
+    assert plan.layouts, "the best grouping found should survive the stop"
+    assert sum(len(layout.placements) for layout in plan.layouts.values()) == len(parts)
+    assert plan.assignment is None, "a grouping still being improved says nothing about drawers"
+    assert "cancelled" in plan.Report()
+
+
+def test_cancelling_immediately_still_returns_a_plan():
+    """No answer yet is a state to report, not an exception - the person
+    pressing Stop is not handling an error.
+    """
+    parts, params = _parts(3)
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, cancelled=lambda: True)
+
+    assert plan.cancelled
+    assert plan.layouts == {}
+    assert not plan.placed
+
+
+def test_an_uncancelled_search_is_not_flagged():
+    parts, params = _parts(3)
+
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, cancelled=lambda: False)
+
+    assert not plan.cancelled

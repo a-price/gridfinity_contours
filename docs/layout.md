@@ -422,13 +422,16 @@ pipeline/layout/preview.py     drawing a solved layout at true scale
 pipeline/layout/solid.py       the printable bin, as OpenSCAD
 pipeline/layout/render.py      the same drawing, rasterized for a screen
 pipeline/layout/field.py       a part's distance field, false-colored
+pipeline/layout/plan.py        the whole stack: parts to bins to drawers
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
 pipeline/layout_stage.py       Stage subclass, group box, Qt
 pipeline/field_stage.py        the same, for the field viewer
+pipeline/floorplan_stage.py    the same, for the whole-library floorplan
 layout_cli.py                  headless entry point
 layout_gui.py                  interactive entry point
 field_gui.py                   the field viewer's window
+floorplan_gui.py               the whole-library window
 ```
 
 One test module per source module, strictly — a test lives beside the
@@ -442,8 +445,37 @@ Dependencies run one way: `container` and `part` depend on nothing local,
 `placement` on `part`, `parameters` on `container` and `part`, `energy` and
 `descent` on those, `loading`, `spacing`, `solver`, `packer`, `preview`,
 `render`, `field` and `solid` above that, `grouping` on top of `packer`,
-`drawer` on top of that, `floorplan` on top of `drawer` and `preview`,
-and `verify` deliberately to one side.
+`drawer` on top of that, `floorplan` on top of `drawer`, `preview` and
+`render`, `plan` on top of everything, and `verify` deliberately to one
+side.
+
+`plan` is the top, and it exists because the join between grouping and
+the drawer level was the one seam
+[architecture.md](architecture.md) called built but *unplumbed*: `Group`
+returns a list of layouts, `Assign` places their footprints, and until
+M10 nothing but `layout_demo` ran both. Two things live there and nowhere
+else. The **feedback edge** — grouping is restricted to footprints some
+drawer can actually hold, before it starts, because proposing a bin no
+drawer could store wastes the entire stochastic search underneath it. And
+**progress**, which at this level is a feature rather than a debug hook:
+the search runs for minutes, so "what would I get if I stopped now" has
+to be answerable at every moment. Both underlying searches already report
+— `grouping.Step` and `drawer.Trial`, at thousands of events a second in
+two different vocabularies — and `plan` narrows them to one throttled
+`Progress` carrying the best complete answer so far.
+
+That word *complete* is load-bearing. First-fit builds its grouping up one
+part at a time, so its early steps describe a few parts in a few bins and
+score beautifully on cell count while holding almost nothing; reporting
+one of those as "best so far" claimed 1 bin and 2 cells for a four-part
+library. That is not a worse answer, it is not an answer, and the filter
+against it is the part of the progress channel most likely to be
+"simplified" back out.
+
+Cancellation rides the same channel, because `Group` takes no `cancelled`
+predicate and the observer is the only hook into it. The best grouping
+seen is kept as the search runs, so stopping costs the time the search
+had left rather than the answer it had found.
 
 `field` is the odd one out in that it consumes nothing and is consumed by
 nothing — it exists to be *looked at*. Both phases of the search read a

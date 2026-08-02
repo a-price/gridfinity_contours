@@ -103,6 +103,28 @@ def DrawerCells(width_mm: float, height_mm: float) -> Drawer:
     return Drawer(width, height)
 
 
+def ParseDrawer(text: str) -> Drawer:
+    """A `WIDTHxHEIGHT` drawer interior in millimeters, as whole cells.
+
+    Millimeters rather than cells, because that is what a tape measure
+    reads and the conversion is exactly where the Gridfinity footprint has
+    to be got right - see `DrawerCells`.
+
+    Here rather than in a front end because both of them need it and they
+    must not disagree: a drawer typed into a window and the same drawer
+    passed to the CLI have to come out the same number of cells. Raises
+    ValueError, which each front end presents in its own way.
+    """
+    parts = text.lower().replace(" ", "").split("x")
+    if len(parts) != 2:
+        raise ValueError(f"a drawer is WIDTHxHEIGHT in mm, e.g. 500x400 - got '{text}'")
+    try:
+        width, height = (float(value) for value in parts)
+    except ValueError:
+        raise ValueError(f"a drawer's sides must be numbers in mm - got '{text}'") from None
+    return DrawerCells(width, height)
+
+
 @dataclass(frozen=True)
 class Slot:
     """Where one bin sits: which drawer, which cell is its minimum corner,

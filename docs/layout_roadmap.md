@@ -399,7 +399,11 @@ See [Grouping](layout.md#grouping).
 - [x] Cache keyed by (frozenset of part ids, grid size); prune candidate
   moves with the area bound before ever calling the solver.
 - [x] Local search: move/swap parts between bins, keep improvements.
-- [ ] Wire into a front end — deferred to M10 on purpose, see below.
+- [x] Wire into a front end — deferred on purpose until the drawer level
+  existed, so it could be plumbed once against the final shape rather
+  than twice. Landed as
+  [plan.py](../pipeline/layout/plan.py) and
+  [floorplan_gui.py](../floorplan_gui.py).
 
 **Done when:** the three `test_data/` spoons group from 22 cells
 (one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
@@ -509,7 +513,11 @@ the rest of this document uses.
   walking the layouts itself, so the bin on the floorplan and the bin
   whose own sheet you print cannot drift apart — the same discipline
   `render.py` follows for the screen.
-- [ ] Wire into a front end — M10, together with grouping's output.
+- [x] Wire into a front end, together with grouping's output — one window
+  for the whole stack rather than one per level, since a bin's footprint
+  has to exist before it can be placed and nothing between the two is a
+  useful thing to stop at. [floorplan_gui.py](../floorplan_gui.py), on
+  [plan.py](../pipeline/layout/plan.py).
 
 **Done when:** a set of bins with a known-tight drawer packing is placed
 exactly, and a set that passes the area bound but cannot tile is reported

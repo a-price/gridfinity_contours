@@ -47,6 +47,7 @@ from pipeline.layout.drawer import (
     DrawerCells,
     Trial,
 )
+from pipeline.layout.drawer import ParseDrawer as _ParseDrawer
 from pipeline.layout.floorplan import FloorplanPages
 from pipeline.layout.grouping import FirstFit, Group, Improve, OnePerBin, Step
 from pipeline.layout.loading import BuildParts, ReadContours
@@ -255,22 +256,16 @@ def ParametersFrom(args: argparse.Namespace) -> LayoutParameters:
 def ParseDrawer(text: str) -> Drawer:
     """A `WIDTHxHEIGHT` drawer interior in millimeters, as whole cells.
 
-    Millimeters rather than cells because that is what a tape measure
-    reads, and the conversion is the one place the half-millimeter gap in
-    the Gridfinity footprint has to be got right (`DrawerCells`).
+    The parsing itself lives in `drawer.ParseDrawer`, because the window
+    needs the same thing and a drawer typed into one front end has to come
+    out the same number of cells as the same drawer passed to the other.
+    All this adds is argparse's exception type, which is what turns a bad
+    flag into a usage message rather than a traceback.
     """
-    parts = text.lower().split("x")
-    if len(parts) != 2:
-        raise argparse.ArgumentTypeError(f"a drawer is WIDTHxHEIGHT in mm, e.g. 500x400 - got '{text}'")
     try:
-        width, height = (float(value) for value in parts)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"a drawer's sides must be numbers in mm - got '{text}'")
-
-    try:
-        return DrawerCells(width, height)
+        return _ParseDrawer(text)
     except ValueError as error:
-        raise argparse.ArgumentTypeError(str(error))
+        raise argparse.ArgumentTypeError(str(error)) from None
 
 
 def BuildParser() -> argparse.ArgumentParser:

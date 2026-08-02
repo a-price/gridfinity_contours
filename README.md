@@ -180,6 +180,28 @@ them, and previews the result. It is separate from `silhouette.py` because
 that tool works on one photo, and packing wants objects from many. The
 file arguments are optional - there is a Load button.
 
+### `floorplan_gui.py` — the whole library, across your drawers
+
+```
+.venv/bin/python3 floorplan_gui.py test_data/*.svg --drawer 500x400
+```
+
+The top of the stack. `layout_gui.py` packs the objects you give it into
+*a* bin; this one decides which objects should share a bin at all, how
+many bins that takes, and which drawer each bin goes in — then draws the
+floorplan you print and lay in the drawer.
+
+Drawers are typed in millimeters (what a tape measure reads) and kept in
+whole Gridfinity cells (what the search uses). The list shows both,
+because the conversion is one-way: a 500mm drawer and a 504mm drawer are
+the same eleven cells. `Save...` writes the list as JSON in cells, and
+`--drawers FILE` loads one back at launch.
+
+**This search takes minutes, and the window is built around that.** It
+runs on a worker thread, redraws the best arrangement it has found four
+times a second, and can be stopped — stopping keeps the best grouping it
+had, so once the answer stops improving you can take it.
+
 ### `field_gui.py` — look at the distance field
 
 ```

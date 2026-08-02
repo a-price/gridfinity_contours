@@ -247,3 +247,25 @@ def RenderLayout(
     instead of a page.
     """
     return RenderShapes(*LayoutShapes(layout, parts), pixels_per_mm)
+
+
+def RenderLayouts(
+    layouts: Sequence[Layout],
+    parts: dict[int, Part],
+    columns: int = 3,
+    pixels_per_mm: float = DEFAULT_PIXELS_PER_MM,
+    gap: int = 8,
+) -> np.ndarray:
+    """Several bins in one image, wrapped into rows.
+
+    What a grouping looks like before anything has decided which drawer
+    each bin goes in - the picture to show while that search is still
+    running, since the bins exist and their arrangement in a drawer does
+    not yet.
+
+    Drawn at each bin's own true relative scale, so a 5x3 reads as bigger
+    than a 2x1 rather than every page being normalized to the same width.
+    """
+    if not layouts:
+        raise ValueError("no layouts to render")
+    return InRows([RenderLayout(layout, parts, pixels_per_mm) for layout in layouts], columns, gap)

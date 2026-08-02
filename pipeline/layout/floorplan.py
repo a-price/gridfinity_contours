@@ -30,6 +30,7 @@ from pipeline.layout.drawer import AssignmentResult, Drawer, Slot
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout, RotatePoints
 from pipeline.layout.preview import CellBoundaries, ClosedRing, LayoutShapes, OuterFootprint
+from pipeline.layout.render import RenderShapes, SideBySide
 from pipeline.pdf_writer import Page, WriteShapesPdfPages
 from pipeline.svg_writer import Shape
 
@@ -39,6 +40,11 @@ from pipeline.svg_writer import Shape
 # subject.
 DRAWER_STROKE_MM = 0.4
 DRAWER_COLOR = "#404040"
+
+# Screen pixels per millimeter for a whole floorplan. A drawer is several
+# bins across, so a single bin's scale would produce an image thousands of
+# pixels wide; this keeps a 500x400mm drawer around 700px.
+DEFAULT_DRAWER_PIXELS_PER_MM = 1.4
 
 
 def _Rectangle(width: float, height: float) -> np.ndarray:
@@ -113,6 +119,31 @@ def FloorplanPages(
         contents[slot.drawer].append((layouts[bin_id], slot))
 
     return [DrawerPage(drawer, contents[index], parts) for index, drawer in enumerate(drawers)]
+
+
+def RenderFloorplan(
+    drawers: Sequence[Drawer],
+    layouts: dict[int, Layout],
+    result: AssignmentResult,
+    parts: dict[int, Part],
+    pixels_per_mm: float = DEFAULT_DRAWER_PIXELS_PER_MM,
+    gap: int = 12,
+) -> np.ndarray:
+    """The whole floorplan as one BGR image: every drawer side by side.
+
+    The screen counterpart of `WriteFloorplanPdf`, and drawn through the
+    same `FloorplanPages`, so what a window shows and what the printer
+    produces cannot drift apart - the discipline `render.py` already
+    follows one level down.
+
+    Side by side rather than one drawer at a time, because watching a bin
+    move from one drawer to another is the whole point of showing a
+    multi-drawer search, and two separate images could not show it. That
+    is the opposite of the printed version, which is one page per drawer
+    precisely because a page is a physical thing at 1:1.
+    """
+    pages = FloorplanPages(drawers, layouts, result, parts)
+    return SideBySide([RenderShapes(page.shapes, page.width, page.height, pixels_per_mm) for page in pages], gap)
 
 
 def WriteFloorplanPdf(
