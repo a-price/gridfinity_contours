@@ -1,7 +1,7 @@
 """Qt wiring for `pipeline.calibration`.
 
 Only `ArucoCalibrationStage` lives here - the one calibration strategy
-`silhouette.py` actually wires into the app. `IdentityCalibration` and
+`silhouette_gui.py` actually wires into the app. `IdentityCalibration` and
 `HoughCircleCalibration` (see `pipeline/calibration.py`) have no Qt
 wiring of their own for the same reason: nothing in this project
 constructs a calibration stage other than this one.

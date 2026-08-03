@@ -326,9 +326,7 @@ def test_pinning_everything_leaves_nothing_to_search(gui, tmp_path):
     _plan(gui)
 
     assert list(gui.floorplan_stage.Bins().values()) == before
-    assert all(
-        gui.pin_list.item(row).checkState() == Qt.CheckState.Checked for row in range(gui.pin_list.count())
-    )
+    assert all(gui.pin_list.item(row).checkState() == Qt.CheckState.Checked for row in range(gui.pin_list.count()))
 
 
 def test_unpinning_puts_the_bins_back_in_play(gui, tmp_path):
@@ -367,7 +365,10 @@ def test_pins_come_back_with_a_session(gui, tmp_path):
     later.load_session(path)
 
     assert later.floorplan_stage.PinnedIds() == frozenset([0])
-    assert later.pin_list.item(0).checkState() == Qt.CheckState.Checked
+
+    restored = later.pin_list.item(0)
+    assert restored is not None, "the resumed session listed no bins to pin"
+    assert restored.checkState() == Qt.CheckState.Checked
 
 
 # ------------------------------------------------------------ searching

@@ -245,9 +245,7 @@ class FloorplanStage(Stage):
 
         layouts, parts = self._Bins()
         result = self._Arrangement(layouts) if layouts else None
-        return RenderFloorplan(
-            tuple(self.drawers), layouts, result, parts, pixels_per_mm, pinned=self.PinnedIds()
-        )
+        return RenderFloorplan(tuple(self.drawers), layouts, result, parts, pixels_per_mm, pinned=self.PinnedIds())
 
     def _Bins(self) -> tuple[dict[int, Layout], dict[int, Part]]:
         """The bins worth drawing right now, and the parts inside them.

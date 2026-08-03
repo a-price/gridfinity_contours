@@ -1,11 +1,14 @@
 """Tests for the capture-window animation.
 
-Split by what they cost. The frame machinery - grabbing a widget, settling
-it, holding a frame - is exercised on a bare widget in milliseconds, and
-that is where the fiddly parts are. Actually recording the flow loads SAM2
-and segments a 5184px photograph, so it is marked slow and asserts only
-the things that make the animation worth having: that it shows the real
-window, and that the calibration it demonstrates genuinely resolved.
+Split by what they cost. Pacing - what a held frame is, and that a beat
+shows the change that produced it - is exercised on a bare widget in
+milliseconds. Actually recording the flow loads SAM2 and segments a
+5184px photograph, so it is marked slow and asserts only the things that
+make the animation worth having: that it shows the real window, and that
+the calibration it demonstrates genuinely resolved.
+
+The grabbing underneath all of it is `pipeline/window_capture.py`, and is
+tested there.
 
 Deliberately no comparison against the committed GIF. That would be the
 stored-image assertion `render_demo.py` argues against at length, and it
@@ -20,7 +23,7 @@ import pytest
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 import capture_demo
-from capture_demo import HANDLE, PHOTO, PHOTO_COLORS, SHADOW, Grab, Main, Recording
+from capture_demo import HANDLE, PHOTO, PHOTO_COLORS, SHADOW, Main, Recording
 
 
 class _Host(QWidget):
@@ -40,52 +43,7 @@ class _Host(QWidget):
         return self
 
 
-# ------------------------------------------------------------------ frames
-
-
-def test_a_grab_is_an_8_bit_bgr_image(qapp):
-    """What `gif_writer.WriteGif` refuses anything else for."""
-    host = _Host()
-    host.show()
-
-    frame = Grab(host)
-
-    assert frame.ndim == 3 and frame.shape[2] == 3
-    assert frame.dtype == np.uint8
-    assert frame.shape[:2] == (host.height(), host.width())
-
-
-def test_a_grab_is_not_a_view_of_a_reused_qt_buffer(qapp):
-    """`QImage.bits()` hands back memory Qt owns and will write over. A
-    frame that aliased it would leave every held frame showing whatever
-    the window looked like last.
-    """
-    host = _Host()
-    host.show()
-
-    first = Grab(host)
-    host.label.setText("after")
-    qapp.processEvents()
-    second = Grab(host)
-
-    assert not np.array_equal(first, second)
-
-
-def test_a_grab_has_no_scanline_padding_in_it(qapp):
-    """Qt pads scanlines to a 4-byte boundary. Reading the buffer as
-    `width * 4` on an odd width shears the picture progressively down the
-    frame, which looks like a rendering bug rather than an indexing one.
-    """
-    host = _Host()
-    host.resize(201, 101)  # odd both ways
-    host.show()
-
-    frame = Grab(host)
-
-    assert frame.shape[:2] == (101, 201)
-    # A sheared grab has the label's text smeared diagonally; an unsheared
-    # one keeps the widget's flat background in the bottom corner.
-    assert len(np.unique(frame[-1].reshape(-1, 3), axis=0)) == 1
+# ------------------------------------------------------------------ pacing
 
 
 def test_holding_repeats_one_frame(qapp):
@@ -118,17 +76,21 @@ def test_a_held_frame_shows_the_change_that_preceded_it(qapp):
     assert not np.array_equal(recording.frames[0], recording.frames[1])
 
 
-def test_settling_stops_once_the_window_stops_changing(qapp):
-    """Bounded, so a widget that never settles cannot hang `make gifs`."""
-    host = _Host()
-    host.show()
-    recording = Recording(host, qapp)
-
-    assert recording._Settled(passes=1) is not None
-    assert np.array_equal(recording._Settled(), recording._Settled())
-
-
 # ------------------------------------------------------------------ inputs
+
+
+def _Photo() -> np.ndarray:
+    """The demo's photograph, or a failure that says which file is wrong.
+
+    `cv2.imread` returns None for anything it cannot decode, so without
+    this every test below would fail on an attribute of None rather than
+    on the file.
+    """
+    import cv2
+
+    photo = cv2.imread(PHOTO)
+    assert photo is not None, f"{PHOTO} is not a readable image"
+    return photo
 
 
 def test_the_photo_it_names_is_there():
@@ -137,15 +99,13 @@ def test_the_photo_it_names_is_there():
 
 def test_the_photo_carries_a_calibration_sheet():
     """The reason this demo cannot use just any photo. Without markers,
-    `silhouette.py` falls back to pixel space by design - the animation
+    `silhouette_gui.py` falls back to pixel space by design - the animation
     would look complete while dropping the one thing the window is for.
     """
-    import cv2
-
     from pipeline.calibration import ArucoCalibration
 
     calibration = ArucoCalibration()
-    calibration.Detect(cv2.imread(PHOTO))
+    calibration.Detect(_Photo())
 
     known = calibration.parameters.marker_positions_mm
     matched = [marker for marker in calibration.detected_corners if marker in known]
@@ -154,9 +114,7 @@ def test_the_photo_carries_a_calibration_sheet():
 
 
 def test_both_clicks_land_inside_the_photo():
-    import cv2
-
-    height, width = cv2.imread(PHOTO).shape[:2]
+    height, width = _Photo().shape[:2]
 
     for point in (HANDLE, SHADOW):
         assert 0 <= point[0] < width and 0 <= point[1] < height
@@ -168,9 +126,7 @@ def test_the_negative_click_is_off_the_object():
     tool is not - a negative point on the handle would fight the positive
     one and the animation would be demonstrating a mistake.
     """
-    import cv2
-
-    photo = cv2.imread(PHOTO)
+    photo = _Photo()
     handle = photo[HANDLE[1], HANDLE[0]].astype(int)
     shadow = photo[SHADOW[1], SHADOW[0]].astype(int)
 
@@ -204,7 +160,7 @@ def test_ticking_a_checkbox_that_is_not_there_is_refused(qapp):
 
 
 def test_the_symmetry_it_demonstrates_is_the_union(qapp):
-    """"Or" takes the wider of the mask and its mirror at every point,
+    """ "Or" takes the wider of the mask and its mirror at every point,
     which is what puts back what the shadow cost. "And" would take the
     narrower and eat into the tool instead.
     """

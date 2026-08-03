@@ -15,6 +15,19 @@ def test_generate_sheet_writes_a_pdf(tmp_path):
     assert output_path.read_bytes().startswith(b"%PDF")
 
 
+def test_the_extension_decides_the_format(tmp_path):
+    """A PDF is what you print - its page size is unambiguous, which is
+    the property a sheet whose whole purpose is real-world scale needs.
+    A PNG is what the docs show. Forcing PDF regardless of the name wrote
+    a PDF called `.png`, which nothing would open.
+    """
+    output_path = tmp_path / "sheet.png"
+
+    GenerateSheet(str(output_path))
+
+    assert output_path.read_bytes().startswith(b"\x89PNG")
+
+
 def test_marker_positions_are_inside_the_page_with_margin():
     from generate_aruco_sheet import MARGIN_MM, PAGE_HEIGHT_MM, PAGE_WIDTH_MM
 

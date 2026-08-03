@@ -2,7 +2,7 @@
 
     layout_gui.py test_data/*.svg
 
-Deliberately separate from silhouette.py. That tool captures *one* photo:
+Deliberately separate from silhouette_gui.py. That tool captures *one* photo:
 one segmentation, one calibration, one set of clicks. Packing wants many
 objects, and in practice they arrive from many sessions - the three spoon
 fixtures in test_data are three separate captures. A Pack button inside

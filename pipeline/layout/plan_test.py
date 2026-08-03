@@ -353,9 +353,7 @@ def test_pinning_every_bin_runs_no_grouping_search_at_all():
     assert first.grouping is not None
     seen: list[Progress] = []
 
-    plan = BuildPlan(
-        parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0, pinned=list(first.grouping.bins)
-    )
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, report=seen.append, interval=0.0, pinned=list(first.grouping.bins))
 
     assert list(plan.layouts.values()) == list(first.grouping.bins)
     assert plan.placed
@@ -423,9 +421,7 @@ def test_pinning_and_resuming_together_do_not_group_a_part_twice():
     first = BuildPlan(parts, [Drawer(6, 6)], params)
     assert first.grouping is not None
 
-    plan = BuildPlan(
-        parts, [Drawer(6, 6)], params, start=first.grouping, pinned=[first.grouping.bins[0]]
-    )
+    plan = BuildPlan(parts, [Drawer(6, 6)], params, start=first.grouping, pinned=[first.grouping.bins[0]])
 
     placed = [part_id for layout in plan.layouts.values() for part_id in layout.placements]
     assert sorted(placed) == sorted(parts)

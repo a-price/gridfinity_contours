@@ -1,7 +1,7 @@
 """Tests for the standalone layout window (M6).
 
 The behavior worth pinning is that loading is *additive* across files -
-that is the reason this window exists apart from silhouette.py, which can
+that is the reason this window exists apart from silhouette_gui.py, which can
 only ever produce one session's worth of contours.
 """
 

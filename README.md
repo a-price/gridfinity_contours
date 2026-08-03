@@ -1,15 +1,71 @@
 # Gridfinity Contours
 
-Turns photos of oddly-shaped objects into custom-fit
-[Gridfinity](https://gridfinity.xyz/) bins: photograph an object next to a
-printed calibration sheet, interactively segment it, and extract a
-simplified real-world-scale contour.
+**Photograph the things in your drawer. Get the [Gridfinity](https://gridfinity.xyz/)
+bins that hold them.**
 
-From there the layout stage takes over: it packs several contours into the
-smallest bin that holds them all, decides which objects should share a bin
-in the first place, assigns the resulting bins to your drawers, and emits
-both the printable `.scad` and true-scale sheets to check against the real
-objects. See [Design docs](#design-docs).
+![a 3D render of a printable Gridfinity bin with three spoon-shaped pockets cut into it](docs/media/solid_bin.png)
+
+Not a bin that's roughly the right size — a bin cut to the actual outline
+of each object, at true scale, with several objects packed into the
+smallest bin that fits them, and every bin assigned to a drawer you
+actually own.
+
+Photo in, `.scad` out. There is no CAD in the middle.
+
+## Why you might want this
+
+- **It measures.** Put a printed calibration sheet in the frame and the
+  contour comes out in millimetres, not pixels — corrected for however the
+  camera happened to be held. The screwdriver below exports as a
+  37 × 163 mm outline.
+- **It packs.** Give it ten objects and it works out which of them should
+  share a bin, how many bins that takes, and where each one sits — rather
+  than making you print one bin per spoon.
+- **It fits your drawers.** Type in the drawer sizes you have. It lays the
+  bins out on the 42 mm Gridfinity lattice and prints you a floorplan to
+  lay in the drawer.
+- **It remembers what you already printed.** Pin the bins on your shelf and
+  the next search leaves them alone, instead of proposing a marginally
+  better arrangement of things you would have to reprint.
+- **It admits when it doesn't know.** "Too small" and "not found" mean
+  different things here, and the tools never say the first when they mean
+  the second.
+
+## Getting started
+
+```
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+huggingface-cli download facebook/sam2-hiera-tiny
+```
+
+Then, in order:
+
+**1. Print the calibration sheet** at 100% scale — "actual size", never
+"fit to page".
+
+```
+.venv/bin/python3 generate_aruco_sheet.py
+```
+
+**2. Photograph an object** lying on the sheet, with all four markers in
+frame.
+
+**3. Trace it.** Left-click on the object, right-click on its shadow,
+press Export.
+
+```
+.venv/bin/python3 silhouette_gui.py photo.jpg
+```
+
+**4. Pack what you've traced** into bins, and the bins into your drawers.
+
+```
+.venv/bin/python3 floorplan_gui.py *.svg.json --drawer 500x400
+```
+
+**5. Print** the `.scad` each bin exports, and the floorplan PDF to lay
+them out with.
 
 ## Watching it work
 
@@ -17,170 +73,64 @@ Capturing a screwdriver — photo in, real-world outline out:
 
 ![the capture window: an empty view, then a photo of a screwdriver on a calibration sheet, then a green plus on its handle and a red minus on its shadow, then a yellow outline round the segmented tool, then that outline evened up once lateral symmetry is ticked, then the tool filled green with its millimetre outline listed in the panel](docs/media/capture.gif)
 
-Two clicks and one checkbox are the whole input: left on the handle for a
-point inside the object, right on the drop shadow for a point outside it,
-then *Lateral symmetry*. SAM2 segments from the clicks, the four ArUco
-markers fix the scale, and what lands in the panel is a contour in
-millimetres — 37 × 163 mm here — not in pixels.
+Two clicks and one checkbox are the whole input. SAM2 segments from the
+clicks, the four ArUco markers fix the scale, and what lands in the panel
+is a contour in millimetres.
 
-Neither of the last two is decoration. A soft shadow on white paper is
-what SAM2 most reliably swallows, and right-clicking it takes 31 000
-pixels off the mask and half a millimetre off the length. Lateral
-symmetry then mirrors the mask across the tool's long axis and unions the
-two, which puts back the 11 900 pixels the shaded side lost — a
-manufactured object is symmetric and the lighting is not. The simplified
-outline drops from 73 points to 67 in the process, because one-sided
-segmentation jitter stops being a feature worth tracing.
-
-The millimetres are why the animation uses a photo with a calibration
-sheet in frame: without one the window falls back to pixel space by
-design, and the recording would look identical while meaning nothing.
-
-Unlike the three below it, this one is a **recording of the actual
-window** rather than a rendering of a search — `capture_demo.py` drives a
-real `silhouette.py` offscreen and grabs its frames. A picture of a user
-flow assembled from separately-drawn panels would be a mock-up, and would
-keep looking right after the real window had stopped working.
+Neither the negative click nor the checkbox is decoration. A soft shadow
+on white paper is what SAM2 most reliably swallows, and right-clicking it
+takes 31 000 pixels off the mask. Lateral symmetry then mirrors the mask
+across the tool's long axis and takes the wider of the two sides — putting
+back the 11 900 pixels the shaded side lost, because a manufactured object
+is symmetric and the lighting is not.
 
 Four utensils looking for the smallest bin that holds them:
 
 ![four utensil outlines shoving each other inside a bin outline, failing twice, then settling into a larger bin](docs/media/pack.gif)
 
-It fails at 5x2 and 6x2 before packing into 5x3. A size the solver could
-not manage is reported as "not found" rather than "too small": the search
-is stochastic, so a tighter packing may still exist.
+It fails at 5x2 and 6x2 before packing into 5x3.
 
-Six objects deciding which of them should share a bin:
+Six objects deciding which of them should share a bin; then ten objects,
+grouped into six bins, going into two drawers:
 
 ![six bins each holding one object, with a border marking the bins being considered, merging down to two bins](docs/media/group.gif)
 
-Six bins and 44 cells down to two and 25. The border marks the bins being
-priced; most candidates are rejected, so the arrangement only changes on
-the few moves worth taking.
-
-Ten objects, grouped into six bins, going into two drawers:
-
 ![bins of cutlery appearing in two drawer outlines, some withdrawn and replaced, until all six sit without overlapping](docs/media/drawer.gif)
 
-Bins land on whole 42mm cells, and the search takes one back out when a
-branch runs out. This is the only level that can prove a set of bins does
-not fit.
+Six bins and 44 cells down to two and 25; then bins landing on whole 42 mm
+cells, with the search taking one back out when a branch runs out.
 
-Those three come from `layout_demo.py`, which runs the same code as the
-CLI. `make gifs` regenerates all four (`make -j4 gifs` to run them at
-once), or `make gif-capture` / `gif-pack` / `gif-group` / `gif-drawer`
-for one:
+Every picture in this repository is generated by a script and checked in —
+including the recordings, which are grabs of the real windows rather than
+mock-ups. [docs/media.md](docs/media.md) says which script makes which,
+and why they are committed artifacts instead of test assertions.
 
-```
-.venv/bin/python3 capture_demo.py --out docs/media/capture.gif
+## The tools
 
-.venv/bin/python3 layout_demo.py pack \
-    test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
-    test_data/medium_fork.svg --out docs/media/pack.gif \
-    --restarts 8 --every 8 --pixels-per-mm 1.4 --colors 8
-
-.venv/bin/python3 layout_demo.py group \
-    test_data/big_spoon.svg test_data/small_spoon.svg test_data/screwdriver.svg \
-    test_data/spreader.svg test_data/big_measure.svg test_data/small_measure.svg \
-    --start one-per-bin --restarts 12 --every 1 \
-    --out docs/media/group.gif
-
-.venv/bin/python3 layout_demo.py drawer \
-    test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
-    test_data/small_fork.svg test_data/medium_fork.svg test_data/big_fork.svg \
-    test_data/spreader.svg test_data/screwdriver.svg \
-    test_data/small_measure.svg test_data/big_measure.svg \
-    --drawer 210x340 --drawer 170x130 --restarts 6 --every 1 \
-    --out docs/media/drawer.gif
-```
-
-About 10 seconds, 15 seconds, 2.5 minutes, and 30 seconds. `--drawer` is a
-drawer's interior in millimeters (or `11x9 cells`) and can be repeated.
-
-`gif-capture` is the one with extra requirements: it needs Qt (driven
-offscreen, so nothing pops open) and a SAM2 checkpoint already in the
-local Hugging Face cache. It is built to fail rather than download a few
-hundred megabytes in the middle of a build.
-
-`make previews` writes one still per drawing path into the same directory
-(`render_demo.py`). Those are committed for the same reason the GIFs are:
-every renderer already has tests asserting what it *claims* to draw, and
-what those cannot notice is a change that keeps every invariant and still
-looks wrong. A stored-image assertion would be the obvious fix and the
-wrong one — eleven test modules sit downstream of a stochastic search, so
-one solver change reddens them all and the only response is to re-bless
-the lot. As committed artifacts instead, a visual change arrives as a diff
-somebody reads. `--start one-per-bin` gives
-the grouping search the most to find; `--start first-fit` is what `Group`
-does, and reaches the same 25 cells here.
-
-## Tools
-
-### `silhouette.py` — main app
-
-An interactive PyQt5 GUI that runs the whole capture pipeline:
-
-1. **Load** a photo of the object.
-2. **Segment** it by clicking points on the image - left-click adds an
-   interior (positive) point, right-click an exterior (negative) point -
-   which are fed to a SAM2 model to produce a mask. Only the connected
-   component(s) touched by a positive click are kept, so a stray disjoint
-   blob elsewhere in the frame doesn't leak into the result.
-3. **Clean up** the mask: morphological closing to smooth jitter, a
-   minimum-area filter to drop small noise blobs, and optional
-   lateral/longitudinal symmetry (many manmade objects are symmetric) -
-   combined with the original mask via AND (carve out one-sided errors) or
-   OR (fill in an occluded side from its mirror), pivoted on the mask's
-   PCA-aligned bounding box.
-4. **Extract and simplify** the object's contour, with a PCA-aligned
-   bounding box.
-5. **Calibrate**: detects ArUco markers on a printed calibration sheet
-   (see `generate_aruco_sheet.py` below) and solves for the camera pose to
-   recover real-world (mm) coordinates. If no sheet is in frame, contours
-   fall back to pixel space instead of failing.
-6. **Select** a contour to see it rectified to real-world units
-   automatically - a text preview updates live, no button needed.
-7. **Export** writes the selected, rectified contour to an SVG file (1
-   unit = 1mm, PCA-aligned so it comes out level), ready to import into a
-   CAD tool like Fusion 360. Its `width`/`height` are true mm, but the
-   viewBox/path coordinates are pre-scaled by 96/25.4 (CSS's 96dpi
-   "pixel"), since some importers - Fusion 360 included - ignore the
-   physical-unit suffix on `width`/`height` and just assume raw SVG
-   coordinates are 96dpi pixels; without that scaling the imported sketch
-   comes in ~3.78x too small. A same-scale PDF (`<filename>.svg.pdf`) is
-   written alongside it - print that one instead of the SVG directly if a
-   printed SVG comes out the wrong size, since not every SVG viewer/print
-   path honors its embedded physical units either (a PDF's page size is
-   unambiguous).
-
-Each stage's tunable parameters live in its own group box in the control
-panel (Segmentation, Calibration, Mask Cleanup, Contour Selection, SVG
-Export).
-
-Clicking the image view does one of three things, chosen from the "Click
-Mode" dropdown:
-
-- **Add Segmentation Points** (default) - left/right click adds an
-  interior/exterior point for SAM2.
-- **Select a Contour** - click a detected object to select/deselect it,
-  rectifying and previewing it automatically.
-- **Select a Fiducial** - click to toggle a calibration fiducial, for
-  calibration strategies that support manual selection (not the default
-  ArUco one, which auto-matches by marker ID).
-
-Run it with:
+### `silhouette_gui.py` — trace one object
 
 ```
-.venv/bin/python3 silhouette.py [path/to/photo.jpg]
+.venv/bin/python3 silhouette_gui.py [photo.jpg]
 ```
 
-The image path is optional; if omitted, use the "Load Image" button.
+The capture window, animated above. Load a photo, click the object, and
+it segments with SAM2, cleans up the mask, finds and simplifies the
+contour, reads the ArUco sheet for scale, and exports the result as an SVG
+for CAD, a same-scale PDF to print, and a JSON dump the layout tools read.
 
-### `layout_cli.py` — pack contours into a bin
+Each stage has its own group box in the panel, and everything downstream
+of a change re-runs on the spot — so nudging the closing radius redraws
+the outline without re-running the model.
 
-Takes the contours the capture stage exported and finds the smallest
-Gridfinity bin they all fit in, writing a true-scale sheet to print and the
-`.scad` to slice:
+If there is no calibration sheet in frame it falls back to pixel space
+rather than failing. That is deliberate, and it is the one thing here that
+can go wrong quietly: read the marker count in the panel.
+
+**More:** [docs/capture.md](docs/capture.md) — what each stage does, why
+the symmetry combine has two modes, and why the exported SVG's coordinates
+are pre-scaled by 96/25.4.
+
+### `layout_cli.py` — pack contours into one bin
 
 ```
 .venv/bin/python3 layout_cli.py \
@@ -198,23 +148,22 @@ packed 3 parts into 5x2 (10 cells)
 wrote spoons.svg, spoons.pdf, spoons.scad
 ```
 
-Every candidate size is reported with why it was rejected, and the two
-reasons mean different things. "Too small" is a proof from areas and
-bounding boxes, as all nine rejections are here. "Not found" means the
-solver did not manage a size the bounds allowed, so that size may still be
-packable - raise `--restarts` and see. When that happens below the size it
-settles on, a closing note says so, because then the bin you print is
-bigger than it needed to be.
+Finds the smallest Gridfinity bin the contours all fit in, and writes the
+sheet to print, the PDF to check against the real objects, and the `.scad`
+to slice — the bin at the top of this page.
+
+Every rejected size is reported with *why*, and the two reasons are not
+the same. **"Too small"** is a proof from areas and bounding boxes.
+**"Not found"** means the solver did not manage a size the bounds allowed,
+so that size may still be packable — raise `--restarts` and see. When that
+happens below the size it settles on, a closing note says so, because then
+the bin you print is bigger than it needed to be.
 
 Useful flags: `--restarts` and `--seed` steer the search, `--max-grid`
 caps the bin size, `--pocket-offset` sets how much larger than its object
-each pocket is cut, `--height` sets the bin depth in 7mm Gridfinity units,
-and `--no-scad` skips the solid if you only want the sheet. Ctrl-C stops
-the search and still reports everything it learned.
-
-It prints a live progress line while it searches, since a hard pack takes
-long enough to look hung without one. `--quiet` suppresses it, and it
-turns itself off when the output is not a terminal.
+each pocket is cut, `--height` sets the depth in 7 mm units, `--no-scad`
+skips the solid. Ctrl-C stops the search and still reports everything it
+learned.
 
 ### `layout_gui.py` — the same, interactively
 
@@ -222,153 +171,134 @@ turns itself off when the output is not a terminal.
 .venv/bin/python3 layout_gui.py test_data/*.svg
 ```
 
-A window that accumulates contours from several capture sessions, packs
-them, and previews the result. It is separate from `silhouette.py` because
-that tool works on one photo, and packing wants objects from many. The
-file arguments are optional - there is a Load button.
+![the layout window: a control panel on the left with contour, layout and export controls, and four spoon and fork outlines packed into a bin on the right](docs/media/window_layout.png)
 
-### `floorplan_gui.py` — the whole library, across your drawers
+Accumulates contours from several capture sessions, packs them, and
+previews the result. Separate from the capture window because that one
+works on one photo and packing wants objects from many — the three spoon
+fixtures are three different photographs. The file arguments are optional;
+there is a Load button.
+
+### `floorplan_gui.py` — your whole library, across your drawers
 
 ```
 .venv/bin/python3 floorplan_gui.py test_data/*.svg --drawer 500x400
 ```
 
+![the floorplan window: contours, drawers and pinning controls on the left, and two drawer outlines on the right holding two bins of cutlery, the pinned one outlined in green](docs/media/window_floorplan.png)
+
 The top of the stack. `layout_gui.py` packs the objects you give it into
 *a* bin; this one decides which objects should share a bin at all, how
-many bins that takes, and which drawer each bin goes in — then draws the
+many bins that takes, and which drawer each goes in — then draws the
 floorplan you print and lay in the drawer.
 
-Drawers are typed in either unit — `500x400` is a measurement in mm,
-`11x9 cells` is already counted — and always kept in whole Gridfinity
-cells. The list shows both, because the conversion is one-way: a 500mm
-drawer and a 504mm drawer are the same eleven cells. Bare numbers mean
-millimeters, so cells have to be asked for; that is the safer default,
-since cells read as mm are refused for holding no whole cell while the
-reverse would quietly produce a drawer the size of a room.
+- **Drawers are typed in either unit.** `500x400` is a measurement in mm,
+  `11x9 cells` is already counted. Bare numbers mean millimetres, so cells
+  have to be asked for.
+- **The search takes minutes, and the window is built around that.** It
+  runs on a worker thread, redraws four times a second, and can be
+  stopped — stopping keeps the best grouping it had.
+- **What it draws is always the drawers**, empty from the moment you add
+  one, filling as the search works. Anything it is holding but has not
+  placed is drawn beside them rather than dropped.
+- **Export writes the map and every bin on it** — the floorplan PDF, then
+  an SVG, PDF and `.scad` per bin. The solids are cut from the layouts the
+  plan chose, so a bin matches the floorplan you printed to lay it out
+  with.
+- **Pin the bins you have already printed.** Tick them and they are held
+  out of the next search entirely — the same bin object carried through,
+  not an equally good rearrangement of it. Pinned bins are drawn with a
+  heavy green outline, on screen and on the printed sheet.
+- **Save the session and resume it** when the next tool arrives. Add the
+  contour, press Plan, and the panel says which bins are unchanged and
+  which have to come off the printer again.
 
-`Save...` writes the list as JSON in cells (`{"units": "cells", ...}`),
-and `--drawers FILE` loads one back at launch. Both the contour dumps and
-the drawer lists are `.json`, so each records its own units and refuses
-the other — picking the wrong file in a dialog is reported, not
-misread.
+**More:** [docs/layout.md](docs/layout.md).
 
-**This search takes minutes, and the window is built around that.** It
-runs on a worker thread, redraws the best arrangement it has found four
-times a second, and can be stopped — stopping keeps the best grouping it
-had, so once the answer stops improving you can take it.
-
-**What it draws is always the drawers.** They appear empty as soon as you
-add one, which is the cheapest moment to notice you typed the size wrong,
-and they fill as the search works: the first bin lands seconds after Plan,
-the rest join it, and the arrangement settles. The bins' positions in the
-drawer are a provisional first fit until the drawer search itself runs,
-and the status line says so. Anything the search is holding but has not
-placed is drawn beside the drawers rather than dropped, so the picture
-always accounts for every bin.
-
-**Export writes the map and every bin on it** — `NAME.pdf` for the drawer
-floorplan, then `NAME_bin0.svg`, `NAME_bin0.pdf` and `NAME_bin0.scad` for
-each bin, so a library plan turns straight into things you can print. The
-solids are cut from *the layouts the plan chose*, which matters: re-packing
-the same objects in `layout_gui.py` is a different stochastic search, so a
-bin exported that way would not match the floorplan you printed to lay it
-out with. Pinned bins are written too — a pin says the search may not
-change a bin, not that the file is already on disk.
-
-A bin whose solid cannot be cut at the current pocket offset is an alert,
-not a failure: its sheets are written, every other bin is finished, and
-the message names the wall thickness that stopped it.
-
-**Pin the bins you have already printed.** Tick them in the *Pinned Bins*
-list and they are held out of the next search entirely — same grid, same
-placements, the same bin object carried straight through into the answer,
-not an equally good rearrangement of it. It also makes the search much
-smaller: pinning a settled library and adding one tool is a search over
-one object rather than over thirty. Pinned bins are drawn with a heavy
-green outline, on screen and on the exported sheet, so "which of these do
-I already own" is answerable from the page you carry to the printer.
-
-Pinning holds a bin *together*, not *still* — the drawer search may still
-slide it to a different cell, because moving a bin along a shelf costs
-nothing while reprinting it does not.
-
-**Save the session, and resume it when the next tool arrives.** `Save...`
-writes the floorplan, its contours, its drawers and the settings it was
-solved under; `Load...` (or `--session FILE`) brings all of that back and
-draws it without re-running anything. Add the new contour, press Plan, and
-the search resumes from the arrangement you already printed instead of
-rediscovering it — so the panel says which bins are unchanged and which
-have to come off the printer again.
-
-### `field_gui.py` — look at the distance field
+### `field_gui.py` — look at what the packer sees
 
 ```
 .venv/bin/python3 field_gui.py test_data/*.svg
 ```
 
+![the distance field window: a spoon's signed distance field in blue and orange, contoured every millimetre, with red and green clearance rings](docs/media/window_field.png)
+
 Both phases of the layout search read one thing — the signed distance
 field rasterized for each contour — and neither of them draws it. This
-window does: one contour at a time, contoured every millimeter, with the
-clearance levels that mean something on a part's own field marked in red
-and green. Hover for the distance under the pointer in millimeters.
+does: one contour at a time, contoured every millimetre, with the
+clearance levels marked in red and green. Hover for the distance under the
+pointer.
 
-The **Gradient magnitude** checkbox is the interesting one. It shows where
-the field stops being a distance — the creases of the medial axis, which
-is exactly where the solver's forces stop being trustworthy. It packs
-nothing and writes nothing; it is a magnifying glass, not a stage.
+The **Gradient magnitude** checkbox shows where the field stops being a
+distance — the creases of the medial axis, which is exactly where the
+solver's forces stop being trustworthy. It packs nothing and writes
+nothing; it is a magnifying glass, not a stage.
 
-### `generate_aruco_sheet.py`
-
-Generates a letter-size PDF calibration sheet with 4 ArUco markers at known
-real-world (mm) positions - print it at 100% scale (no "fit to page") and
-keep it in frame when photographing an object, so `silhouette.py` can
-recover real-world units automatically. Its defaults already match
-`ArucoCalibration`'s expected marker layout, so no configuration is needed
-if you don't touch the constants in either file.
+### `generate_aruco_sheet.py` — the calibration sheet
 
 ```
 .venv/bin/python3 generate_aruco_sheet.py [output.pdf]
 ```
 
-### `solid.py`
+![a letter-size sheet with four ArUco markers, one near each corner, labelled ID 0 to ID 3](docs/media/sheet_aruco.png)
 
-The original single-contour bin generator, kept for reference: paste
-`silhouette.py`'s export into the `points` array at the bottom and it
-writes a Gridfinity `.scad` with one cutout. Requires the
-`gridfinity-rebuilt-openscad` submodule (see Installation) and OpenSCAD to
-render an STL.
+A letter-size PDF with four ArUco markers at known millimetre positions.
+Print at 100% scale and keep it in frame — any scaling silently
+invalidates every measurement downstream. Its defaults already match what
+the calibration stage expects, so nothing needs configuring.
 
-**For anything with more than one object in it, use `layout_cli.py`
-instead** - it takes a whole set of contours and writes the `.scad` for
-you.
+### `solid.py` — one contour, one bin
 
-### `layout_demo.py` — animate the search
+![a 3D render of a printable Gridfinity bin with a single spoon-shaped pocket](docs/media/solid_pocket.png)
 
-Writes the GIFs at the top of this file. Commands and flags are up there;
-the design behind what they show is in
-[docs/architecture.md](docs/architecture.md).
+A bin with one cutout, which is the shape this writes: paste an exported
+contour into the `points` array at the bottom and it produces the
+Gridfinity `.scad`. Needs the `gridfinity-rebuilt-openscad` submodule and
+OpenSCAD.
 
-### `postprocess_gcode_for_prusa_i3.py`
+Kept for reference rather than for use. The picture above is actually the
+*newer* generator given a single object, because the two differ in a way
+worth knowing about: this one subtracts the pocket from outside the bin
+and unions the base back on, which works but leaves the pocket depth
+implicit — a bare `linear_extrude()` cuts 100 mm upward from z=0 and the
+floor lands wherever the base happens to start.
 
-A print-time utility: inserts an `M600` color-change pause into
-already-sliced gcode at a given layer height, for Prusa i3-family printers.
-Useful for making "shadow" prints where the bottom of the cutout is a
-different color from the top, for printers without AMS.
+**For anything with more than one object in it, use `layout_cli.py`** — it
+takes a whole set of contours, states the depth, and writes the `.scad`
+for you.
+
+### `postprocess_gcode_for_prusa_i3.py` — two-tone prints
 
 ```
 python3 postprocess_gcode_for_prusa_i3.py path/to/file.gcode [height_mm]
 ```
 
+Inserts an `M600` colour-change pause into already-sliced gcode at a given
+layer height. For "shadow" prints where the bottom of the pocket is a
+different colour from the top, on printers without an AMS.
+
+### The demo scripts
+
+`capture_demo.py`, `layout_demo.py`, `screenshot_demo.py`,
+`render_demo.py` and `solid_demo.py` write every picture on this page.
+`make media` regenerates the lot; see [docs/media.md](docs/media.md) for
+what each one costs and what it needs.
+
 ## Design docs
 
-- [docs/architecture.md](docs/architecture.md) - the view from above: the
+- [docs/architecture.md](docs/architecture.md) — the view from above: the
   four cardinality levels (photo, bin, bin set, drawer), where the
-  parallelism is, and how the optimization loops nest. Start here.
-- [docs/layout.md](docs/layout.md) - packing several contours into the
-  smallest practical number of Gridfinity cells, via a repulsive-force
-  relaxation, and grouping contours across bins.
+  parallelism is, and how the optimization loops nest. **Start here.**
+- [docs/capture.md](docs/capture.md) — photo to contour: segmentation,
+  mask cleanup and symmetry, ArUco calibration, and what the three
+  exported files are each for.
+- [docs/layout.md](docs/layout.md) — packing contours into the smallest
+  practical number of cells via a repulsive-force relaxation, and grouping
+  contours across bins.
   [docs/layout_roadmap.md](docs/layout_roadmap.md) is the implementation
   plan; built through M9.
+- [docs/media.md](docs/media.md) — how every picture here is generated,
+  and why they are committed artifacts rather than test assertions.
 
 ## Installation
 
@@ -378,47 +308,42 @@ python3 postprocess_gcode_for_prusa_i3.py path/to/file.gcode [height_mm]
    source .venv/bin/activate
    ```
 2. Install dependencies: `pip install -r requirements.txt`
-3. If you'll use `solid.py`, fetch the OpenSCAD submodule it depends on:
+3. For `solid.py` and the bin renders, fetch the OpenSCAD submodule:
    `git submodule update --init`
 4. The SAM2 model (`facebook/sam2-hiera-tiny`) is loaded offline
-   (`local_files_only=True`) by default, so it needs to already be cached
-   locally (e.g. via `huggingface-cli download facebook/sam2-hiera-tiny`)
-   before first use. Alternatively, pass `--download-model` to
-   `silhouette.py` to let it fetch the model from the Hugging Face Hub on
-   first run if it isn't cached yet.
+   (`local_files_only=True`) by default, so it needs to be cached first —
+   `huggingface-cli download facebook/sam2-hiera-tiny`. Alternatively,
+   pass `--download-model` to `silhouette_gui.py` to let it fetch the
+   model on first run.
 
 ## Development
 
 Config for `black`/`pytest`/`pyright` lives in `pyproject.toml`; `mdformat`
-reads only `.mdformat.toml`, not `pyproject.toml`. A `Makefile` wraps all of
-them:
+reads only `.mdformat.toml`. A `Makefile` wraps all of them:
 
-- `make format` - apply `black` and `mdformat` formatting
-- `make format-check` - check formatting without changing files
-- `make lint` - `pyflakes`
-- `make typecheck` - `pyright`
-- `make test` - `pytest`
-- `make check` - all of the above at once, on four cores; every failure is
-  reported, not just the first
-- `make check-serial` - the same checks one at a time, when interleaved
-  output is the problem
-- `make docs` - re-render `docs/*.dot` to SVG (needs graphviz);
+- `make check` — format, lint, typecheck and test, on four cores; every
+  failure is reported, not just the first
+- `make check-serial` — the same one at a time, when interleaved output is
+  the problem
+- `make format` / `format-check` / `lint` / `typecheck` / `test` —
+  individually
+- `make docs` — re-render `docs/*.dot` to SVG (needs graphviz);
   `make docs-check` fails if a rendered SVG is older than its source
-- `make requirements` - regenerate `requirements.txt` from `requirements.in`
-  (see below)
+- `make media` — regenerate every picture (see
+  [docs/media.md](docs/media.md))
+- `make requirements` — regenerate `requirements.txt` from
+  `requirements.in`
 
-`requirements.in` lists only direct dependencies (runtime + dev tooling);
-`requirements.txt` is the fully-pinned, `pip-compile`-generated lockfile
-(every transitive dependency, annotated with `# via <package>` showing why
-it's there) - install from `requirements.txt`, but edit `requirements.in`
-and run `make requirements` to change a direct dependency or its version.
-`make requirements` needs `pip-tools` (`pip install pip-tools`); it's a
-meta-tool for maintaining the lockfile, not a project dependency itself,
-so it isn't in `requirements.in`.
+`requirements.in` lists only direct dependencies; `requirements.txt` is
+the fully-pinned `pip-compile` lockfile, annotated with `# via <package>`
+showing why each transitive dependency is there. Install from the lockfile,
+but edit `requirements.in` and run `make requirements` to change anything.
+That needs `pip-tools`, which is a meta-tool for maintaining the lockfile
+rather than a project dependency, so it is not in `requirements.in`.
 
 Tests are plain `pytest`. The `slow` marker flags end-to-end work that
-costs seconds to minutes - loading the real SAM2 weights, or running the
-layout search over real contours:
+costs seconds to minutes — loading the real SAM2 weights, running the
+layout search over real contours, or taking a picture of a window:
 
 ```
 .venv/bin/python3 -m pytest              # everything

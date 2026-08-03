@@ -1,9 +1,10 @@
 # Architecture: levels, cardinality, and where the loops nest
 
-[layout.md](layout.md) designs one level of this project in detail. This
-document is the view from above: what the whole compute graph looks like,
-how many of each thing there are at each step, which parts could run in
-parallel, and how the optimization loops nest inside one another.
+[capture.md](capture.md) and [layout.md](layout.md) each design one level
+of this project in detail. This document is the view from above: what the
+whole compute graph looks like, how many of each thing there are at each
+step, which parts could run in parallel, and how the optimization loops
+nest inside one another.
 
 It exists because the interesting bugs and the interesting design
 decisions both live at the *boundaries* between levels — where one photo

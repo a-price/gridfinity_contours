@@ -11,7 +11,7 @@
 <g id="clust1" class="cluster">
 <title>cluster_capture</title>
 <path fill="transparent" stroke="#aaaaaa" d="M20,-91C20,-91 793,-91 793,-91 799,-91 805,-97 805,-103 805,-103 805,-201 805,-201 805,-207 799,-213 793,-213 793,-213 20,-213 20,-213 14,-213 8,-207 8,-201 8,-201 8,-103 8,-103 8,-97 14,-91 20,-91"/>
-<text text-anchor="middle" x="406.5" y="-199.4" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#333333">per photo &#160;— &#160;silhouette.py</text>
+<text text-anchor="middle" x="406.5" y="-199.4" font-family="Helvetica,sans-Serif" font-size="12.00" fill="#333333">per photo &#160;— &#160;silhouette_gui.py</text>
 </g>
 <g id="clust2" class="cluster">
 <title>cluster_legend</title>

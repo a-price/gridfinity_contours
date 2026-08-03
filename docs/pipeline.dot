@@ -19,7 +19,7 @@ digraph pipeline {
   // ---------------------------------------------------------------- capture
 
   subgraph cluster_capture {
-    label = "per photo  —  silhouette.py";
+    label = "per photo  —  silhouette_gui.py";
     fontsize = 12;
     style = "rounded";
     color = "#aaaaaa";

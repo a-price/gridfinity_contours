@@ -11,7 +11,7 @@ DOT_SVGS := $(DOT_FILES:.dot=.svg)
 JOBS ?= 8
 
 .PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check \
-	gifs gif-capture gif-pack gif-group gif-drawer previews
+	gifs gif-capture gif-pack gif-group gif-drawer previews screenshots solids sheet media
 
 format:
 	$(PYTHON) -m black $(PY_FILES)
@@ -76,6 +76,28 @@ docs-check:
 previews:
 	$(PYTHON) render_demo.py --out docs/media
 
+# One picture of each window, for the README. ~2 minutes, nearly all of it
+# the floorplan search - see screenshot_demo.py. Needs Qt, driven
+# offscreen, so nothing pops open on whoever ran this.
+screenshots:
+	$(PYTHON) screenshot_demo.py --out docs/media
+
+# The bin itself, rendered by OpenSCAD. ~30 seconds. The only target here
+# that needs a tool outside requirements.txt, which is why it is separate
+# from `screenshots` rather than folded into it: a machine with Qt but no
+# OpenSCAD should still be able to regenerate everything else.
+solids:
+	$(PYTHON) solid_demo.py --out docs/media
+
+# The calibration sheet, as a picture rather than as the PDF you print.
+sheet:
+	$(PYTHON) generate_aruco_sheet.py docs/media/sheet_aruco.png
+
+# Everything the README shows. Minutes, and needing Qt, OpenSCAD and a
+# cached SAM2 checkpoint between them - so this is a deliberate act rather
+# than something `check` does. See docs/media.md.
+media: gifs screenshots solids sheet previews
+
 # The README's GIFs. Phony rather than dependency-tracked on purpose: what
 # they actually depend on is the behaviour of the whole layout package, and
 # a prerequisite list broad enough to be correct would regenerate them - at
@@ -88,8 +110,8 @@ previews:
 # independent, so `make -j3 gifs` runs them at once - nothing in the layout
 # package is threaded, so that is close to a 3x saving on a spare machine.
 #
-# The same commands appear in README.md, where they document what the flags
-# mean; keep the two in step.
+# The same commands appear in docs/media.md, where they document what the
+# flags mean; keep the two in step.
 gifs: gif-capture gif-pack gif-group gif-drawer
 
 # ~10 seconds, and the only one that records a *window* rather than
@@ -99,7 +121,7 @@ gifs: gif-capture gif-pack gif-group gif-drawer
 # offscreen so nothing pops open on whoever ran this. And a SAM2
 # checkpoint already in the local Hugging Face cache: the segmenter is
 # constructed with local_files_only, so on a machine that has never run
-# silhouette.py this target fails rather than quietly downloading a
+# silhouette_gui.py this target fails rather than quietly downloading a
 # few hundred megabytes mid-build.
 gif-capture:
 	$(PYTHON) capture_demo.py --out docs/media/capture.gif

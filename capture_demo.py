@@ -4,7 +4,7 @@
 
 The counterpart to `layout_demo.py`, one stage earlier in the pipeline.
 That one animates a search; this one animates *using the tool* - the
-window in `silhouette.py`, doing the thing it exists for, with nobody at
+window in `silhouette_gui.py`, doing the thing it exists for, with nobody at
 the keyboard.
 
 **It records the real window rather than reconstructing it.** The frames
@@ -26,7 +26,7 @@ after the real one had stopped working.
 **The photograph has to carry a calibration sheet**, which is why this
 demo names one specific file. `test_data/screwdriver.jpg` has all four
 ArUco markers in frame, so the contour that comes out the far end is in
-millimetres. Run this on a photo without them and `silhouette.py` falls
+millimetres. Run this on a photo without them and `silhouette_gui.py` falls
 back to pixel space by design - the animation would still look complete
 while quietly dropping the one thing the whole window is for.
 
@@ -39,7 +39,7 @@ import argparse
 import os
 import sys
 
-# Before any Qt import, and before `silhouette` pulls one in transitively.
+# Before any Qt import, and before `silhouette_gui` pulls one in transitively.
 # Without a platform the window would need a display; with one that is not
 # `offscreen` it would pop open on the desktop of whoever ran `make gifs`.
 # `--windowed` clears it again for anyone who wants to watch it happen.
@@ -47,12 +47,12 @@ if "--windowed" not in sys.argv:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
-from PyQt5.QtGui import QImage
 from PyQt5.QtWidgets import QApplication, QCheckBox
 
 from pipeline.gif_writer import WriteGif
 from pipeline.morphology_stage import LATERAL_LABEL
-from silhouette import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
+from pipeline.window_capture import DEFAULT_PASSES, Settled
+from silhouette_gui import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
 
 # The one photograph this demo can use, and where to click on it. Both are
 # properties of that image rather than settings, so they are named here
@@ -94,27 +94,6 @@ DEFAULT_MS_PER_FRAME = 120
 PHOTO_COLORS = 128
 
 
-def Grab(window: SVGGui) -> np.ndarray:
-    """The window as it looks right now, as a BGR image.
-
-    Via `QWidget.grab()` rather than a screen capture, so it works with no
-    display at all and catches exactly the widget rather than whatever
-    happened to be in front of it.
-    """
-    image = window.grab().toImage().convertToFormat(QImage.Format.Format_RGB32)
-
-    # `bytesPerLine` rather than `width * 4`: Qt pads scanlines to a
-    # 4-byte boundary, and on an odd width the padding would shear the
-    # image progressively down the frame.
-    height, width = image.height(), image.width()
-    buffer = image.bits().asstring(height * image.bytesPerLine())  # pyright: ignore[reportOptionalMemberAccess]
-    pixels = np.frombuffer(buffer, np.uint8).reshape(height, image.bytesPerLine() // 4, 4)
-
-    # Format_RGB32 is BGRA in memory on a little-endian machine, so the
-    # first three channels are already the BGR the gif writer wants.
-    return pixels[:, :width, :3].copy()
-
-
 def _Check(window: SVGGui, label: str) -> None:
     """Tick the checkbox with that caption, as a person would.
 
@@ -148,41 +127,20 @@ class Recording:
         """
         self.frames.extend([self._Settled()] * frames)
 
-    def _Settled(self, passes: int = 5) -> np.ndarray:
-        """The window once two consecutive grabs agree.
+    def _Settled(self, passes: int = DEFAULT_PASSES) -> np.ndarray:
+        """The window once it has stopped changing - see `window_capture`.
 
-        Qt lays out and repaints lazily, and one round of event processing
-        is not always enough: a word-wrapped label needs a second
-        height-for-width pass, so the frame after loading a photo caught
-        the calibration label on one line and the frame after it showed
-        the same label on two. Nothing had changed between them - it read
-        as a flicker the tool does not actually have.
-
-        Settling on agreement rather than on a fixed number of passes,
-        since what needs how many rounds is a property of the widgets, and
-        a constant tuned against today's panel would quietly stop being
-        enough when somebody adds to it.
+        Worth a wrapper of its own rather than calling through, because
+        every frame in this animation goes through it and getting it wrong
+        put the whole recording one beat behind itself.
         """
-        previous = None
-        for _ in range(passes):
-            layout = self._window.centralWidget().layout()
-            if layout is not None:
-                layout.activate()
-            self._application.processEvents()
-
-            current = Grab(self._window)
-            if previous is not None and np.array_equal(previous, current):
-                return current
-            previous = current
-
-        assert previous is not None  # passes >= 1
-        return previous
+        return Settled(self._window, self._application, passes)
 
 
 def Record() -> "tuple[SVGGui, Recording]":
     """Drive the whole flow, returning the window and the frames taken.
 
-    The steps are the ones `silhouette.py`'s own docstring lists, in the
+    The steps are the ones `silhouette_gui.py`'s own docstring lists, in the
     order a person does them, each held long enough to read.
 
     Separate from writing the GIF so that what the flow *produced* can be
@@ -219,6 +177,11 @@ def Record() -> "tuple[SVGGui, Recording]":
     # frame showed nothing at all.
     window.interaction_mode_combo.setCurrentText(_MODE_SEGMENT)
     clicks = window.segmenter_stage.click_recorder
+
+    # The recorder only exists once a photo has been loaded, which it has
+    # by now - asserted rather than assumed so that loading silently
+    # failing shows up here instead of as an empty mask three steps later.
+    assert clicks is not None, "no click recorder; the photo did not load"
     clicks.image_points.extend([list(HANDLE), list(SHADOW)])
     clicks.image_labels.extend([1, 0])
     window.pipeline.RunFrom("display")

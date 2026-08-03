@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import QLabel
 from pipeline.click_recorder import ClickRecorder, ClickRecorderParameters
 from pipeline.morphology import Morphology
 from pipeline.segmenter import Segmenter
-from silhouette import _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL, SVGGui
+from silhouette_gui import _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL, SVGGui
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "IMG_SPOON.JPG")
 
