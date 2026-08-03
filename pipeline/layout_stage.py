@@ -108,7 +108,7 @@ class LayoutStage(Stage):
         """One line for the panel: what was packed, or why nothing was.
 
         A failure names the last thing tried rather than saying only "no
-        layout" - "every size up to 6x6 was too small" and "the search ran
+        layout" - "every size up to the cap was too small" and "the search ran
         out of attempts" call for completely different responses from the
         user, and the packer already distinguishes them.
 

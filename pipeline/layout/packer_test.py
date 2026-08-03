@@ -299,8 +299,15 @@ def test_the_three_spoons_pack_into_a_five_by_two():
     assert result.cells == 10
     assert CheckLayout(result.layout, parts) == []
 
+    # Every size below the one it packed was rejected by *proof*, not by the
+    # search running out of attempts - which is the bounds doing the real
+    # work. Stated as "all of them" rather than as a count: how many
+    # candidate sizes sit below 10 cells is a function of `max_grid`, and
+    # raising that default from 6 to 7 added a 7x1 without changing
+    # anything this test is about.
     rejected = [a for a in result.attempts if a.outcome == TOO_SMALL]
-    assert len(rejected) == 10, result.Report()
+    assert result.skipped == [], result.Report()
+    assert all(a.outcome == TOO_SMALL for a in result.attempts[:-1]), result.Report()
     assert all("does not fit" in a.detail for a in rejected)
 
 

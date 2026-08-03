@@ -59,7 +59,24 @@ class LayoutParameters:
     wall_clearance: float | None = None
     resolution: float = DEFAULT_RESOLUTION_MM
     inset: float = DEFAULT_INTERIOR_INSET_MM
-    max_grid: int = 6
+
+    # Largest bin dimension the search will try, in cells. Seven rather
+    # than six because six does not hold a real household: of the eighteen
+    # objects in `test_data/`, four need a seven-cell bin - huge_server at
+    # 260mm, serving_spoon at 274mm, server at 251mm and the knife at
+    # 243mm. The knife is the instructive one, since a six-cell interior is
+    # 246.3mm and it needs 247.0mm with its wall clearance - it misses by
+    # 0.7mm and is reported unpackable at every size.
+    #
+    # The argument against is that a seven-cell bin is 294mm long and wants
+    # a drawer to match. That argument is `admissible_grids`' to make
+    # rather than this cap's: once drawers are known,
+    # `drawer.AdmissibleFootprints` filters this down to the footprints
+    # that actually fit one, so the cap only binds when nobody has said
+    # what they own. There the two errors are not symmetric - too high
+    # costs a few extra candidate grids, which the packer's bounds reject
+    # instantly, and too low costs an object that cannot be packed at all.
+    max_grid: int = 7
     seed: int = 0
 
     # Bin footprints anything downstream will accept, or None for "any up

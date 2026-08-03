@@ -653,10 +653,15 @@ the three spoons could have shown:
   serving_spoon at 274mm, server at 251mm, and the knife at 243mm. The
   knife is the instructive one: a six-cell interior is 246.3mm and the
   knife needs 247.0mm with its wall clearance, so it misses by **0.7mm**.
-  Whether to raise the default is genuinely open, because a seven-cell bin
-  is 294mm long and wants a drawer to match — the right cap depends on the
-  drawers a person owns, which is exactly what M9 now knows and the
-  default cannot.
+  **Resolved: the default is now 7.** The argument for leaving it at 6 was
+  that a seven-cell bin is 294mm long and wants a drawer to match, so the
+  right cap depends on the drawers a person owns — but that is
+  `admissible_grids`' job, and M9 does it: once drawers are known,
+  `AdmissibleFootprints` filters the cap down to what fits one. The
+  default only binds when nobody has said what they own, and there the two
+  errors are not symmetric. Too high costs a few extra candidate grids
+  that the bounds reject instantly; too low costs an object that cannot be
+  packed at all.
 - **Grouping's local search does not scale** — see the table under M8.
 - **`test_data/contours.svg` was not a nineteenth object.** It was
   `SvgExportStage`'s default filename holding a second capture of the same

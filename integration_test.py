@@ -16,13 +16,15 @@ objects overlap, and that no two bins overlap in a drawer - statements a
 regression anywhere in the stack would break, and which hold or do not
 regardless of tuning.
 
-Two deliberate departures from the defaults, both measured rather than
-guessed:
+One deliberate departure from the defaults, measured rather than guessed:
+the solver budget is cut, and the local search is skipped on the full set
+- see the budget constants and the scaling note on the full test.
 
-* `max_grid` is 7, not the default 6. Four of these objects genuinely need
-  a seven-cell bin, and the knife misses six by 0.7mm.
-* The solver budget is cut, and the local search is skipped on the full
-  set - see the budget constants and the scaling note on the full test.
+`max_grid` used to be a second departure, pinned to 7 here against a
+default of 6. These fixtures are what raised that default, so this now
+runs at it rather than around it - which makes the test evidence that the
+shipped default holds a real household, instead of evidence only about a
+number this file chose for itself.
 """
 
 import glob
@@ -62,12 +64,6 @@ HANDFUL = [
     "test_data/camera_remote_rcv.svg",
 ]
 
-# Four of these objects need a 7-cell bin: huge_server (260mm),
-# serving_spoon (274mm), server (251mm) and knife (243mm). The knife is the
-# instructive one - a 6-cell interior is 246.3mm and it needs 247.0mm with
-# its wall clearance, so it misses by 0.7mm.
-MAX_GRID = 7
-
 # Cut well below the tuned defaults (24 restarts, 400 iterations). This
 # test is about whether the stack executes and returns something sound, and
 # a stricter budget buys tighter bins at a cost the suite cannot afford.
@@ -86,7 +82,7 @@ FLOORPLAN_ENV = "DRAWER_FLOORPLAN"
 
 
 def _params(**overrides) -> LayoutParameters:
-    base = LayoutParameters(max_grid=MAX_GRID, restarts=RESTARTS, iterations=ITERATIONS, patience=PATIENCE)
+    base = LayoutParameters(restarts=RESTARTS, iterations=ITERATIONS, patience=PATIENCE)
     return replace(base, **overrides)
 
 
@@ -151,15 +147,21 @@ def test_every_capture_loads_at_a_plausible_size():
         assert part.area > 100.0
 
 
-def test_the_defaults_cannot_hold_this_set():
-    """Recorded as a fact about the fixtures rather than left as a
-    surprise: the default six-cell cap is too small for real objects, and
-    `max_grid` has to be raised for any of this to run.
+def test_the_default_cap_is_the_one_the_longest_object_needs():
+    """Why `max_grid` defaults to 7 and not 6, kept as a fact about these
+    fixtures rather than only as a number in a comment.
+
+    Both directions, because only the pair is evidence. That a six-cell cap
+    rejects huge_server is what condemned the old default; that the current
+    default takes it is what justifies the new one. Either on its own would
+    still pass if the default drifted somewhere absurd.
     """
-    parts = LoadParts(["test_data/huge_server.svg"], _params(max_grid=6))
+    parts = LoadParts(["test_data/huge_server.svg"], _params())
 
     with pytest.raises(ValueError, match="does not fit"):
         Group(parts, _params(max_grid=6))
+
+    assert Group(parts, _params()).bins, "the shipped cap should hold the longest object in test_data/"
 
 
 # --------------------------------------------------------------- end to end
