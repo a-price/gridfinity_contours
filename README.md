@@ -51,7 +51,7 @@ Then, in order:
 **2. Photograph an object** lying on the sheet, with all four markers in
 frame.
 
-**3. Trace it.** Left-click on the object, right-click on its shadow,
+**3. Trace it.** Left-click inside the object, right-click outside the object then,
 press Export.
 
 ```
@@ -76,13 +76,6 @@ Capturing a screwdriver — photo in, real-world outline out:
 Two clicks and one checkbox are the whole input. SAM2 segments from the
 clicks, the four ArUco markers fix the scale, and what lands in the panel
 is a contour in millimetres.
-
-Neither the negative click nor the checkbox is decoration. A soft shadow
-on white paper is what SAM2 most reliably swallows, and right-clicking it
-takes 31 000 pixels off the mask. Lateral symmetry then mirrors the mask
-across the tool's long axis and takes the wider of the two sides — putting
-back the 11 900 pixels the shaded side lost, because a manufactured object
-is symmetric and the lighting is not.
 
 Four utensils looking for the smallest bin that holds them:
 
