@@ -23,6 +23,7 @@ from pipeline.layout.session import (
     SaveSession,
     Verify,
 )
+from pipeline.layout.parameters import FREE_ROTATION, QUARTER_TURNS
 from conftest import QuickParameters as _quick, Rectangle as _rectangle
 
 
@@ -320,3 +321,61 @@ def _grouping(*layouts):
     from pipeline.layout.grouping import Grouping
 
     return Grouping(list(layouts))
+
+
+# ---------------------------------------------------------- free rotation
+
+
+def test_a_free_angle_survives_the_round_trip(tmp_path):
+    """A layout packed with free rotation has to reload as the same layout.
+    An angle silently dropped on load would place every pocket square-on -
+    a drawing that still looks reasonable, describing bins that do not fit
+    the objects they were cut for.
+    """
+    contours, params = _library(), _quick(max_grid=3, rotation=FREE_ROTATION)
+    parts = BuildParts(contours, params)
+    plan = BuildPlan(parts, [Drawer(6, 6)], params)
+
+    bin_id = min(plan.layouts)
+    layout = plan.layouts[bin_id]
+    part_id, placement = next(iter(layout.placements.items()))
+    turned = replace(layout, placements={**layout.placements, part_id: replace(placement, angle=0.35)})
+    plan = replace(plan, layouts={**plan.layouts, bin_id: turned})
+
+    path = str(tmp_path / "turned.json")
+    SaveSession(path, plan, contours, params)
+
+    reloaded = LoadSession(path).grouping.bins
+    assert any(p.angle == pytest.approx(0.35) for layout in reloaded for p in layout.placements.values())
+
+
+def test_a_session_written_before_free_rotation_still_loads(tmp_path):
+    """The angle defaults rather than being required. Every placement in an
+    older session is upright by construction, which is exactly what the
+    default says - so refusing to read one would be refusing a file whose
+    meaning is unambiguous.
+    """
+    path, _, _, _ = _planned(tmp_path)
+
+    payload = json.loads(open(path).read())
+    for entry in payload["bins"]:
+        for placement in entry["placements"]:
+            del placement["angle"]
+    payload["parameters"].pop("rotation", None)
+    with open(path, "w") as handle:
+        json.dump(payload, handle)
+
+    reloaded = LoadSession(path)
+
+    assert all(p.angle == 0.0 for layout in reloaded.grouping.bins for p in layout.placements.values())
+    assert reloaded.parameters.rotation == QUARTER_TURNS
+
+
+def test_the_rotation_mode_travels_with_a_session(tmp_path):
+    """It decides which arrangements are legal, so reloading under a
+    different mode would hold placements the current settings say cannot
+    exist - and a re-pack would disagree with the drawing beside it.
+    """
+    path, _, _, _ = _planned(tmp_path, params=_quick(max_grid=3, rotation=FREE_ROTATION))
+
+    assert LoadSession(path).parameters.rotation == FREE_ROTATION

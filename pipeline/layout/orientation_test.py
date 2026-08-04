@@ -12,10 +12,10 @@ import pytest
 
 from pipeline.layout.container import BuildContainer
 from pipeline.layout.loading import BuildParts, LoadParts
-from pipeline.layout.orientation import Assignment, RankedAssignments, StackedWidth, WidthProfile
+from pipeline.layout.orientation import Assignment, RankedAssignments, StackedWidth, WidthProfile, _TurnedMask
 from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.placement import RotatedSize
-from pipeline.layout.solver import FittingOrientations
+from pipeline.layout.placement import Pose, PoseExtent, RotatedSize
+from pipeline.layout.solver import FittingPoses
 from conftest import Rectangle as _rectangle, SPOONS
 
 
@@ -45,7 +45,7 @@ def test_a_profile_spans_the_part_at_every_quarter_turn():
     part = _parts({0: _rectangle(60.0, 20.0)}, params)[0]
 
     for orientation in range(4):
-        profile = WidthProfile(part, orientation)
+        profile = WidthProfile(part, Pose(orientation))
         expected = RotatedSize(part.size, orientation)
         cell = part.resolution
 
@@ -63,8 +63,8 @@ def test_half_a_turn_reverses_a_profile_without_changing_it():
     params = LayoutParameters()
     part = _parts({0: _wedge(60.0, 4.0, 20.0)}, params)[0]
 
-    forward = WidthProfile(part, 0)
-    backward = WidthProfile(part, 2)
+    forward = WidthProfile(part, Pose(0))
+    backward = WidthProfile(part, Pose(2))
 
     assert len(forward) == len(backward)
     assert np.allclose(forward, backward[::-1], atol=1e-9)
@@ -79,7 +79,7 @@ def test_stacking_rewards_a_wide_end_against_a_narrow_one():
     part = _parts({0: _wedge(60.0, 4.0, 20.0)}, params)[0]
     columns = int(round(120.0 / params.resolution))
 
-    forward, backward = WidthProfile(part, 0), WidthProfile(part, 2)
+    forward, backward = WidthProfile(part, Pose(0)), WidthProfile(part, Pose(2))
 
     opposed = StackedWidth([forward, backward], columns)
     aligned = StackedWidth([forward, forward], columns)
@@ -94,7 +94,7 @@ def test_stacking_a_part_too_long_for_the_run_is_infinite():
     params = LayoutParameters()
     part = _parts({0: _wedge(60.0, 4.0, 20.0)}, params)[0]
 
-    assert StackedWidth([WidthProfile(part, 0)], columns=10) == np.inf
+    assert StackedWidth([WidthProfile(part, Pose(0))], columns=10) == np.inf
 
 
 @pytest.mark.slow
@@ -107,7 +107,7 @@ def test_the_spoons_get_opposed_bowls():
     params = LayoutParameters()
     parts = LoadParts(SPOONS, params)
     container = BuildContainer(5, 2, params.inset)
-    fitting = {part_id: FittingOrientations(part, container, params) for part_id, part in parts.items()}
+    fitting = {part_id: FittingPoses(part, container, params) for part_id, part in parts.items()}
 
     chosen = Assignment(parts, fitting, container, params)
 
@@ -120,7 +120,7 @@ def test_an_assignment_only_offers_orientations_that_fit():
     params = LayoutParameters()
     parts = _parts({0: _wedge(60.0, 4.0, 20.0), 1: _wedge(50.0, 4.0, 18.0)}, params)
     container = BuildContainer(3, 2, params.inset)
-    fitting = {part_id: FittingOrientations(part, container, params) for part_id, part in parts.items()}
+    fitting = {part_id: FittingPoses(part, container, params) for part_id, part in parts.items()}
 
     chosen = Assignment(parts, fitting, container, params)
 
@@ -132,7 +132,7 @@ def _ranked(count: int, limit: int = 64):
     params = LayoutParameters()
     parts = _parts({0: _wedge(60.0, 4.0, 20.0), 1: _wedge(55.0, 4.0, 18.0)}, params)
     container = BuildContainer(3, 2, params.inset)
-    fitting = {part_id: FittingOrientations(part, container, params) for part_id, part in parts.items()}
+    fitting = {part_id: FittingPoses(part, container, params) for part_id, part in parts.items()}
     return RankedAssignments(parts, fitting, container, params, count, limit), parts, fitting
 
 
@@ -189,3 +189,52 @@ def test_the_ranking_reproduces():
 def test_a_ranking_of_nothing_is_refused():
     with pytest.raises(ValueError, match="at least one assignment"):
         _ranked(count=0)
+
+
+# ---------------------------------------------------------- off-axis poses
+
+
+def test_a_diagonal_profile_describes_the_pose_it_is_ranking():
+    """The sign the warp gets wrong by default. A mirrored profile still
+    looks like a plausible profile - same length scale, same shape family -
+    and would rank every diagonal as though it were its opposite, which is
+    exactly the choice the whole heuristic exists to make.
+
+    Pinned against `PoseExtent`, which is derived from the contour rather
+    than from the mask, so the two cannot be wrong together.
+    """
+    params = LayoutParameters()
+    part = _parts({0: _wedge(60.0, 4.0, 20.0)}, params)[0]
+
+    for degrees in (30.0, 45.0, -45.0, 135.0):
+        pose = Pose(0, np.deg2rad(degrees))
+        span = len(WidthProfile(part, pose)) * part.resolution
+
+        assert span == pytest.approx(PoseExtent(part, pose)[0], abs=2.0), f"at {degrees} deg"
+
+
+def test_a_quarter_turn_profile_never_goes_near_the_warp():
+    """The 90-degree mode's profiles have to stay exactly what they were -
+    `np.rot90` resamples nothing, and every committed layout was ranked
+    with it.
+    """
+    params = LayoutParameters()
+    part = _parts({0: _wedge(60.0, 4.0, 20.0)}, params)[0]
+
+    for orientation in range(4):
+        expected = np.rot90(np.asarray(part.sdf) < 0, k=orientation)
+        assert np.array_equal(_TurnedMask(part, Pose(orientation)), expected)
+
+
+def test_a_turned_mask_keeps_the_whole_part():
+    """A mask rotated inside its own bounds loses its corners, and the
+    corners of a long thin part are its ends - the very thing a profile is
+    measuring.
+    """
+    params = LayoutParameters()
+    part = _parts({0: _wedge(60.0, 4.0, 20.0)}, params)[0]
+
+    upright = int((np.asarray(part.sdf) < 0).sum())
+    diagonal = int(_TurnedMask(part, Pose(0, np.pi / 4.0)).sum())
+
+    assert diagonal == pytest.approx(upright, rel=0.05)

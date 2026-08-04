@@ -19,6 +19,7 @@ from typing import Callable, Sequence
 
 from PyQt5.QtCore import Qt, QLibraryInfo
 from PyQt5.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QGroupBox,
     QLabel,
@@ -144,3 +145,41 @@ def CreateSpinBox(
     layout.addWidget(spin_box)
 
     return {"layout": layout, "spin_box": spin_box, "label": label}
+
+
+def CreateChoice(
+    label_text: str,
+    options: Sequence[str],
+    default: str,
+    on_change: Callable[[str], None] | None = None,
+) -> dict:
+    """A labeled combo box over a fixed set of strings, reporting the one
+    chosen.
+
+    No settling to wait for, unlike the two above. A slider passes through
+    every value on the way to the one meant and a spin box can be typed
+    into half-finished, so both hold their callback until the user is done;
+    a combo box has no intermediate state to suppress - a selection is
+    already the answer.
+
+    `default` must be one of `options`. A value that is not there would
+    otherwise select nothing, and the box would read as the first option
+    while the parameter it edits still held something else - a control
+    silently disagreeing with the thing it controls.
+    """
+    if default not in options:
+        raise ValueError(f"default {default!r} is not one of {list(options)}")
+
+    layout = QVBoxLayout()
+    label = QLabel(label_text)
+    combo = QComboBox()
+    combo.addItems(list(options))
+    combo.setCurrentIndex(list(options).index(default))
+
+    if on_change is not None:
+        combo.currentTextChanged.connect(on_change)
+
+    layout.addWidget(label)
+    layout.addWidget(combo)
+
+    return {"layout": layout, "combo": combo, "label": label}

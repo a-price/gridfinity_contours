@@ -31,11 +31,11 @@ from typing import Callable, Sequence
 import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
-from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
+from pipeline.core import CreateChoice, CreateGroupBox, CreateSpinBox, Stage
 from pipeline.layout.drawer import Assign, AssignmentResult, Drawer, FirstFit
 from pipeline.layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
 from pipeline.layout.loading import BuildParts
-from pipeline.layout.parameters import LayoutParameters
+from pipeline.layout.parameters import ROTATIONS, LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.grouping import Grouping
 from pipeline.layout.placement import Layout
@@ -514,6 +514,17 @@ class FloorplanStage(Stage):
             decimals=0,
         )
         layout.addLayout(max_grid["layout"])
+
+        def apply_rotation(value: str) -> None:
+            self.parameters.rotation = value
+
+        rotation = CreateChoice(
+            "Rotation (how freely parts may turn in a bin):",
+            ROTATIONS,
+            self.parameters.rotation,
+            apply_rotation,
+        )
+        layout.addLayout(rotation["layout"])
 
         def apply_seed(value: float) -> None:
             self.parameters.seed = int(value)

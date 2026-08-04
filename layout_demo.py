@@ -52,7 +52,7 @@ from pipeline.layout.floorplan import FloorplanPages
 from pipeline.layout.grouping import FirstFit, Group, Improve, OnePerBin, Step
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack
-from pipeline.layout.parameters import FromOverrides, LayoutParameters
+from pipeline.layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
 from pipeline.layout.render import Bordered, InRows, RenderLayout, RenderShapes, SideBySide
@@ -250,7 +250,7 @@ def ParametersFrom(args: argparse.Namespace) -> LayoutParameters:
     the same `parameters.FromOverrides` rule `layout_cli` uses, so a demo
     and a real run of the same inputs behave identically.
     """
-    return FromOverrides(max_grid=args.max_grid, seed=args.seed, restarts=args.restarts)
+    return FromOverrides(max_grid=args.max_grid, seed=args.seed, restarts=args.restarts, rotation=args.rotation)
 
 
 def ParseDrawer(text: str) -> Drawer:
@@ -313,6 +313,12 @@ def _AddSearchArguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-grid", type=int, default=None, help="largest grid dimension to try")
     parser.add_argument("--seed", type=int, default=None, help="search seed; a different one is a different attempt")
     parser.add_argument("--restarts", type=int, default=None, help="attempts per grid size before moving up")
+    parser.add_argument(
+        "--rotation",
+        choices=ROTATIONS,
+        default=None,
+        help=f"how freely parts may turn in a bin (default: {QUARTER_TURNS})",
+    )
 
 
 def _AddAnimationArguments(parser: argparse.ArgumentParser, pixels_per_mm: float) -> None:

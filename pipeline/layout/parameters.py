@@ -23,6 +23,21 @@ from pipeline.layout.container import (
 )
 from pipeline.layout.part import DEFAULT_RESOLUTION_MM
 
+# How much freedom a part has to turn inside its bin. The values are what a
+# user types at `--rotation`, so they read as angles rather than as jargon.
+#
+# QUARTER is D1 as written and the default: four exact orientations, no
+# torque anywhere in the model. EIGHTH adds the four diagonals - still a
+# discrete set, so it costs the search nothing but a longer candidate list
+# and still never interpolates a field. FREE hands the angle to the
+# relaxation as a real degree of freedom, which is the only one of the
+# three that needs a torque, an angular velocity, and a bound in
+# `packer.ProvablyTooSmall` that does not assume a finite set of angles.
+QUARTER_TURNS = "90"
+EIGHTH_TURNS = "45"
+FREE_ROTATION = "free"
+ROTATIONS = (QUARTER_TURNS, EIGHTH_TURNS, FREE_ROTATION)
+
 
 @dataclass
 class LayoutParameters:
@@ -79,6 +94,13 @@ class LayoutParameters:
     max_grid: int = 7
     seed: int = 0
 
+    # One of ROTATIONS - see the constants above for what each buys. This
+    # sits in the "what the answer must satisfy" group rather than the
+    # "how hard to look" one on purpose: it changes which arrangements are
+    # legal, not merely which ones get found, so two results computed at
+    # different settings are not comparable and a session records it.
+    rotation: str = QUARTER_TURNS
+
     # Bin footprints anything downstream will accept, or None for "any up
     # to max_grid" - in practice from `drawer.AdmissibleFootprints`, which
     # says why. A frozenset rather than a predicate so that a parameter set
@@ -106,6 +128,25 @@ class LayoutParameters:
     damping: float = 0.6
     jitter: float = 0.35
 
+    # The angular counterpart of `step_scale`, used only when `rotation` is
+    # FREE. It is the one number free rotation adds, and it starts equal to
+    # `step_scale` because `placement.PoseInertia` normalizes torque so
+    # that the two are directly comparable: at 0.6 apiece, one step turns a
+    # part far enough that its outermost point travels about as far as a
+    # translation step would move the whole part.
+    #
+    # Separate rather than shared so rotation can be slowed without
+    # slowing translation. A relaxation that spins faster than it slides
+    # tends to windmill a long part through its neighbours, and the two
+    # failures want different fixes.
+    #
+    # There is deliberately no angular `damping`, `jitter` or `max_step`.
+    # Damping is dimensionless, so it transfers unchanged; the other two
+    # are millimetres and become radians by dividing by
+    # `placement.PoseRadius` - what the part's furthest point may move,
+    # which is the reason those limits exist in the first place.
+    angular_step_scale: float = 0.6
+
     # How far past each clearance the spacing springs reach, and how long
     # the balancing pass gets.
     #
@@ -126,6 +167,27 @@ class LayoutParameters:
     # the forces reverse (see ComputeEnergy). Capping the step keeps the
     # solver inside the range where its gradient is trustworthy.
     max_step: float = 0.6
+
+    def __post_init__(self) -> None:
+        # Checked here rather than where it is read, because it is read in
+        # five modules and a typo would otherwise surface as the quietest
+        # possible failure: an unrecognized mode falling through to the
+        # quarter-turn branch everywhere, producing a perfectly good layout
+        # that simply ignored what was asked for.
+        if self.rotation not in ROTATIONS:
+            raise ValueError(f"rotation must be one of {', '.join(ROTATIONS)}, got {self.rotation!r}")
+
+    @property
+    def free_rotation(self) -> bool:
+        """Whether the angle is a degree of freedom the relaxation moves,
+        rather than one the restart loop picks from a list.
+
+        The distinction almost everything downstream actually cares about -
+        90 and 45 differ only in how long the candidate list is, while FREE
+        is the one that needs a torque and invalidates any bound that
+        assumes a finite set of angles.
+        """
+        return self.rotation == FREE_ROTATION
 
     @property
     def c_pair(self) -> float:

@@ -7,14 +7,14 @@ parts together - within a fixed bin every feasible arrangement is equally
 good, and compaction is the grid-size search's job.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
 from pipeline.layout.container import Container
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
-from pipeline.layout.placement import Placement, RotateVectors
+from pipeline.layout.placement import Placement
 
 
 @dataclass
@@ -26,6 +26,13 @@ class EnergyResult:
     `energy` is zero exactly when every clearance is satisfied, which makes
     it both the objective and the feasibility test - there is no separate
     collision pass to disagree with it.
+
+    `torques` is the angular counterpart of `forces`, in mm x force about
+    each part's own `Placement.Pivot`, and is filled in whatever the
+    rotation mode: it costs nothing to accumulate, since the per-sample
+    forces it sums over are already materialized, and computing it
+    unconditionally means the finite-difference test covers the same code
+    the free mode runs. Only a descent told to rotate reads it.
 
     The other two fields exist because the forces stop being trustworthy
     once a sample passes the other part's medial axis (see ComputeEnergy),
@@ -48,6 +55,7 @@ class EnergyResult:
 
     energy: float
     forces: dict[int, np.ndarray]
+    torques: dict[int, float] = field(default_factory=dict)
     deepest_penetration: float = 0.0
     containment: float = 0.0
 
@@ -99,6 +107,22 @@ def _PenaltyAndScale(distance: np.ndarray, clearance: float) -> tuple[np.ndarray
     return violation**2, 2.0 * violation
 
 
+def _Torque(samples: np.ndarray, sample_forces: np.ndarray, pivot: np.ndarray) -> float:
+    """The moment those per-sample forces exert about `pivot`, in mm x
+    force, positive counterclockwise.
+
+    The 2D cross product written out, for the same reason `part.py` writes
+    it out: np.cross dropped 2-vector support in NumPy 2.
+
+    This is exactly `dE/dtheta` negated for a rigid body turning about
+    `pivot`, provided the pivot does not itself move with the angle - which
+    is what `Placement.Pivot` is built to guarantee. The
+    finite-difference tests hold that to account.
+    """
+    arm = samples - pivot
+    return float((arm[:, 0] * sample_forces[:, 1] - arm[:, 1] * sample_forces[:, 0]).sum())
+
+
 def ComputeEnergy(
     parts: dict[int, Part],
     placements: dict[int, Placement],
@@ -144,16 +168,19 @@ def ComputeEnergy(
         _RequirePad(part_id, part, params)
 
     forces = {part_id: np.zeros(2) for part_id in placements}
+    torques = {part_id: 0.0 for part_id in placements}
     energy = 0.0
     deepest = 0.0
     containment = 0.0
 
     world_samples = {part_id: placement.SamplesToWorld(parts[part_id]) for part_id, placement in placements.items()}
+    pivots = {part_id: placement.Pivot(parts[part_id]) for part_id, placement in placements.items()}
 
     for part_id, samples in world_samples.items():
-        wall_energy, wall_force = _WallTerm(samples, container, params)
+        wall_energy, wall_forces = _WallTerm(samples, container, params)
         energy += wall_energy
-        forces[part_id] += wall_force
+        forces[part_id] += wall_forces.sum(axis=0)
+        torques[part_id] += _Torque(samples, wall_forces, pivots[part_id])
 
     ordered = sorted(placements)
     for index, id_a in enumerate(ordered):
@@ -163,16 +190,33 @@ def ComputeEnergy(
             # where one part swallows another without either boundary
             # landing near the other's samples.
             for source, target in ((id_a, id_b), (id_b, id_a)):
-                pair_energy, push, pair_deepest, pair_containment = _DirectedPairTerm(
+                pair_energy, sample_forces, pair_deepest, pair_containment = _DirectedPairTerm(
                     world_samples[source], parts[target], placements[target], params
                 )
                 energy += pair_energy
                 deepest = max(deepest, pair_deepest)
                 containment = max(containment, pair_containment)
+
+                push = sample_forces.sum(axis=0)
                 forces[source] += push
                 forces[target] -= push  # equal and opposite, which is also the exact gradient
 
-    return EnergyResult(energy=energy, forces=forces, deepest_penetration=deepest, containment=containment)
+                # The same forces act at the same world points on both
+                # parts, but the two pivots are elsewhere, so the moments
+                # are genuinely different numbers rather than a sign flip
+                # of each other. Equal-and-opposite holds for the force and
+                # not for the torque, which is why each is taken about the
+                # pivot it belongs to.
+                torques[source] += _Torque(world_samples[source], sample_forces, pivots[source])
+                torques[target] -= _Torque(world_samples[source], sample_forces, pivots[target])
+
+    return EnergyResult(
+        energy=energy,
+        forces=forces,
+        torques=torques,
+        deepest_penetration=deepest,
+        containment=containment,
+    )
 
 
 def PlacementEnergy(
@@ -210,10 +254,13 @@ def PlacementEnergy(
 
 def _WallTerm(samples: np.ndarray, container: Container, params: LayoutParameters) -> tuple[float, np.ndarray]:
     """One part's penalty for crowding the bin wall, and the inward force
-    it earns.
+    on each of its samples.
+
+    Per-sample rather than summed, because the caller needs both the
+    resultant and its moment and there is no summing them separately.
     """
     penalty, scale = _PenaltyAndScale(container.SampleDepth(samples), params.c_wall)
-    return float(penalty.sum()), (scale[:, None] * container.SampleDerivative(samples)).sum(axis=0)
+    return float(penalty.sum()), scale[:, None] * container.SampleDerivative(samples)
 
 
 def _DirectedPairTerm(
@@ -224,16 +271,21 @@ def _DirectedPairTerm(
 ) -> tuple[float, np.ndarray, float, float]:
     """One part's boundary samples measured against another part's field.
 
-    Returns the energy, the force on the sampled part, how deep the worst
+    Returns the energy, the force on each sampled point, how deep the worst
     sample got, and what fraction of the boundary ended up inside - the
     last being how the solver recognizes a part that has been swallowed
     rather than merely bumped into.
+
+    The forces come back per sample rather than summed for the sake of
+    torque: the resultant is the same force applied at each part's own
+    pivot, but the moments about the two pivots are different numbers and
+    both are needed. A summed force cannot produce either.
     """
     local = target.ToLocal(target_part, samples)
     distance = target_part.SampleSdf(local)
     penalty, scale = _PenaltyAndScale(distance, params.c_pair_enforced)
     if not penalty.any():
-        return 0.0, np.zeros(2), 0.0, 0.0
+        return 0.0, np.zeros((len(distance), 2)), 0.0, 0.0
 
     # Free here, since the signs are already computed. `distance.min()` is
     # only negative when something penetrates, hence the guard - without it
@@ -243,7 +295,7 @@ def _DirectedPairTerm(
     containment = float(penetrating.mean())
 
     # The field is the target's, so its derivative comes back in the
-    # target's frame and has to be rotated into the bin's.
-    direction = RotateVectors(target_part.SampleDerivative(local), target.orientation)
-    push = (scale[:, None] * direction).sum(axis=0)
-    return float(penalty.sum()), push, deepest, containment
+    # target's frame and has to make the same trip into the bin's that the
+    # target's own points made - quarter turn first, then free angle.
+    direction = target.ToBin(target_part, target_part.SampleDerivative(local))
+    return float(penalty.sum()), scale[:, None] * direction, deepest, containment

@@ -19,10 +19,10 @@ from typing import Callable, Collection
 
 from pipeline.layout.container import BuildContainer, Container, GridSizes
 from pipeline.layout.descent import Observer
-from pipeline.layout.parameters import LayoutParameters
+from pipeline.layout.parameters import QUARTER_TURNS, LayoutParameters
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
-from pipeline.layout.solver import FittingOrientations, SolveFixedGrid
+from pipeline.layout.solver import FitsAtSomeAngle, FittingPoses, SolveFixedGrid
 
 PACKED = "packed"
 TOO_SMALL = "too small"
@@ -168,11 +168,26 @@ def ProvablyTooSmall(parts: dict[int, Part], container: Container, params: Layou
     """
     for part_id in sorted(parts):
         part = parts[part_id]
-        if not FittingOrientations(part, container, params):
+        # Which question counts as proof depends on how freely parts may
+        # turn, and getting this wrong is the one way this function can
+        # cause harm. Under 90 and 45 the legal angles are a finite list, so
+        # "fits at no candidate pose" *is* "fits at no legal angle". Under
+        # FREE they are a continuum and that same check would reject bins a
+        # part fits perfectly well on the diagonal - the knife misses a
+        # six-cell bin by 0.7mm square-on and clears it at 3.9 degrees - so
+        # the proof has to come from a bound that holds at every angle.
+        if params.free_rotation:
+            fits = FitsAtSomeAngle(part, container, params)
+            detail = "at any angle"
+        else:
+            fits = bool(FittingPoses(part, container, params))
+            detail = "at any quarter turn" if params.rotation == QUARTER_TURNS else "at any eighth turn"
+
+        if not fits:
             size = part.size
             return (
                 f"part {part_id} is {size[0]:.1f}x{size[1]:.1f}mm and does not fit a "
-                f"{container.width:.1f}x{container.height:.1f}mm interior at any quarter turn"
+                f"{container.width:.1f}x{container.height:.1f}mm interior {detail}"
             )
 
     required = RequiredArea(parts, params)

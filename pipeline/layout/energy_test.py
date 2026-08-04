@@ -5,7 +5,14 @@ solver does rests on the returned forces actually being the negative
 gradient of the returned energy; if they drift apart, descent stops being
 descent and the failure shows up as a solver that mysteriously stalls
 rather than as anything obviously wrong here.
+
+That now covers torque as well, and it matters more there than for force.
+A wrong force is usually a visibly wrong direction; a wrong torque spins a
+part slowly the wrong way and looks exactly like a search that got
+unlucky.
 """
+
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -13,7 +20,13 @@ import pytest
 from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, BuildContainer, Container
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
-from pipeline.layout.parameters import LayoutParameters
+from pipeline.layout.parameters import (
+    EIGHTH_TURNS,
+    FREE_ROTATION,
+    QUARTER_TURNS,
+    ROTATIONS,
+    LayoutParameters,
+)
 from pipeline.layout.part import BuildPart
 from pipeline.layout.placement import Placement
 from pipeline.layout.verify import MinimumSeparation, PolygonsOverlap
@@ -39,6 +52,12 @@ def _roomy_container() -> Container:
 def _numeric_forces(parts, placements, container, params, step=1e-5):
     """Central-difference gradient of ComputeEnergy with respect to every
     part's position, negated to give a force.
+
+    `replace` rather than a fresh Placement, so that everything about the
+    placement other than the coordinate under test - the free angle above
+    all - is carried through untouched. Rebuilding it by hand is how a
+    differencing helper silently stops testing the case it was extended
+    for.
     """
     forces = {}
     for part_id in placements:
@@ -49,9 +68,7 @@ def _numeric_forces(parts, placements, container, params, step=1e-5):
 
             def moved(delta):
                 shifted = dict(placements)
-                shifted[part_id] = Placement(
-                    part_id, placements[part_id].position + delta, placements[part_id].orientation
-                )
+                shifted[part_id] = replace(placements[part_id], position=placements[part_id].position + delta)
                 return ComputeEnergy(parts, shifted, container, params).energy
 
             gradient[axis] = (moved(offset) - moved(-offset)) / (2 * step)
@@ -59,7 +76,62 @@ def _numeric_forces(parts, placements, container, params, step=1e-5):
     return forces
 
 
+def _numeric_torques(parts, placements, container, params, step=1e-6):
+    """Central-difference gradient of ComputeEnergy with respect to every
+    part's free angle, negated to give a torque.
+
+    The step is in radians and is small for a reason: what matters is how
+    far it moves the *outermost* sample, since that is where the field is
+    being resampled. A hundred-millimetre lever turns 1e-6 rad into a
+    tenth of a micron, comfortably inside one raster cell, which is the
+    regime the bilinear interpolant is smooth in.
+    """
+    torques = {}
+    for part_id in placements:
+
+        def turned(delta):
+            shifted = dict(placements)
+            shifted[part_id] = replace(placements[part_id], angle=placements[part_id].angle + delta)
+            return ComputeEnergy(parts, shifted, container, params).energy
+
+        torques[part_id] = -(turned(step) - turned(-step)) / (2 * step)
+    return torques
+
+
 # ------------------------------------------------------------- parameters
+
+
+def test_the_rotation_mode_is_checked_when_it_is_set():
+    """Rejected at construction rather than where it is read. An
+    unrecognized mode would otherwise fall through to the quarter-turn
+    branch in all five modules that read it and produce a perfectly good
+    layout that simply ignored what was asked for - the quietest failure
+    available.
+    """
+    for rotation in ROTATIONS:
+        assert LayoutParameters(rotation=rotation).rotation == rotation
+
+    with pytest.raises(ValueError, match="rotation must be one of"):
+        LayoutParameters(rotation="45deg")
+
+
+def test_only_the_free_mode_counts_as_free():
+    """The distinction almost everything downstream keys on: 90 and 45
+    differ only in how long the candidate list is, while FREE is the one
+    that needs a torque and invalidates any bound assuming finitely many
+    angles.
+    """
+    assert not LayoutParameters(rotation=QUARTER_TURNS).free_rotation
+    assert not LayoutParameters(rotation=EIGHTH_TURNS).free_rotation
+    assert LayoutParameters(rotation=FREE_ROTATION).free_rotation
+
+
+def test_quarter_turns_stay_the_default():
+    """Free rotation is an experiment. Until it earns the default, every
+    caller that says nothing gets the mode every committed layout was
+    packed with.
+    """
+    assert LayoutParameters().rotation == QUARTER_TURNS
 
 
 def test_clearances_derive_from_the_pocket_offset():
@@ -461,6 +533,131 @@ def test_forces_match_finite_differences_at_every_orientation(orientation):
     assert result.energy > 0, "these placements should overlap"
     for part_id, force in result.forces.items():
         assert force == pytest.approx(numeric[part_id], abs=1e-3, rel=1e-3), f"part {part_id}"
+
+
+# ------------------------------------------------------------------ torque
+
+
+def test_torques_match_finite_differences_for_colliding_parts():
+    """The gradient criterion for rotation, on the pair term. This is what
+    makes the free mode a descent rather than a random walk that happens to
+    keep a running best.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    container = _roomy_container()
+    parts = BuildParts({0: _rectangle(20, 8), 1: _rectangle(16, 6)}, params)
+    placements = {
+        0: Placement(0, np.array([30.0, 40.0])),
+        1: Placement(1, np.array([38.0, 44.0])),
+    }
+
+    result = ComputeEnergy(parts, placements, container, params)
+    numeric = _numeric_torques(parts, placements, container, params)
+
+    assert result.energy > 0, "these placements should overlap"
+    for part_id, torque in result.torques.items():
+        assert torque == pytest.approx(numeric[part_id], abs=1e-2, rel=1e-3), f"part {part_id}"
+
+
+def test_torques_match_finite_differences_against_the_wall():
+    """A part straddling a wall has to be turned back in as well as pushed.
+    The wall term is analytic where the pair term is rasterized, so this
+    isolates the lever arm from any field error.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    container = BuildContainer(2, 2)
+    parts = BuildParts({0: _rectangle(20, 10)}, params)
+    placements = {0: Placement(0, np.array([-2.0, 15.0]), angle=0.3)}
+
+    result = ComputeEnergy(parts, placements, container, params)
+    numeric = _numeric_torques(parts, placements, container, params)
+
+    assert result.torques[0] == pytest.approx(numeric[0], abs=1e-2, rel=1e-3)
+
+
+@pytest.mark.parametrize("angle", [0.0, 0.4, -0.7, np.pi / 4])
+def test_torques_match_finite_differences_at_a_free_angle(angle):
+    """The case the split transform exists for. A free angle sends every
+    sample through `SpinPoints` on the way out and every field gradient
+    through `SpinVectors` on the way back, and a torque taken about a pivot
+    that moved with the angle would still look plausible - it would simply
+    be the derivative of a different function than the energy reported
+    beside it.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    container = _roomy_container()
+    parts = BuildParts({0: _rectangle(20, 8), 1: _rectangle(16, 6)}, params)
+    placements = {
+        0: Placement(0, np.array([30.0, 40.0]), orientation=1, angle=angle),
+        1: Placement(1, np.array([38.0, 44.0]), orientation=2, angle=-angle / 2.0),
+    }
+
+    result = ComputeEnergy(parts, placements, container, params)
+    numeric = _numeric_torques(parts, placements, container, params)
+
+    assert result.energy > 0, "these placements should overlap"
+    for part_id, torque in result.torques.items():
+        assert torque == pytest.approx(numeric[part_id], abs=1e-2, rel=1e-3), f"part {part_id}"
+
+
+def test_forces_match_finite_differences_at_a_free_angle():
+    """The companion to the torque test above: turning a part must not
+    disturb the force, which it would if the spin were applied to positions
+    but not to the field gradients coming back.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    container = _roomy_container()
+    parts = BuildParts({0: _rectangle(20, 8), 1: _rectangle(16, 6)}, params)
+    placements = {
+        0: Placement(0, np.array([30.0, 40.0]), angle=0.5),
+        1: Placement(1, np.array([38.0, 44.0]), angle=-0.2),
+    }
+
+    result = ComputeEnergy(parts, placements, container, params)
+    numeric = _numeric_forces(parts, placements, container, params)
+
+    assert result.energy > 0, "these placements should overlap"
+    for part_id, force in result.forces.items():
+        assert force == pytest.approx(numeric[part_id], abs=1e-3, rel=1e-3), f"part {part_id}"
+
+
+def test_pair_torques_are_not_equal_and_opposite():
+    """Deliberately unlike the forces, and worth pinning down because
+    "equal and opposite" is the reflex.
+
+    The same forces act at the same world points on both parts, but each
+    part's moment is taken about its *own* pivot, and those are in
+    different places - so the two torques are independent numbers. Coding
+    the reflex instead would conserve angular momentum about nothing in
+    particular and quietly stop being the gradient.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    container = _roomy_container()
+    parts = BuildParts({0: _rectangle(30, 6), 1: _rectangle(30, 6)}, params)
+    placements = {
+        0: Placement(0, np.array([20.0, 40.0])),
+        1: Placement(1, np.array([48.0, 43.0])),
+    }
+
+    result = ComputeEnergy(parts, placements, container, params)
+
+    assert result.energy > 0, "these placements should overlap"
+    assert result.torques[0] != pytest.approx(-result.torques[1], rel=1e-6)
+
+
+def test_a_torque_is_reported_even_with_rotation_switched_off():
+    """`torques` is filled whatever the mode. The per-sample forces it sums
+    are already materialized, so it is free, and computing it on the
+    default path is what keeps the finite-difference tests above covering
+    the same code the free mode runs.
+    """
+    params = LayoutParameters(pocket_offset=1.0)
+    parts, placements = _square_pair(0.8, params)
+
+    result = ComputeEnergy(parts, placements, _roomy_container(), params)
+
+    assert params.rotation == "90"
+    assert set(result.torques) == set(placements)
 
 
 def test_forces_match_finite_differences_with_several_parts_interacting():

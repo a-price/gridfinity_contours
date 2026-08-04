@@ -65,7 +65,7 @@ from pipeline.layout.descent import Descent, Reporter
 from pipeline.layout.energy import ComputeEnergy
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
-from pipeline.layout.placement import Placement, RotatedSize
+from pipeline.layout.placement import Placement
 
 
 def SpringParameters(params: LayoutParameters) -> LayoutParameters:
@@ -220,11 +220,7 @@ def _Boxes(
     placements: dict[int, Placement],
 ) -> dict[int, tuple[np.ndarray, np.ndarray]]:
     """Each placed part's axis-aligned box, as (minimum, maximum) corners."""
-    boxes = {}
-    for part_id, placement in placements.items():
-        low = np.asarray(placement.position, dtype=np.float64)
-        boxes[part_id] = (low, low + RotatedSize(parts[part_id].size, placement.orientation))
-    return boxes
+    return {part_id: placement.Bounds(parts[part_id]) for part_id, placement in placements.items()}
 
 
 def _Limits(container: Container, params: LayoutParameters) -> tuple[np.ndarray, np.ndarray]:
@@ -330,13 +326,15 @@ def _Scaled(
 ) -> dict[int, Placement]:
     """The arrangement with every part's center scaled away from `center`.
 
-    The part keeps its size, so its corner moves by exactly what its center
-    moved.
+    The part keeps its size and its pose, so its anchor moves by exactly
+    what its center moved - which is why this can shift `position` directly
+    without re-deriving anything about how the part is turned.
     """
     moved = {}
     for part_id, placement in placements.items():
         position = np.asarray(placement.position, dtype=np.float64)
-        middle = position + RotatedSize(parts[part_id].size, placement.orientation) / 2.0
+        low, high = placement.Bounds(parts[part_id])
+        middle = (low + high) / 2.0
         moved[part_id] = replace(placement, position=position + (middle - center) * (scale - 1.0))
     return moved
 

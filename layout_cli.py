@@ -20,7 +20,7 @@ from typing import Callable, Iterator, Sequence, TextIO
 from pipeline.contour_io import SaveContours
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack, Progress
-from pipeline.layout.parameters import FromOverrides, LayoutParameters
+from pipeline.layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters
 from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
 from pipeline.layout.solid import DEFAULT_HEIGHT_UNITS, WriteScad
 
@@ -104,6 +104,12 @@ def BuildParser() -> argparse.ArgumentParser:
         help="how much larger than its object each pocket is cut; sets both clearances",
     )
     parser.add_argument("--resolution", type=float, default=None, metavar="MM", help="distance field resolution")
+    parser.add_argument(
+        "--rotation",
+        choices=ROTATIONS,
+        default=None,
+        help=f"how freely parts may turn in a bin (default: {QUARTER_TURNS})",
+    )
     parser.add_argument("--quiet", action="store_true", help="suppress the live progress line")
     parser.add_argument(
         "--height",
@@ -134,6 +140,7 @@ def ParametersFrom(args: argparse.Namespace) -> LayoutParameters:
         restarts=args.restarts,
         pocket_offset=args.pocket_offset,
         resolution=args.resolution,
+        rotation=args.rotation,
     )
 
 

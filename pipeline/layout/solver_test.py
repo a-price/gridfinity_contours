@@ -13,6 +13,8 @@ quick; the cases are chosen to be comfortably solvable at that budget.
 
 import itertools
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -20,14 +22,16 @@ from pipeline.layout.container import BuildContainer, InteriorSpan
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.loading import BuildParts, LoadParts
 from pipeline.layout.packer import Pack
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.placement import Placement
+from pipeline.layout.parameters import EIGHTH_TURNS, FREE_ROTATION, QUARTER_TURNS, LayoutParameters
+from pipeline.layout.placement import Placement, Pose
 from pipeline.layout.solver import (
-    FittingOrientations,
-    _ContactPositions,
+    CandidatePoses,
+    FitsAtSomeAngle,
+    FittingPoses,
+    _ContactCorners,
     Relax,
     SolveFixedGrid,
-    _ChooseOrientations,
+    _ChoosePoses,
     _ConstructiveInit,
 )
 from pipeline.layout.verify import CheckLayout, PolygonsOverlap
@@ -50,7 +54,7 @@ def test_fitting_orientations_accepts_all_four_when_a_part_fits_either_way():
     params = _quick()
     (part,) = BuildParts({0: _rectangle(20, 20)}, params).values()
 
-    assert FittingOrientations(part, BuildContainer(2, 2, params.inset), params) == [0, 1, 2, 3]
+    assert FittingPoses(part, BuildContainer(2, 2, params.inset), params) == [Pose(0), Pose(1), Pose(2), Pose(3)]
 
 
 def test_fitting_orientations_rejects_turning_a_long_part_across_a_narrow_bin():
@@ -61,14 +65,14 @@ def test_fitting_orientations_rejects_turning_a_long_part_across_a_narrow_bin():
     params = _quick()
     (part,) = BuildParts({0: _rectangle(100, 20)}, params).values()
 
-    assert FittingOrientations(part, BuildContainer(3, 1, params.inset), params) == [0, 2]
+    assert FittingPoses(part, BuildContainer(3, 1, params.inset), params) == [Pose(0), Pose(2)]
 
 
 def test_fitting_orientations_is_empty_when_a_part_cannot_fit_at_all():
     params = _quick()
     (part,) = BuildParts({0: _rectangle(100, 100)}, params).values()
 
-    assert FittingOrientations(part, BuildContainer(1, 1, params.inset), params) == []
+    assert FittingPoses(part, BuildContainer(1, 1, params.inset), params) == []
 
 
 def test_attempts_walk_the_ranking_best_first():
@@ -77,9 +81,9 @@ def test_attempts_walk_the_ranking_best_first():
     A bad orientation is not a slow attempt but a doomed one, since nothing
     in the relaxation can turn a part - so the ranking is spent in order.
     """
-    ranked = [{0: 0, 1: 2}, {0: 2, 1: 0}, {0: 0, 1: 0}]
+    ranked = [{0: Pose(0), 1: Pose(2)}, {0: Pose(2), 1: Pose(0)}, {0: Pose(0), 1: Pose(0)}]
 
-    assert [_ChooseOrientations(ranked, attempt) for attempt in range(3)] == ranked
+    assert [_ChoosePoses(ranked, attempt) for attempt in range(3)] == ranked
 
 
 def test_attempts_past_the_ranking_cycle_rather_than_stop():
@@ -88,9 +92,9 @@ def test_attempts_past_the_ranking_cycle_rather_than_stop():
     positions each attempt, so the same orientations get a genuinely
     different starting arrangement.
     """
-    ranked = [{0: 0}, {0: 2}]
+    ranked = [{0: Pose(0)}, {0: Pose(2)}]
 
-    assert [_ChooseOrientations(ranked, attempt) for attempt in range(2, 6)] == ranked * 2
+    assert [_ChoosePoses(ranked, attempt) for attempt in range(2, 6)] == ranked * 2
 
 
 # ---------------------------------------------------- constructive startup
@@ -107,7 +111,7 @@ def test_constructive_init_places_parts_without_overlapping():
 
     for attempt in range(8):
         rng = np.random.default_rng([0, attempt])
-        placements = _ConstructiveInit(parts, {i: 0 for i in parts}, container, params, rng, attempt)
+        placements = _ConstructiveInit(parts, {i: Pose(0) for i in parts}, container, params, rng, attempt)
 
         placed = [placements[i].ToWorld(parts[i]) for i in sorted(parts)]
         for i in range(len(placed)):
@@ -129,7 +133,7 @@ def test_constructive_init_solves_a_dense_bin_outright():
     parts = BuildParts({i: _rectangle(50, 30) for i in range(4)}, params)
     container = BuildContainer(3, 2, params.inset)
 
-    placements = _ConstructiveInit(parts, {i: 0 for i in parts}, container, params, np.random.default_rng(0), 0)
+    placements = _ConstructiveInit(parts, {i: Pose(0) for i in parts}, container, params, np.random.default_rng(0), 0)
 
     assert ComputeEnergy(parts, placements, container, params).feasible
 
@@ -149,7 +153,7 @@ def test_contact_positions_clear_the_rasters_own_error():
     container = BuildContainer(3, 2, params.inset)
     placed = {0: Placement(0, np.array([params.c_wall, params.c_wall]))}
 
-    positions = _ContactPositions(np.array([50.0, 30.0]), container, parts, placed, params)
+    positions = _ContactCorners(np.array([50.0, 30.0]), container, parts, placed, params)
 
     beside = [p for p in positions if p[0] > 50.0]
     assert beside, "expected a contact position alongside the placed part"
@@ -167,7 +171,7 @@ def test_constructive_init_still_returns_placements_when_nothing_fits():
     parts = BuildParts({i: _rectangle(30, 30) for i in range(6)}, params)
     container = BuildContainer(1, 1, params.inset)
 
-    placements = _ConstructiveInit(parts, {i: 0 for i in parts}, container, params, np.random.default_rng(0), 0)
+    placements = _ConstructiveInit(parts, {i: Pose(0) for i in parts}, container, params, np.random.default_rng(0), 0)
 
     assert set(placements) == set(parts)
 
@@ -180,7 +184,7 @@ def test_constructive_init_places_the_largest_part_first():
     parts = BuildParts({0: _rectangle(10, 10), 1: _rectangle(90, 25), 2: _rectangle(30, 20)}, params)
     container = BuildContainer(3, 1, params.inset)
 
-    placements = _ConstructiveInit(parts, {i: 0 for i in parts}, container, params, np.random.default_rng(0), 0)
+    placements = _ConstructiveInit(parts, {i: Pose(0) for i in parts}, container, params, np.random.default_rng(0), 0)
 
     # The largest had free rein, so it landed somewhere legal on its own.
     big = placements[1].ToWorld(parts[1])
@@ -449,3 +453,92 @@ def test_the_answer_does_not_depend_on_the_order_the_files_were_listed():
         grids.add(result.layout.grid)
 
     assert grids == {(5, 2)}, f"file order changed the answer: {sorted(grids)}"
+
+
+# ------------------------------------------------------------- rotation modes
+
+
+def test_the_candidate_poses_are_four_at_ninety_and_eight_otherwise():
+    """FREE gets the eight of the 45-degree mode rather than the four of
+    90. The relaxation can turn a part, but only downhill, and it will not
+    cross the 45 degrees between quarter turns when everything between is
+    worse - so seeding on the diagonals puts a start within 22.5 degrees of
+    any angle the search might want.
+    """
+    assert len(CandidatePoses(_quick(rotation=QUARTER_TURNS))) == 4
+    assert len(CandidatePoses(_quick(rotation=EIGHTH_TURNS))) == 8
+    assert len(CandidatePoses(_quick(rotation=FREE_ROTATION))) == 8
+
+
+def test_every_candidate_pose_is_a_distinct_angle():
+    poses = CandidatePoses(_quick(rotation=EIGHTH_TURNS))
+
+    turns = sorted(round(np.rad2deg(pose.total) % 360.0, 6) for pose in poses)
+    assert turns == [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0]
+
+
+def test_a_diagonal_pose_fits_a_bin_no_quarter_turn_does():
+    """The mechanism the whole experiment is about, on a shape whose
+    numbers are obvious. A 1x1 interior is 36.3mm and leaves 32.4mm once
+    both wall clearances are taken, so a 40mm bar does not fit square-on -
+    but that square's diagonal is 45.8mm, and the bar crosses it with room
+    to spare.
+    """
+    params = _quick()
+    (part,) = BuildParts({0: _rectangle(40, 4)}, params).values()
+    container = BuildContainer(1, 1, params.inset)
+
+    assert FittingPoses(part, container, replace(params, rotation=QUARTER_TURNS)) == []
+    assert FittingPoses(part, container, replace(params, rotation=EIGHTH_TURNS)) != []
+
+
+def test_fitting_poses_at_ninety_are_exactly_what_they_always_were():
+    """Adding poses must not change the 90-degree answer, since every
+    committed layout was packed with it.
+    """
+    params = _quick()
+    (part,) = BuildParts({0: _rectangle(100, 20)}, params).values()
+
+    assert FittingPoses(part, BuildContainer(3, 1, params.inset), params) == [Pose(0), Pose(2)]
+
+
+# --------------------------------------------------- the bound under free rotation
+
+
+def test_a_part_far_too_long_is_still_proven_not_to_fit():
+    """The bound has to stay strong as well as sound. A 243mm knife is
+    23mm wide, so a minimum-width test alone would say a 1x1 bin might work
+    and the search would spend its whole budget finding out otherwise - the
+    diameter against the diagonal is what actually rejects it.
+    """
+    params = _quick(rotation=FREE_ROTATION)
+    (part,) = BuildParts({0: _rectangle(243, 23)}, params).values()
+
+    assert not FitsAtSomeAngle(part, BuildContainer(1, 1, params.inset), params)
+
+
+def test_the_bound_does_not_reject_a_bin_a_diagonal_fits():
+    """The error this bound must never make. A bar too long for the bin
+    square-on still fits across its diagonal, and rejecting that would be a
+    proof of something false.
+    """
+    params = _quick(rotation=FREE_ROTATION)
+    (part,) = BuildParts({0: _rectangle(40, 4)}, params).values()
+    container = BuildContainer(1, 1, params.inset)
+
+    assert FitsAtSomeAngle(part, container, params)
+    assert not FittingPoses(part, container, replace(params, rotation=QUARTER_TURNS))
+
+
+def test_a_part_that_fits_squarely_obviously_passes_the_bound():
+    params = _quick(rotation=FREE_ROTATION)
+    (part,) = BuildParts({0: _rectangle(20, 20)}, params).values()
+
+    assert FitsAtSomeAngle(part, BuildContainer(2, 2, params.inset), params)
+
+
+def test_a_bin_with_no_room_left_after_clearance_fits_nothing():
+    params = _quick(rotation=FREE_ROTATION, wall_clearance=40.0)
+    (part,) = BuildParts({0: _rectangle(5, 5)}, params).values()
+
+    assert not FitsAtSomeAngle(part, BuildContainer(1, 1, params.inset), params)

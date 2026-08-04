@@ -22,88 +22,171 @@ the sheet printed alongside it.
 
 from typing import Callable
 
+import cv2
 import numpy as np
 
 from pipeline.layout.container import BuildContainer, Container
 from pipeline.layout.descent import RELAXING, SPREADING, Descent, Observer, Reporter, Reporting
 from pipeline.layout.energy import ComputeEnergy, PlacementEnergy
 from pipeline.layout.orientation import RankedAssignments
-from pipeline.layout.parameters import LayoutParameters
+from pipeline.layout.parameters import QUARTER_TURNS, LayoutParameters
 from pipeline.layout.part import CanonicalOrder, Part
-from pipeline.layout.placement import Layout, Placement, RotatedSize
+from pipeline.layout.placement import QUARTER_TURN, Layout, Placement, Pose, PoseBounds, PoseExtent
 from pipeline.layout.spacing import Distribute, Spread
 from pipeline.layout.verify import CheckLayout
 
+# Guards the division that turns a hull edge into a unit normal. It is a
+# division guard and not an approximation: an edge of zero length has no
+# direction to contribute, so skipping it removes no caliper orientation
+# from the sweep. That distinction matters because dropping a real
+# direction could only *raise* the minimum width `FitsAtSomeAngle` reports,
+# and a raised width is what makes it reject - the one error it must not
+# make.
+_DEGENERATE_EDGE_MM = 1e-9
 
-def FittingOrientations(part: Part, container: Container, params: LayoutParameters) -> list[int]:
-    """The quarter turns at which a part's bounding box still fits inside
-    the bin, wall clearance included.
+
+def CandidatePoses(params: LayoutParameters) -> list[Pose]:
+    """Every pose an attempt may start a part at, before any bin is
+    considered.
+
+    Four at 90 degrees, eight at 45. FREE gets the same eight as 45 rather
+    than the four of 90: the relaxation can turn a part from wherever it
+    starts, but only by descending a gradient, and a gradient will not
+    carry a part across the 45 degrees between one quarter turn and the
+    next when everything in between is worse. Seeding on the diagonals as
+    well costs nothing and puts a starting point within 22.5 degrees of any
+    angle the search might want.
+    """
+    quarters = [Pose(orientation) for orientation in range(4)]
+    if params.rotation == QUARTER_TURNS:
+        return quarters
+    return quarters + [Pose(orientation, QUARTER_TURN / 2.0) for orientation in range(4)]
+
+
+def FittingPoses(part: Part, container: Container, params: LayoutParameters) -> list[Pose]:
+    """The poses at which a part's bounding box still fits inside the bin,
+    wall clearance included.
 
     Worth filtering up front rather than letting the relaxation discover
     it: a 200mm spoon turned across a 78mm bin cannot be packed at any
-    position, so an attempt that picks that orientation is doomed before
-    its first iteration. Orientations 0 and 2 share a bounding box, as do 1
-    and 3, so this usually returns four or two, and returns none exactly
-    when the part cannot fit this bin in any orientation.
+    position, so an attempt that picks that pose is doomed before its first
+    iteration. Poses 0 and 2 share a bounding box, as do 1 and 3, so at 90
+    degrees this usually returns four or two.
+
+    Returns none exactly when the part fits this bin at no *candidate*
+    pose. At 90 and 45 that is the same as fitting at no legal angle, and
+    `packer.ProvablyTooSmall` may read it as proof. Under FREE it is not -
+    the legal angles are a continuum and this samples eight of them - which
+    is why that bound asks `FitsAtSomeAngle` instead.
     """
-    fitting = []
-    for orientation in range(4):
-        size = RotatedSize(part.size, orientation)
-        if size[0] + 2 * params.c_wall <= container.width and size[1] + 2 * params.c_wall <= container.height:
-            fitting.append(orientation)
-    return fitting
+    room = np.array([container.width, container.height]) - 2 * params.c_wall
+    return [pose for pose in CandidatePoses(params) if (PoseExtent(part, pose) <= room).all()]
 
 
-def _ChooseOrientations(ranked: list[dict[int, int]], attempt: int) -> dict[int, int]:
-    """The orientation assignment this attempt should start from.
+def FitsAtSomeAngle(part: Part, container: Container, params: LayoutParameters) -> bool:
+    """Whether the part could fit this bin at *any* angle, not merely at a
+    candidate one.
 
-    Orientation is discrete, so the relaxation cannot explore it - no
-    torque acts on a part that can only sit at four angles. The restart
-    loop is the only thing that ever varies it, so a bad choice is not a
-    slow attempt but a doomed one, and choosing well is worth doing before
-    the search rather than by drawing until something works.
+    Two necessary conditions, both one-sided, so a False here is a fact
+    about the geometry and never about the search. A True means only "keep
+    looking".
+
+    * Every point of a placed part lies within the interior shrunk by the
+      wall clearance, so the part's diameter cannot exceed that rectangle's
+      diagonal. This is the one that does the work - it is what rejects a
+      243mm knife from a 1x1 bin, where the width test below happily says
+      a 23mm-wide blade might fit.
+    * The part sits between two parallel lines that rectangle's short side
+      apart, so its minimum width over all directions cannot exceed it.
+
+    Exact rather than sampled. A sweep over angles would be simpler and
+    would be unsound in the one direction that matters: miss the narrow
+    window where a part fits and the bound rejects a bin that genuinely
+    works, which is precisely the error `ProvablyTooSmall` must never make.
+    """
+    room = np.array([container.width, container.height]) - 2 * params.c_wall
+    if (room <= 0).any():
+        return False
+
+    hull = cv2.convexHull(np.asarray(part.contour, dtype=np.float32)).reshape(-1, 2).astype(np.float64)
+    if len(hull) < 2:
+        return True
+
+    spans = np.linalg.norm(hull[:, None, :] - hull[None, :, :], axis=-1)
+    if float(spans.max()) > float(np.hypot(room[0], room[1])):
+        return False
+
+    # Minimum width over directions, by rotating calipers: the narrowest
+    # pair of parallel supporting lines always has one of them flush
+    # against a hull edge, so checking every edge is exhaustive.
+    edges = np.roll(hull, -1, axis=0) - hull
+    lengths = np.linalg.norm(edges, axis=1)
+    usable = lengths > _DEGENERATE_EDGE_MM
+    if not usable.any():
+        return True
+
+    normals = np.stack([-edges[usable, 1], edges[usable, 0]], axis=-1) / lengths[usable, None]
+    projected = hull @ normals.T
+    return float(np.ptp(projected, axis=0).min()) <= float(room.min())
+
+
+def _ChoosePoses(ranked: list[dict[int, Pose]], attempt: int) -> dict[int, Pose]:
+    """The pose assignment this attempt should start from.
+
+    The quarter turn is discrete in every mode, so the relaxation can never
+    explore it - no torque acts on a variable with four values. The restart
+    loop is the only thing that varies it, so a bad choice is not a slow
+    attempt but a doomed one, and choosing well is worth doing before the
+    search rather than by drawing until something works. Under FREE the
+    free angle *is* explorable, but only downhill, so this still decides
+    which basin each attempt starts in.
 
     `ranked` is sorted best-first by `orientation.RankedAssignments`, so
     attempts walk it in order. Cycling once it runs out is not a repeat:
     `_ConstructiveInit` sweeps from a different corner and draws different
-    positions on every attempt, so the same orientations get genuinely
-    different starting arrangements.
+    positions on every attempt, so the same poses get genuinely different
+    starting arrangements.
     """
     return ranked[attempt % len(ranked)]
 
 
 def _PositionRange(
     part: Part,
-    orientation: int,
+    pose: Pose,
     container: Container,
     params: LayoutParameters,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Corner positions that keep a part's bounding box inside the bin with
     wall clearance to spare. The upper bound falls below the lower one for
     a part too big for this bin, which the caller handles.
+
+    Stated in the anchor `Placement.position` uses, which off axis is not
+    the part's corner - hence going through `PoseBounds` rather than
+    `RotatedSize`. A spun part reaches outside its quarter-turned box on
+    one axis and falls short on the other, so assuming the box here would
+    both push parts through the wall and refuse room that was free.
     """
-    size = RotatedSize(part.size, orientation)
-    low = np.array([params.c_wall, params.c_wall])
-    high = np.array([container.width, container.height]) - size - params.c_wall
+    reach_low, reach_high = PoseBounds(part, pose)
+    low = params.c_wall - reach_low
+    high = np.array([container.width, container.height]) - params.c_wall - reach_high
     return low, high
 
 
-def _Bounds(part: Part, placement: Placement) -> tuple[np.ndarray, np.ndarray]:
-    """A placed part's axis-aligned bounding box. Exact, because rotation
-    keeps a part's box anchored at its own origin.
-    """
-    return placement.position, placement.position + RotatedSize(part.size, placement.orientation)
-
-
-def _ContactPositions(
-    size: np.ndarray,
+def _ContactCorners(
+    extent: np.ndarray,
     container: Container,
     parts: dict[int, Part],
     placements: dict[int, Placement],
     params: LayoutParameters,
 ) -> list[np.ndarray]:
-    """Positions where the part would sit flush against a wall or against
-    an already-placed part, on each axis independently.
+    """Bounding-box corners at which the part would sit flush against a
+    wall or against an already-placed part, on each axis independently.
+
+    Corners of the part's *footprint*, not `Placement.position` values -
+    the two coincide only for an upright pose, and the caller converts.
+    Working in footprint space is what lets the same contact reasoning
+    serve a spun part: what abuts a neighbour is where the shape actually
+    reaches, which off axis is nowhere near the quarter-turned box.
 
     This is what makes bottom-left-fill work on a crowded bin. Sampling
     positions uniformly at random cannot: once parts fill most of the
@@ -113,7 +196,7 @@ def _ContactPositions(
     the candidate budget raised sixteen-fold. Snapping to contacts searches
     where solutions actually are, and there are only `O(n^2)` of them.
     """
-    high = np.array([container.width, container.height]) - size - params.c_wall
+    high = np.array([container.width, container.height]) - extent - params.c_wall
     if (high < params.c_wall).any():
         return []
 
@@ -131,10 +214,10 @@ def _ContactPositions(
 
     axes: list[list[float]] = [[params.c_wall + margin], [params.c_wall + margin]]
     for other_id, placement in placements.items():
-        low_edge, high_edge = _Bounds(parts[other_id], placement)
+        low_edge, high_edge = placement.Bounds(parts[other_id])
         for axis in range(2):
             axes[axis].append(high_edge[axis] + params.c_pair_enforced + margin)  # just past it
-            axes[axis].append(low_edge[axis] - size[axis] - params.c_pair_enforced - margin)  # just before it
+            axes[axis].append(low_edge[axis] - extent[axis] - params.c_pair_enforced - margin)  # just before it
 
     # Clamp into the legal range and drop duplicates, which are common once
     # several parts share an edge.
@@ -160,14 +243,14 @@ def _NearbyPlacements(
     return {
         other_id: placement
         for other_id, placement in placements.items()
-        for other_low, other_high in [_Bounds(parts[other_id], placement)]
+        for other_low, other_high in [placement.Bounds(parts[other_id])]
         if (low - params.c_pair_enforced < other_high).all() and (high + params.c_pair_enforced > other_low).all()
     }
 
 
 def _ConstructiveInit(
     parts: dict[int, Part],
-    orientations: dict[int, int],
+    poses: dict[int, Pose],
     container: Container,
     params: LayoutParameters,
     rng: np.random.Generator,
@@ -202,25 +285,30 @@ def _ConstructiveInit(
         corner = np.where(rng.random(2) < 0.5, 1.0, -1.0)
 
     for part_id in CanonicalOrder(parts):
-        orientation = orientations[part_id]
-        size = RotatedSize(parts[part_id].size, orientation)
-        low_limit, high_limit = _PositionRange(parts[part_id], orientation, container, params)
+        pose = poses[part_id]
+        # The offset between where a placement is anchored and where the
+        # shape actually starts. Zero for an upright pose, which is why
+        # every position below is unchanged at 90 degrees.
+        reach_low, reach_high = PoseBounds(parts[part_id], pose)
+        extent = reach_high - reach_low
+        low_limit, high_limit = _PositionRange(parts[part_id], pose, container, params)
 
-        candidates = _ContactPositions(size, container, parts, placements, params)
+        corners = _ContactCorners(extent, container, parts, placements, params)
+        candidates = [corner_position - reach_low for corner_position in corners]
         candidates.sort(key=lambda position: (corner[1] * position[1], corner[0] * position[0]))
         if (high_limit > low_limit).all():
             candidates += [rng.uniform(low_limit, high_limit) for _ in range(params.placement_tries)]
         if not candidates:
-            # Too big for this bin at this orientation; pin it to the corner
-            # and let the restart loop find that out.
+            # Too big for this bin at this pose; pin it to the corner and
+            # let the restart loop find that out.
             candidates = [low_limit]
 
-        best = Placement(part_id, candidates[0], orientation)
+        best = Placement(part_id, candidates[0], pose.orientation, pose.angle)
         best_energy = np.inf
 
         for position in candidates:
-            candidate = Placement(part_id, position, orientation)
-            nearby = _NearbyPlacements(position, position + size, parts, placements, params)
+            candidate = Placement(part_id, position, pose.orientation, pose.angle)
+            nearby = _NearbyPlacements(position + reach_low, position + reach_high, parts, placements, params)
             energy = PlacementEnergy(part_id, parts, {**nearby, part_id: candidate}, container, params)
 
             if energy <= 0.0:
@@ -254,7 +342,7 @@ def Relax(
     so that the arrangement it settles on is the last thing reported rather
     than one step short of it.
     """
-    descent = Descent(parts, placements, params)
+    descent = Descent(parts, placements, params, rotate=params.free_rotation)
     best_energy = np.inf
     stalled = 0
 
@@ -285,7 +373,7 @@ def Relax(
                 return None
 
         cooling = 1.0 - iteration / params.iterations
-        descent.Step(result.forces, noise=params.jitter * cooling, rng=rng)
+        descent.Step(result.forces, noise=params.jitter * cooling, rng=rng, torques=result.torques)
 
     return None
 
@@ -323,11 +411,14 @@ def SolveFixedGrid(
     params = params or LayoutParameters()
     container = BuildContainer(n, m, params.inset)
 
-    fitting = {part_id: FittingOrientations(part, container, params) for part_id, part in parts.items()}
+    fitting = {part_id: FittingPoses(part, container, params) for part_id, part in parts.items()}
     if not all(fitting.values()):
-        # Some part does not fit this bin at any angle or position. No
-        # amount of searching changes that, so say so now rather than
-        # spending the whole restart budget rediscovering it.
+        # Some part fits this bin at no candidate pose. Under 90 and 45
+        # that settles it, since those are the only legal angles. Under
+        # FREE it only means no *starting* pose fits, and the relaxation
+        # cannot rescue a part it has nowhere to put down - so the attempt
+        # is equally hopeless either way, and `packer.ProvablyTooSmall` is
+        # where the difference between "hopeless" and "proven" is kept.
         return None
 
     # Ranked once for the whole grid, not per attempt: the score depends on
@@ -345,10 +436,10 @@ def SolveFixedGrid(
         # not renumber the attempts that came before it.
         rng = np.random.default_rng([params.seed, attempt])
 
-        orientations = _ChooseOrientations(ranked, attempt)
+        poses = _ChoosePoses(ranked, attempt)
         settled = Relax(
             parts,
-            _ConstructiveInit(parts, orientations, container, params, rng, attempt),
+            _ConstructiveInit(parts, poses, container, params, rng, attempt),
             container,
             params,
             rng,

@@ -96,28 +96,86 @@ lipless bin gives back 2 x 1.65 mm, which matters at 1x1.
 
 ## Decisions
 
-### D1: Discrete orientations, continuous translation
+### D1: Orientation is a mode, defaulting to quarter turns
 
-Each part has 2 continuous DOF (x, y) and one discrete DOF: orientation
+Each part has 2 continuous DOF (x, y) and a *pose*: an exact quarter turn
 in {0°, 90°, 180°, 270°} relative to its PCA-aligned frame (`PCABox`,
-[contour_extraction.py:7](../pipeline/contour_extraction.py#L7)), which
-already levels each shape along its principal axis.
+[contour_extraction.py:7](../pipeline/contour_extraction.py#L7)), plus a
+free angle on top of it. How much of that freedom is available is
+`LayoutParameters.rotation`:
 
-The consequence is worth stating plainly: **there is no torque in the
-force model.** Orientation is not something the physics relaxes; it is a
-discrete variable the outer search chooses and the restart loop
-perturbs. This removes rotational inertia, angular damping, and the
-need to re-derive a part's field at arbitrary angles — a 90° rotation of
-a raster field is an axis swap and flip, exact and free, whereas an
-arbitrary angle needs interpolation and reintroduces sampling error on
-every step.
+| Mode | Angles | Torque? | Bound in `ProvablyTooSmall` |
+| --- | --- | --- | --- |
+| `90` (default) | the four quarter turns | no | no pose fits |
+| `45` | those plus four diagonals | no | no pose fits |
+| `free` | continuous | yes | `FitsAtSomeAngle` |
 
-Rejected: continuous rotation. It buys a few percent density on
-diagonal-friendly shapes and costs a materially more complex solver.
+**The quarter turn stays exact in every mode.** It is an axis swap and a
+sign flip, and `Placement` skips the free-angle step entirely when the
+angle is zero — so `90` is bit-identical to what this package did before
+poses existed, not a rounding of the general case. That is what lets the
+default carry every layout, animation and printed sheet already produced.
+
+The free angle turns about a *fixed* pivot, the centre of the
+quarter-turned bounding box. It has to be fixed for the angle to be
+something a descent can move: `position` anchors the box's minimum
+corner, and re-deriving that corner after an arbitrary rotation makes it
+a minimum over sample points — continuous in the angle but not
+differentiable, and wrong exactly where a torque reads it.
+
+#### What this replaces, and why
+
+The original D1 rejected continuous rotation as buying "a few percent
+density on diagonal-friendly shapes" at the cost of "a materially more
+complex solver". Both halves were measured and both were wrong.
+
+**The cost was overstated.** It claimed rotation needs "to re-derive a
+part's field at arbitrary angles". It does not. `_DirectedPairTerm`
+queries `SampleSdf` at arbitrary points through a bilinear interpolant —
+it never rotates a raster. Translation already samples the field at
+arbitrary sub-pixel positions, so rotation introduces no new class of
+error. The only place a raster is genuinely rotated is
+`orientation._TurnedMask`, and that is a ranking heuristic, not the
+physics.
+
+**The benefit was understated, because the mechanism was missed.** A
+bin's *diagonal* is longer than its side, and these objects are
+length-bound rather than area-bound. Measured over the `test_data/`
+fixtures, one part at a time, exactly (`rotation_experiment.py`):
+`medium_spoon` and `screwdriver` each drop from a 10-cell bin to an
+8-cell one at about 20°, and the knife drops from 7 cells to 6 at 3.9°.
+
+The existing counter-argument under [Fixtures](#fixtures) — that the
+x-extent of a rotated `L x W` box has derivative `W > 0` at θ = 0, so
+turning makes a long-axis fit *worse* — is still true and still applies
+to `big_spoon`, which gains nothing. It is a local argument, and the wins
+are at 15–30°, well past where it holds.
+
+**`45` is not a cheap approximation of `free`.** It is discrete, so it
+needs no torque at all — but the angles that pay here are near 4° and
+20°, and 45° reaches neither. Measured, it saves nothing on any fixture
+alone, while doubling the candidate pose list and so thinning a fixed
+restart budget. It is in the code because it is nearly free to offer and
+it makes the discrete/continuous distinction testable; it is not a
+recommendation.
+
 Rejected for now: mirroring. Flipping a part means the tool sits upside
 down in its pocket, which is fine for a wrench and wrong for a
 screwdriver with a printed logo; it becomes a per-part opt-in flag
 (`allow_flip`, default off) if a real layout needs it.
+
+#### The soundness trap
+
+`packer.ProvablyTooSmall` states a *proof* that a bin cannot work, and
+under `90` and `45` "fits at no candidate pose" is that proof — the legal
+angles are a finite list. Under `free` they are a continuum and the same
+check would reject bins a part fits perfectly well on the diagonal. So
+`free` uses `solver.FitsAtSomeAngle`, two necessary conditions that hold
+at every angle: the part's diameter cannot exceed the diagonal of the
+interior shrunk by `c_wall`, and its minimum width over all directions
+(rotating calipers on the convex hull, exact rather than sampled) cannot
+exceed that rectangle's short side. Both are one-sided, so a rejection
+stays a fact about the geometry.
 
 ### D2: Signed distance fields for collision, not polygon booleans
 
@@ -848,8 +906,15 @@ not measurement noise.
 To be clear about what does *not* rescue it: rotation cannot. The x-extent
 of a rotated `L x W` box is `L cos θ + W sin θ`, whose derivative at
 θ = 0 is `W > 0` — so any rotation off-axis makes the long-axis fit
-*worse*, not better. This is a point in favor of D1's rejection of
-continuous rotation rather than against it.
+*worse*, not better.
+
+This is a local argument and it holds: `big_spoon` is measured to gain
+nothing from free rotation. What it does *not* establish is the general
+claim, which an earlier draft of D1 read into it. The wins from turning
+are at 15–30°, far outside where a derivative at θ = 0 says anything, and
+they come from the bin's diagonal rather than from its long axis —
+`medium_spoon`, 37 mm shorter than `big_spoon`, drops from 10 cells to 8.
+See D1.
 
 **Grouping has real headroom here.** One-per-bin costs 22 cells
 (10 + 10 + 2 — note `big_spoon` is 41.67 mm wide, over a 1-cell

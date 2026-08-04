@@ -8,11 +8,11 @@ the window on every tick of a spin box.
 
 import numpy as np
 import pytest
-from PyQt5.QtWidgets import QDoubleSpinBox, QLabel, QPushButton
+from PyQt5.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QPushButton
 
 from pipeline.layout.loading import BuildParts
 from pipeline.layout.packer import NOT_FOUND, PACKED, GridAttempt, PackResult
-from pipeline.layout.parameters import LayoutParameters
+from pipeline.layout.parameters import FREE_ROTATION, ROTATIONS, LayoutParameters
 from pipeline.layout.placement import Layout
 from pipeline.layout_stage import LayoutStage
 from conftest import QuickParameters, Rectangle as _rectangle
@@ -279,3 +279,34 @@ def test_a_cancelled_pack_says_so_rather_than_claiming_failure(qapp):
     assert stage.result is not None and stage.result.cancelled
     assert "cancelled" in stage.Summary().lower()
     assert "no fit" not in stage.Summary()
+
+
+def test_the_rotation_mode_is_a_dropdown_that_reaches_the_parameters(qapp):
+    """It changes which arrangements are legal, so it belongs beside the
+    other things the answer must satisfy rather than only on the command
+    line - a window that could not ask for it would make the mode
+    unreachable for everyone not running `layout_cli`.
+    """
+    stage = LayoutStage(_quick())
+    widget = stage.CreateWidget(on_change=lambda: None)
+
+    combo = _widgets(widget, QComboBox)[0]
+    assert [combo.itemText(index) for index in range(combo.count())] == list(ROTATIONS)
+    assert combo.currentText() == stage.parameters.rotation
+
+    combo.setCurrentText(FREE_ROTATION)
+
+    assert stage.parameters.rotation == FREE_ROTATION
+
+
+def test_choosing_a_rotation_mode_does_not_start_a_search(qapp):
+    """The same rule every other control in this panel follows: editing a
+    parameter is not a request to run.
+    """
+    stage = LayoutStage(_quick())
+    runs = []
+    widget = stage.CreateWidget(on_change=lambda: runs.append(1))
+
+    _widgets(widget, QComboBox)[0].setCurrentText(FREE_ROTATION)
+
+    assert runs == []

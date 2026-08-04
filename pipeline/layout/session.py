@@ -55,7 +55,20 @@ SESSION_UNITS = "mm"
 # The search budget is not among them - how hard the last run looked has
 # no bearing on whether its answer is still valid, and inheriting somebody
 # else's restart count would be surprising rather than helpful.
-GEOMETRY_FIELDS = ("pocket_offset", "pair_clearance", "wall_clearance", "resolution", "inset", "max_grid")
+#
+# `rotation` belongs here for the same reason: it decides which
+# arrangements are legal at all, so a session packed with free rotation and
+# reloaded at 90 degrees would hold placements the current settings say
+# cannot exist, and a re-pack would silently disagree with the drawing.
+GEOMETRY_FIELDS = (
+    "pocket_offset",
+    "pair_clearance",
+    "wall_clearance",
+    "resolution",
+    "inset",
+    "max_grid",
+    "rotation",
+)
 
 
 @dataclass(frozen=True)
@@ -224,6 +237,7 @@ def _Signature(layout: Layout) -> tuple:
                 round(float(placement.position[0]), 6),
                 round(float(placement.position[1]), 6),
                 placement.orientation,
+                round(float(placement.angle), 9),
             )
             for part_id, placement in sorted(layout.placements.items())
         ),
@@ -239,6 +253,7 @@ def _BinPayload(layout: Layout) -> dict:
                 "part": part_id,
                 "position": [float(placement.position[0]), float(placement.position[1])],
                 "orientation": placement.orientation,
+                "angle": float(placement.angle),
             }
             for part_id, placement in sorted(layout.placements.items())
         ],
@@ -286,10 +301,15 @@ def _Bins(path: str, raw: Any, contours: dict[int, np.ndarray]) -> list[Layout]:
             part_id = int(placement["part"])
             if part_id not in contours:
                 raise ValueError(f"bin {index} places part {part_id}, which the session has no contour for")
+            # `angle` defaults rather than being required, so a session
+            # written before free rotation existed still loads - every
+            # placement in one is upright by construction, which is exactly
+            # what the default says.
             placements[part_id] = Placement(
                 part_id,
                 np.asarray(placement["position"], dtype=np.float64),
                 int(placement["orientation"]),
+                float(placement.get("angle", 0.0)),
             )
         if not placements:
             raise ValueError(f"bin {index} holds no parts")

@@ -186,3 +186,80 @@ def test_asking_for_noise_without_a_generator_is_refused():
 
     with pytest.raises(ValueError, match="seeded generator"):
         descent.Step({0: np.zeros(2)}, noise=1.0)
+
+
+# --------------------------------------------------------- the free angle
+
+
+def test_a_descent_that_was_not_asked_to_rotate_carries_the_angle():
+    """The default, and what the 90 and 45 modes get. The angle is part of
+    the arrangement and has to survive the pass; it is simply not something
+    this moves.
+    """
+    parts, placements = _one()
+    placements[0] = Placement(0, np.zeros(2), angle=0.4)
+    descent = Descent(parts, placements, LayoutParameters())
+
+    descent.Step({0: np.array([50.0, 0.0])}, torques={0: 900.0})
+
+    assert descent.Placements()[0].angle == 0.4
+
+
+def test_a_rotating_descent_turns_along_the_torque():
+    parts, placements = _one()
+    descent = Descent(parts, placements, LayoutParameters(), rotate=True)
+
+    descent.Step({0: np.zeros(2)}, torques={0: 40.0})
+    turned = descent.Placements()[0].angle
+
+    assert turned > 0.0
+    descent.Step({0: np.zeros(2)}, torques={0: -400.0})
+    assert descent.Placements()[0].angle < turned
+
+
+def test_a_rotating_descent_refuses_to_step_without_torques():
+    """Silently holding the angle still would keep converging, on a
+    different problem than the one asked for - the same reason noise
+    without a generator raises rather than being skipped.
+    """
+    parts, placements = _one()
+    descent = Descent(parts, placements, LayoutParameters(), rotate=True)
+
+    with pytest.raises(ValueError, match="torques"):
+        descent.Step({0: np.zeros(2)})
+
+
+def test_one_step_never_moves_a_part_further_than_the_cap_allows():
+    """Why the angular cap is derived from the part's radius rather than
+    set in degrees. The cap exists so a step cannot carry a sample past a
+    neighbour's medial axis, where the forces reverse - which is a
+    statement about millimetres, so it has to become a smaller angle for a
+    longer part.
+    """
+    params = LayoutParameters()
+    long_part = {0: BuildPart(_rectangle(200.0, 10.0), resolution=1.0, pad=2.0)}
+    placements = {0: Placement(0, np.zeros(2))}
+    descent = Descent(long_part, placements, params, rotate=True)
+
+    for _ in range(5):
+        descent.Step({0: np.zeros(2)}, torques={0: 1e9})
+
+    turned = descent.Placements()[0].angle
+    radius = np.linalg.norm(long_part[0].samples - long_part[0].size / 2.0, axis=1).max()
+    assert turned * radius <= 5 * params.max_step + 1e-9, "the tip outran the translation cap"
+
+
+def test_the_same_torque_turns_a_small_part_further_than_a_large_one():
+    """One `angular_step_scale` has to mean the same thing across parts,
+    which is what the second moment normalization buys. Without it the
+    setting would need retuning for every object size.
+    """
+    params = LayoutParameters()
+    angles = []
+    for length in (20.0, 200.0):
+        parts = {0: BuildPart(_rectangle(length, 10.0), resolution=1.0, pad=2.0)}
+        descent = Descent(parts, {0: Placement(0, np.zeros(2))}, params, rotate=True)
+        descent.Step({0: np.zeros(2)}, torques={0: 100.0})
+        angles.append(abs(descent.Placements()[0].angle))
+
+    assert angles[0] > angles[1]

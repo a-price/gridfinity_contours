@@ -13,7 +13,8 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from PyQt5.QtWidgets import QLabel, QPushButton
+from PyQt5.QtWidgets import QComboBox, QLabel, QPushButton
+from pipeline.layout.parameters import FREE_ROTATION, ROTATIONS
 
 from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot
 from pipeline.layout.plan import ASSIGNING, FILLING, GROUPING, Progress
@@ -623,3 +624,34 @@ def test_the_export_button_names_every_format_it_writes(qapp):
 
     for extension in EXPORT_EXTENSIONS:
         assert extension == ".pdf", "a floorplan is one page per drawer, so it has to be a PDF"
+
+
+def test_the_rotation_mode_is_a_dropdown_that_reaches_the_parameters(qapp):
+    """It changes which arrangements are legal, so it belongs beside the
+    other things the answer must satisfy rather than only on the command
+    line - a window that could not ask for it would make the mode
+    unreachable for everyone not running `layout_cli`.
+    """
+    stage = FloorplanStage(_quick())
+    widget = stage.CreateWidget(on_change=lambda: None)
+
+    combo = _widgets(widget, QComboBox)[0]
+    assert [combo.itemText(index) for index in range(combo.count())] == list(ROTATIONS)
+    assert combo.currentText() == stage.parameters.rotation
+
+    combo.setCurrentText(FREE_ROTATION)
+
+    assert stage.parameters.rotation == FREE_ROTATION
+
+
+def test_choosing_a_rotation_mode_does_not_start_a_search(qapp):
+    """The same rule every other control in this panel follows: editing a
+    parameter is not a request to run.
+    """
+    stage = FloorplanStage(_quick())
+    runs = []
+    widget = stage.CreateWidget(on_change=lambda: runs.append(1))
+
+    _widgets(widget, QComboBox)[0].setCurrentText(FREE_ROTATION)
+
+    assert runs == []
