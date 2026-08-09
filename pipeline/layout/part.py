@@ -165,7 +165,17 @@ class Part:
     origin: np.ndarray  # (2,) local mm coordinate of the raster's corner
     resolution: float  # mm per pixel
     pad: float  # mm the field reaches beyond the pocket's bounding box
+
+    # How the pocket was made, carried so it can be made again the same
+    # way. `solid.PocketPolygons` re-cuts from `object_contour` when asked
+    # for a tolerance the layout was not packed at, and without these it
+    # would re-cut at `pocket`'s module defaults instead - so the same
+    # offset would produce a different polygon depending on whether it
+    # arrived through `--pocket-offset` or `--solid-offset`.
     pocket_offset: float  # mm the pocket was grown by
+    pocket_resolution: float  # mm per pixel of the raster it was traced on
+    pocket_simplify: float  # mm the traced outline was simplified to
+
     area: float  # mm^2 of the pocket
 
     @property
@@ -331,6 +341,8 @@ def BuildPart(
         resolution=resolution,
         pad=pad,
         pocket_offset=pocket_offset,
+        pocket_resolution=pocket_resolution,
+        pocket_simplify=pocket_simplify,
         area=PolygonArea(pocket),
     )
 

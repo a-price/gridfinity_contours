@@ -79,6 +79,13 @@ def PocketPolygons(
     pocket's bounding box, and a pocket cut smaller simply sits inside
     it. Larger is not free, though, and `ThinnestWalls` is what catches
     it: the layout only reserved room for what it packed.
+
+    The re-cut reuses the raster and simplification the *part* was built
+    with rather than `pocket`'s defaults, so that an offset means the
+    same polygon however it arrived. Taking the defaults instead made
+    `--solid-offset 1.0` and `--pocket-offset 1.0` disagree for any
+    session that had tuned `pocket_resolution` - the test suite's own
+    fixtures among them.
     """
     polygons = {}
     for part_id, placement in layout.placements.items():
@@ -86,9 +93,33 @@ def PocketPolygons(
         if pocket_offset is None or pocket_offset == part.pocket_offset:
             polygons[part_id] = placement.ToWorld(part)
         else:
-            recut = PocketContour(part.object_contour, pocket_offset)
+            recut = PocketContour(part.object_contour, pocket_offset, part.pocket_resolution, part.pocket_simplify)
             polygons[part_id] = placement.LocalToWorld(part, recut)
     return polygons
+
+
+def _MeasureWalls(polygons: dict[int, np.ndarray], envelope: np.ndarray) -> tuple[float, float]:
+    """The thinnest divider and thinnest bin wall among pockets already
+    placed in bin coordinates.
+
+    The measuring half of `ThinnestWalls`, split out so that a caller
+    holding the polygons can measure *those* rather than have them
+    derived a second time. `GenerateScad` is that caller, and under
+    `--solid-offset` the second derivation was not free: it re-traced
+    every pocket, at about 90ms apiece on a real spoon, to arrive at
+    polygons it already had.
+    """
+    divider = np.inf
+    ordered = sorted(polygons)
+    for index, id_a in enumerate(ordered):
+        for id_b in ordered[index + 1 :]:
+            divider = min(divider, MinimumSeparation(polygons[id_a], polygons[id_b]))
+
+    wall = np.inf
+    for polygon in polygons.values():
+        wall = min(wall, float(np.min(DistanceToBoundary(polygon, envelope))))
+
+    return float(divider), float(wall)
 
 
 def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float | None = None) -> tuple[float, float]:
@@ -114,20 +145,7 @@ def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float |
     Returns `inf` for whichever does not apply - a single part has no
     dividers.
     """
-    polygons = PocketPolygons(layout, parts, pocket_offset)
-
-    divider = np.inf
-    ordered = sorted(polygons)
-    for index, id_a in enumerate(ordered):
-        for id_b in ordered[index + 1 :]:
-            divider = min(divider, MinimumSeparation(polygons[id_a], polygons[id_b]))
-
-    envelope = layout.Envelope()
-    wall = np.inf
-    for polygon in polygons.values():
-        wall = min(wall, float(np.min(DistanceToBoundary(polygon, envelope))))
-
-    return float(divider), float(wall)
+    return _MeasureWalls(PocketPolygons(layout, parts, pocket_offset), layout.Envelope())
 
 
 def _ToOpenScad(layout: Layout, points: np.ndarray) -> np.ndarray:
@@ -252,7 +270,7 @@ def GenerateScad(
         )
 
     polygons = PocketPolygons(layout, parts, pocket_offset)
-    divider, wall = ThinnestWalls(layout, parts, pocket_offset)
+    divider, wall = _MeasureWalls(polygons, layout.Envelope())
     if divider < DIVIDER_WIDTH_MM:
         raise ValueError(
             f"a {pocket_offset}mm pocket offset leaves a {divider:.2f}mm divider between pockets, "

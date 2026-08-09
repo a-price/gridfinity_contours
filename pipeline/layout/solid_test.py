@@ -144,6 +144,44 @@ def test_a_smaller_offset_than_the_layout_assumed_is_fine():
         assert extent == pytest.approx([21.0, 21.0], abs=0.15)
 
 
+def test_the_same_offset_cuts_the_same_pocket_whichever_way_it_arrives():
+    """`--solid-offset 1.5` and packing at 1.5 have to produce the same
+    polygon, or "re-cut at a different tolerance" quietly means "re-cut at
+    a different *shape*".
+
+    The trap is the raster: a re-cut that took `pocket`'s module defaults
+    rather than the part's own settings traced at a different fidelity, so
+    the two agreed only for a session that happened to leave
+    `pocket_resolution` alone. Deliberately coarse here, since that is the
+    case that used to disagree.
+
+    Compared in each polygon's own frame, because the two do *not* land in
+    the same place and should not. A placement anchors the pocket's
+    minimum corner, so packing at 1.5 seats the object 1.5mm in from that
+    corner, while re-cutting grows the pocket around an object that has
+    already been placed and does not move. Growing around the object is
+    the behaviour worth having - it is what lets a tolerance change re-cut
+    a solid instead of invalidating an arrangement - and here it shows up
+    as a 1mm translation between two identical shapes.
+    """
+    coarse = LayoutParameters(pocket_offset=0.5, pocket_resolution=0.2)
+    packed = LayoutParameters(pocket_offset=1.5, pocket_resolution=0.2)
+    shape = {0: _rectangle(20, 20)}
+    placements = {0: Placement(0, np.array([6.0, 6.0]))}
+
+    recut = GenerateScad(Layout(grid=(2, 1), placements=placements), BuildParts(shape, coarse), pocket_offset=1.5)
+    direct = GenerateScad(Layout(grid=(2, 1), placements=placements), BuildParts(shape, packed))
+
+    (from_recut,) = _polygons(recut)
+    (from_packed,) = _polygons(direct)
+    assert from_recut.shape == from_packed.shape
+    np.testing.assert_allclose(
+        from_recut - from_recut.min(axis=0),
+        from_packed - from_packed.min(axis=0),
+        atol=1e-3,
+    )
+
+
 def test_an_offset_that_eats_the_bin_wall_is_refused():
     """Packed at 1.0 with its pocket 1mm off the wall, so the object is
     2mm off it. Re-cutting at 2.5 grows the pocket through the wall.

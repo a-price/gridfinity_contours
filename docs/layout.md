@@ -1023,11 +1023,22 @@ two formats silently comes in 3.78x wrong.
   the latter — but a relief that reaches outside the pocket is exactly
   the case where it becomes the layout's problem, since the pocket is now
   the packed geometry.
+
+  **Current practice is to cut the slots by hand in Fusion, after
+  export, and it works well enough.** That is worth recording rather than
+  treating as a gap: it means nothing here is blocked on solving this,
+  and it means the eventual automated version has a reference to be
+  compared against — a hand-placed slot is a judgement about where a
+  hand actually goes, which is the part no formulation of this has yet
+  captured.
+
 - **Orientation preference.** Should a user be able to pin a part's
   orientation (e.g. "all screwdrivers point the same way") for a layout
   that reads well, at a density cost? Cheap to add as a constraint on the
   restart loop.
+
 - **Part variants.** Multiple copies of the same tool are common. Worth a
   multiplicity count rather than N duplicate contours?
+
 - **Label space.** Gridfinity bins often carry a label tab; if the layout
   must reserve room for one, the usable interior shrinks on one edge.
