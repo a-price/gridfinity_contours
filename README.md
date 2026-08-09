@@ -134,8 +134,8 @@ are pre-scaled by 96/25.4.
 ```
 loaded 3 contours from 3 file(s)
 ...
-4x2 (8 cells): too small - part 1 is 162.8x34.9mm and does not fit a 162.3x78.3mm interior at any quarter turn
-3x3 (9 cells): too small - part 1 is 162.8x34.9mm and does not fit a 120.3x120.3mm interior at any quarter turn
+4x2 (8 cells): too small - part 1 is 164.8x37.0mm and does not fit a 162.3x78.3mm interior at any quarter turn
+3x3 (9 cells): too small - part 1 is 164.8x37.0mm and does not fit a 120.3x120.3mm interior at any quarter turn
 5x2 (10 cells): packed
 packed 3 parts into 5x2 (10 cells)
 wrote spoons.svg, spoons.pdf, spoons.scad
@@ -151,6 +151,14 @@ the same. **"Too small"** is a proof from areas and bounding boxes.
 so that size may still be packable — raise `--restarts` and see. When that
 happens below the size it settles on, a closing note says so, because then
 the bin you print is bigger than it needed to be.
+
+What actually gets packed is the **pocket** — the object grown by
+`--pocket-offset` (1 mm by default), which is the hole that gets cut
+rather than the thing that goes in it. That offset is not print tolerance
+alone: it covers the camera's resolution, the printer's, the object
+shifting between the two, and the slack a deep pocket needs before you
+can lift the object back out of it. Sizes reported above are pockets, so
+they run about 2 mm over what a tape measure says.
 
 Useful flags: `--restarts` and `--seed` steer the search, `--max-grid`
 caps the bin size, `--pocket-offset` sets how much larger than its object

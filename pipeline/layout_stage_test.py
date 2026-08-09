@@ -76,21 +76,22 @@ def test_parameter_edits_still_reach_the_parameters(qapp):
     assert stage.parameters.pocket_offset == pytest.approx(2.5)
 
 
-def test_the_panel_shows_the_clearances_the_offset_implies(qapp):
-    """Clearances are derived, not typed (D5) - so the panel has to show
-    what the offset actually bought, or the number the user cares about is
-    invisible.
+def test_the_panel_shows_what_the_offset_buys(qapp):
+    """The offset no longer sets the clearances, so what the panel has to
+    show is the offset itself - it is the number that changes, and the one
+    that decides how much bigger every pocket is cut.
     """
     stage = LayoutStage(_quick(pocket_offset=1.0))
     widget = stage.CreateWidget(on_change=lambda: None)
 
-    assert "3.20mm between parts" in _labels(widget)
+    assert "pockets cut 1.00mm oversize" in _labels(widget)
 
     spin_box = _widgets(widget, QDoubleSpinBox)[0]
     spin_box.setValue(2.0)
     spin_box.editingFinished.emit()
 
-    assert "5.20mm between parts" in _labels(widget)
+    assert "pockets cut 2.00mm oversize" in _labels(widget)
+    assert "1.20mm dividers" in _labels(widget), "which the offset does not move any more"
 
 
 # ------------------------------------------------------------------ packing

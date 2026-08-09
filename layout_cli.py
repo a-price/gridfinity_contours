@@ -101,7 +101,7 @@ def BuildParser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         metavar="MM",
-        help="how much larger than its object each pocket is cut; sets both clearances",
+        help="how much larger than its object each pocket is cut; this is the shape that gets packed",
     )
     parser.add_argument("--resolution", type=float, default=None, metavar="MM", help="distance field resolution")
     parser.add_argument(

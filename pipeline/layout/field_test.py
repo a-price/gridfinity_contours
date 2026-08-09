@@ -35,7 +35,7 @@ from conftest import Rectangle as _rectangle
 
 def _part(width: float = 20.0, height: float = 10.0, params: LayoutParameters | None = None):
     params = params or LayoutParameters()
-    return BuildPart(_rectangle(width, height), params.resolution, params.pad)
+    return BuildPart(_rectangle(width, height), resolution=params.resolution, pad=params.pad)
 
 
 def _pixel_of(part, point, pixels_per_mm: float) -> tuple[int, int]:

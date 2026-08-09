@@ -11,6 +11,11 @@ import cv2
 import numpy as np
 
 from pipeline.contour_extraction import PCABox
+from pipeline.layout.pocket import (
+    DEFAULT_RESOLUTION_MM as POCKET_RESOLUTION_MM,
+    DEFAULT_SIMPLIFY_MM as POCKET_SIMPLIFY_MM,
+    PocketContour,
+)
 from pipeline.layout.raster import SignedDistanceField
 
 # Raster resolution for the signed distance fields, in mm per pixel. Fine
@@ -125,32 +130,50 @@ def _IsSkewNegative(local: np.ndarray) -> bool:
 
 @dataclass(frozen=True)
 class Part:
-    """A contour in a canonical local frame, plus the raster fields the
-    solver reads to measure and resolve overlap.
+    """A pocket in a canonical local frame, plus the raster fields the
+    solver reads to measure and resolve overlap - and the object that
+    pocket was cut for, carried alongside.
 
-    `contour` is PCA-aligned with its bounding box's minimum corner at the
-    origin, so two photos of the same object produce the same Part
-    regardless of how it happened to sit in frame.
+    **Everything that packs, collides or prints is the pocket.** `sdf`,
+    `samples`, `size` and `area` all describe `pocket_contour`, because
+    the pocket is the shape the bin actually has removed from it: two
+    pockets that overlap are one ruined print however far apart the
+    objects inside them sit. `object_contour` is along for the ride, for
+    the preview to draw and for `solid.ThinnestWalls` to report against.
+    There is deliberately no field called `contour`. Not knowing which of
+    the two you were holding is the entire bug class this pair exists to
+    close.
 
-    `sdf` is negative inside the part and positive outside, in mm, sampled
-    on a grid that extends `pad` beyond the contour's bounding box on every
-    side. Its spatial derivative is computed on demand from the same
-    bilinear interpolant SampleSdf reads, rather than stored as a second
-    raster - see SampleDerivative for why that consistency matters.
+    Both are in the same frame: the object is PCA-aligned, so two photos
+    of it produce the same Part regardless of how it sat in frame, and
+    then both shift together until the *pocket's* bounding box has its
+    minimum corner at the origin. It is the pocket's corner rather than
+    the object's because `placement.RotatePoints` turns a part within its
+    own bounding box and needs that box to start at the origin.
+
+    `sdf` is negative inside the pocket and positive outside, in mm,
+    sampled on a grid that extends `pad` beyond the pocket's bounding box
+    on every side. Its spatial derivative is computed on demand from the
+    same bilinear interpolant SampleSdf reads, rather than stored as a
+    second raster - see SampleDerivative for why that consistency matters.
     """
 
-    contour: np.ndarray  # (K, 2) local mm
-    samples: np.ndarray  # (S, 2) local mm, boundary points to collide with
-    sdf: np.ndarray  # (H, W) float32 mm, negative inside
+    pocket_contour: np.ndarray  # (K, 2) local mm - what gets packed and cut
+    object_contour: np.ndarray  # (J, 2) local mm - what it was cut for
+    samples: np.ndarray  # (S, 2) local mm, pocket boundary points to collide with
+    sdf: np.ndarray  # (H, W) float32 mm, negative inside the pocket
     origin: np.ndarray  # (2,) local mm coordinate of the raster's corner
     resolution: float  # mm per pixel
-    pad: float  # mm the field reaches beyond the contour's bounding box
-    area: float  # mm^2
+    pad: float  # mm the field reaches beyond the pocket's bounding box
+    pocket_offset: float  # mm the pocket was grown by
+    area: float  # mm^2 of the pocket
 
     @property
     def size(self) -> np.ndarray:
-        """The contour's bounding box extent (width, height) in mm."""
-        return self.contour.max(axis=0) - self.contour.min(axis=0)
+        """The pocket's bounding box extent (width, height) in mm - which
+        is what a bin has to find room for.
+        """
+        return self.pocket_contour.max(axis=0) - self.pocket_contour.min(axis=0)
 
     def DilatedArea(self, radius: float) -> float:
         """Area in mm^2 of everything within `radius` of the part, itself
@@ -244,40 +267,71 @@ class Part:
 
 
 def BuildPart(
-    contour: np.ndarray,
+    object_contour: np.ndarray,
+    pocket_offset: float = 0.0,
+    *,
     resolution: float = DEFAULT_RESOLUTION_MM,
     pad: float = DEFAULT_PAD_MM,
+    pocket_resolution: float = POCKET_RESOLUTION_MM,
+    pocket_simplify: float = POCKET_SIMPLIFY_MM,
 ) -> Part:
-    """Rasterize a millimeter contour into a Part: PCA-align it, then build
-    its signed distance field, that field's gradient, and its boundary
-    sample points.
+    """Grow a millimeter object contour into its pocket and rasterize
+    that: PCA-align, dilate by `pocket_offset`, then build the signed
+    distance field and boundary samples the solver collides with.
+
+    `pocket_offset` defaults to zero, so a bare `BuildPart(contour)` is a
+    part whose pocket is its object - what this did before pockets
+    existed, and the right thing for a caller asking about rasters or
+    placement rather than about clearance. The policy default lives one
+    layer up in `LayoutParameters.pocket_offset`, and `loading.BuildParts`
+    is what applies it: this function is the primitive, and primitives
+    here do not carry tuning.
+
+    The offset is second because that is the argument a reader wants to
+    see - `BuildPart(spoon, 1.0)` says what it builds - and everything
+    that only tunes the raster is keyword-only behind it. That is not
+    decoration either. The signature used to be `(contour, resolution,
+    pad)`, so an offset arriving in second place would silently bind
+    every existing `BuildPart(contour, 0.25, 5.0)` call's *resolution* as
+    a pocket offset and rasterize something plausible and wrong. Four
+    call sites passed them that way; making them keyword-only means the
+    compiler catches any that were missed instead of the geometry
+    absorbing it.
     """
     if resolution <= 0:
         raise ValueError(f"resolution must be positive, got {resolution}")
     if pad < 0:
         raise ValueError(f"pad must be non-negative, got {pad}")
 
-    local = _AlignToLocalFrame(contour)
+    local = _AlignToLocalFrame(object_contour)
     if len(local) < 3:
         raise ValueError(f"a contour needs at least 3 points, got {len(local)}")
 
-    # Stated rather than derived from `local.min(axis=0)`: _AlignToLocalFrame
-    # already put the minimum corner at the origin, to within the rounding
-    # error PCA's float32 basis leaves behind.
-    extent = local.max(axis=0)
+    pocket = PocketContour(local, pocket_offset, pocket_resolution, pocket_simplify)
+
+    # Both shift together so the *pocket's* minimum corner lands on the
+    # origin, which is the frame `RotatePoints` turns a part in. Aligning on
+    # the object instead would leave the pocket reaching into negative
+    # coordinates and every quarter turn would slide it off its own box.
+    shift = pocket.min(axis=0)
+    pocket, local = pocket - shift, local - shift
+
+    extent = pocket.max(axis=0)
     origin = np.array([-pad, -pad])
     width = int(np.ceil((extent[0] + 2 * pad) / resolution))
     height = int(np.ceil((extent[1] + 2 * pad) / resolution))
-    sdf = SignedDistanceField(local, origin, height, width, resolution)
+    sdf = SignedDistanceField(pocket, origin, height, width, resolution)
 
     return Part(
-        contour=local,
-        samples=ResampleBoundary(local, resolution),
+        pocket_contour=pocket,
+        object_contour=local,
+        samples=ResampleBoundary(pocket, resolution),
         sdf=sdf,
         origin=origin,
         resolution=resolution,
         pad=pad,
-        area=PolygonArea(local),
+        pocket_offset=pocket_offset,
+        area=PolygonArea(pocket),
     )
 
 

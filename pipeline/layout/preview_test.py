@@ -152,7 +152,11 @@ def test_a_written_preview_reads_back_as_only_its_parts(tmp_path):
 
     assert len(reloaded) == 1
     span = reloaded[0].max(axis=0) - reloaded[0].min(axis=0)
-    assert span == pytest.approx([20.0, 10.0], abs=1e-3)
+    # The pocket, not the 20x10 object. That is what gets cut, so that is
+    # what a printed sheet has to be measurable against; how far oversize
+    # it runs is `pocket`'s business and is pinned there.
+    assert span == pytest.approx(parts[0].size, abs=1e-3)
+    assert (span > [20.0, 10.0]).all()
 
 
 def test_a_reloaded_part_keeps_its_position_in_millimeters(tmp_path):

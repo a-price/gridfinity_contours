@@ -63,7 +63,7 @@ def test_the_sweep_agrees_with_the_packer_on_a_case_both_can_answer():
     parts = LoadParts(["test_data/small_spoon.svg"], params)
     part = next(iter(parts.values()))
 
-    swept = Reach(part.contour, params)[QUARTER_TURNS]
+    swept = Reach(part.pocket_contour, params)[QUARTER_TURNS]
     packed = Pack(parts, params).layout
 
     assert packed is not None
@@ -78,7 +78,7 @@ def test_a_freer_mode_never_needs_a_bigger_bin():
     params = LayoutParameters()
     for stem in ("knife", "medium_spoon", "big_spoon", "small_spoon"):
         part = next(iter(LoadParts([f"test_data/{stem}.svg"], params).values()))
-        reach = Reach(part.contour, params)
+        reach = Reach(part.pocket_contour, params)
 
         assert Cells(reach[EIGHTH_TURNS]) <= Cells(reach[QUARTER_TURNS]), stem
         assert Cells(reach[FREE_ROTATION]) <= Cells(reach[EIGHTH_TURNS]), stem

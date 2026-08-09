@@ -86,7 +86,18 @@ class FieldStage(Stage):
             return
 
         try:
-            self.part = BuildPart(self.contours[self.selected], self.parameters.resolution, self.parameters.pad)
+            # The pocket, not the object - this view exists to show what the
+            # solver reads, and what the solver reads is the pocket's field.
+            # The offset spin box below is wired to the same parameter, so
+            # nudging it re-rasterizes rather than only relabelling.
+            self.part = BuildPart(
+                self.contours[self.selected],
+                self.parameters.pocket_offset,
+                resolution=self.parameters.resolution,
+                pad=self.parameters.pad,
+                pocket_resolution=self.parameters.pocket_resolution,
+                pocket_simplify=self.parameters.pocket_simplify,
+            )
         except ValueError as error:
             self.error = str(error)
 
@@ -167,7 +178,8 @@ class FieldStage(Stage):
 
         def show_clearances() -> None:
             clearances.setText(
-                f"→ {self.parameters.c_pair:.2f}mm between parts, {self.parameters.c_wall:.2f}mm to the wall"
+                f"→ pockets cut {self.parameters.pocket_offset:.2f}mm oversize, then "
+                f"{self.parameters.c_pair:.2f}mm dividers and {self.parameters.c_wall:.2f}mm walls"
             )
 
         def rebuild() -> None:
@@ -175,8 +187,9 @@ class FieldStage(Stage):
             on_change()
 
         # Resolution and pocket offset are the two that change the raster:
-        # the first directly, the second through `pad`, which is derived
-        # from the clearances the offset sets.
+        # the first sets the cell, the second sets the shape being
+        # rasterized. It used to reach here indirectly, through the
+        # clearances and then `pad`; since D5 it is simply in the geometry.
         def apply_resolution(value: float) -> None:
             self.parameters.resolution = value
             rebuild()
@@ -191,17 +204,18 @@ class FieldStage(Stage):
         )
         layout.addLayout(resolution["layout"])
 
-        # Same derivation as LayoutStage's panel (D5), and shown read-only
-        # for the same reason: two pockets `c_pair` apart leave a divider
-        # of `c_pair - 2*offset`, so independent spin boxes would let a
-        # reasonable-looking pair of numbers produce an unprintable one.
+        # The clearances beside it stay read-only, same as LayoutStage's
+        # panel: they are what a printable divider and wall measure, not
+        # something to type over. What the offset changes here is the
+        # outline itself - this view rasterizes the pocket, so the whole
+        # picture moves rather than a label.
         def apply_offset(value: float) -> None:
             self.parameters.pocket_offset = value
             show_clearances()
             rebuild()
 
         offset = CreateSpinBox(
-            "Pocket Offset (sets where the rings sit):",
+            "Pocket Offset (grows the outline being rasterized):",
             0.0,
             10.0,
             self.parameters.pocket_offset,

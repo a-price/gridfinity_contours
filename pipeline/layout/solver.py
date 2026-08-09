@@ -108,7 +108,7 @@ def FitsAtSomeAngle(part: Part, container: Container, params: LayoutParameters) 
     if (room <= 0).any():
         return False
 
-    hull = cv2.convexHull(np.asarray(part.contour, dtype=np.float32)).reshape(-1, 2).astype(np.float64)
+    hull = cv2.convexHull(np.asarray(part.pocket_contour, dtype=np.float32)).reshape(-1, 2).astype(np.float64)
     if len(hull) < 2:
         return True
 
@@ -239,12 +239,25 @@ def _NearbyPlacements(
     is not an approximation - it is the difference between pricing a
     candidate against every part placed so far and against the two or three
     that could possibly matter.
+
+    The horizon carries a raster margin past `c_pair_enforced` because the
+    two sides of that comparison are measured differently: these bounds are
+    exact geometry, while the energy reads a rasterized field that comes
+    back short by up to `raster_margin`. A neighbour sitting at exactly the
+    enforced clearance therefore still prices as a small violation, and
+    culling it at exactly that distance made it invisible to
+    `PlacementEnergy` and visible to `ComputeEnergy` - the constructive
+    sweep would accept a position the very next energy evaluation called
+    infeasible. This is the same margin `_ContactCorners` offsets by, which
+    is what makes the two agree: the sweep proposes positions at the
+    horizon, so the horizon has to include everything strictly inside it.
     """
+    horizon = params.c_pair_enforced + params.raster_margin
     return {
         other_id: placement
         for other_id, placement in placements.items()
         for other_low, other_high in [placement.Bounds(parts[other_id])]
-        if (low - params.c_pair_enforced < other_high).all() and (high + params.c_pair_enforced > other_low).all()
+        if (low - horizon < other_high).all() and (high + horizon > other_low).all()
     }
 
 

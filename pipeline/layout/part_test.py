@@ -124,7 +124,7 @@ def test_sdf_matches_exact_geometry_across_the_whole_field(shape):
     query = np.stack(np.meshgrid(x, y), axis=-1).reshape(-1, 2)
 
     measured = part.SampleSdf(query)
-    exact = ExactSignedDistance(query, part.contour)
+    exact = ExactSignedDistance(query, part.pocket_contour)
 
     assert np.abs(measured - exact).max() < 0.2, "distance field drifts from exact geometry"
     # Sign is what collision detection actually keys on, so it has to be

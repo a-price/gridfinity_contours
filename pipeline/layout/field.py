@@ -37,7 +37,7 @@ from pipeline.layout.part import Part
 DEFAULT_PIXELS_PER_MM = 4.0
 
 # Millimeters between contour lines. One millimeter is a legible ruler at
-# the scale the clearances live on - `c_pair` is 3.2mm by D5, so the band
+# the scale the clearances live on - `c_pair` is 1.2mm by D5, so the band
 # count from the outline to a clearance ring is something the eye can read
 # off rather than estimate.
 DEFAULT_BAND_MM = 1.0

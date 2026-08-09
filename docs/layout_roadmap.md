@@ -81,8 +81,10 @@ Two things M1 turned up that later milestones inherit:
 ## M2 — Energy and forces
 
 - [x] `LayoutParameters` dataclass: `pocket_offset`, `c_pair`, `c_wall`
-  (both derived from `pocket_offset` by default), `resolution`,
-  iteration/restart budgets, `seed`, `max_grid`.
+  (both derived from `pocket_offset` by default — no longer, see D5:
+  parts became pockets, so the clearances are a printable divider and a
+  printable wall and nothing more), `resolution`, iteration/restart
+  budgets, `seed`, `max_grid`.
 - [x] Pair term: sample `∂i` against `sdf_j` and `∂j` against `sdf_i`,
   quadratic in penetration depth, forces applied equal and opposite.
 - [x] Wall term: sample every part against the container field.
@@ -361,6 +363,15 @@ captures load and pack to 5x2 in the window.
   tolerance re-cuts the solid instead of invalidating the arrangement.
   `layout_cli.py --solid-offset` exercises that; `ThinnestWalls` keeps it
   honest by refusing a tolerance the layout never budgeted for.
+  **Superseded by D5.** The offset moved into the layout geometry: a
+  `Part` is now its pocket, so `solid` cuts the shape that was packed
+  rather than re-deriving it. `--solid-offset` survives as the escape
+  hatch, re-cutting from each part's `object_contour`, and
+  `ThinnestWalls` still refuses a tolerance the layout never budgeted
+  for. Two things forced the change — OpenSCAD's `offset()` was not
+  computing the dilation the layout assumed (five fragments per circle at
+  `r = 1`, measured 0.293 mm inside nominal at a 90° corner), and a
+  scalar clearance cannot describe a dilation that changes topology.
 - [x] Wired into both front-ends: the CLI writes `<out>.scad` alongside
   the preview, and the GUI's Export writes all three.
 - [ ] Verify a printed multi-pocket bin against the real objects.
@@ -609,6 +620,12 @@ module reads more than half of them. But `pocket_offset` → `c_pair` →
 `pad` crosses all three groups, and `pad` is what the *rasterizer* sizes
 distance fields from. Splitting scatters one derivation across three types
 that then have to reach into each other.
+
+D5 cut the first link — `c_pair` is a constant now, since the offset
+lives in the geometry — and the argument survives it, because the rest of
+the chain still crosses all three groups and `pocket_offset` still
+reaches the rasterizer, just by the shorter road of being *in* the shape
+being rasterized.
 
 **Two fields were inert and are gone.** `pair_weight` and `wall_weight`
 existed from M2 to M9 and were never set to anything but 1.0 — they

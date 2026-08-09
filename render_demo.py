@@ -29,10 +29,11 @@ GIFs. `make previews` regenerates them, git shows the difference, and a
 person decides. The failure mode of a stale reference here is a diff
 somebody reads, not a red build somebody silences.
 
-Everything drawn is **deterministic**: hand-written placements, fixtures
-loaded from files, and the drawer assignment, which is exhaustive and
-carries no RNG. Nothing calls the stochastic solver, or the pictures would
-change on their own and the diffs would mean nothing.
+Everything drawn is **deterministic**: placements that are written out or
+arithmetic (see `_Centered`), fixtures loaded from files, and the drawer
+assignment, which is exhaustive and carries no RNG. Nothing calls the
+stochastic solver, or the pictures would change on their own and the
+diffs would mean nothing.
 """
 
 import argparse
@@ -43,7 +44,7 @@ from typing import Callable, Sequence
 import cv2
 import numpy as np
 
-from pipeline.layout.container import DEFAULT_INTERIOR_INSET_MM
+from pipeline.layout.container import DEFAULT_INTERIOR_INSET_MM, InteriorSpan
 from pipeline.layout.drawer import Assign, Drawer
 from pipeline.layout.field import FieldView, RenderField
 from pipeline.layout.floorplan import RenderFloorplan
@@ -111,7 +112,7 @@ def FieldSamples(params: LayoutParameters) -> np.ndarray:
     parts. A regression in `ResampleBoundary` would show here as four
     corner dots and bare edges between them.
     """
-    part = BuildPart(_Rectangle(12.0, 8.0), params.resolution, params.pad)
+    part = BuildPart(_Rectangle(12.0, 8.0), resolution=params.resolution, pad=params.pad)
     return RenderField(part, FieldView(pixels_per_mm=12.0, samples=True), params)
 
 
@@ -156,6 +157,26 @@ def Floorplan(params: LayoutParameters) -> np.ndarray:
     return RenderFloorplan(drawers, numbered, result, parts, pixels_per_mm=2.2)
 
 
+def _Centered(part: Part, grid: tuple[int, int]) -> np.ndarray:
+    """The position that puts `part` in the middle of a `grid` interior.
+
+    Derived rather than written down, for the bins that hold a single part
+    and are meant to look it. A literal is right for exactly one pocket
+    offset: `Placement.position` anchors a part's *minimum* corner and a
+    Part is its pocket, so raising the offset grows every part toward +x
+    and +y from a fixed anchor and slides a hand-centred fixture off
+    centre. That is not hypothetical - it is what happened to the 1x1 bin
+    below when pockets became geometry (D5), which went from 4.00mm of
+    slack on the near side and 4.30mm on the far to 4.00 and 2.21.
+
+    Still deterministic and still RNG-free, which is what the pictures
+    actually need: these placements are fixed, just fixed by arithmetic
+    instead of by hand.
+    """
+    interior = np.array([InteriorSpan(grid[0]), InteriorSpan(grid[1])])
+    return (interior - part.size) / 2.0
+
+
 def _Arrangement(params: LayoutParameters) -> tuple[Layout, dict[int, Part]]:
     """One hand-written 3x2 arrangement, shared by the pictures that need a
     solved-looking bin without calling the solver.
@@ -169,8 +190,13 @@ def _Arrangement(params: LayoutParameters) -> tuple[Layout, dict[int, Part]]:
 
 
 def _Grouping(params: LayoutParameters) -> tuple[list[Layout], dict[int, Part]]:
-    """Three hand-written bins over one set of parts - a grouping, without
-    having run the grouping search.
+    """Three bins over one set of parts - a grouping, without having run
+    the grouping search.
+
+    The 3x2 keeps its two positions written out, because the point of that
+    bin is two parts sharing one and neither is meant to be centred. The
+    two single-part bins are centred by `_Centered` instead, which is what
+    they always looked like and now stays true at any offset.
     """
     parts = _Parts(
         {
@@ -185,8 +211,8 @@ def _Grouping(params: LayoutParameters) -> tuple[list[Layout], dict[int, Part]]:
         Layout(
             grid=(3, 2), placements={0: Placement(0, np.array([8.0, 8.0])), 1: Placement(1, np.array([12.0, 44.0]))}
         ),
-        Layout(grid=(3, 1), placements={2: Placement(2, np.array([9.0, 3.0]))}),
-        Layout(grid=(1, 1), placements={3: Placement(3, np.array([4.0, 4.0]))}),
+        Layout(grid=(3, 1), placements={2: Placement(2, _Centered(parts[2], (3, 1)))}),
+        Layout(grid=(1, 1), placements={3: Placement(3, _Centered(parts[3], (1, 1)))}),
     ]
     return layouts, parts
 

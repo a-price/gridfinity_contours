@@ -172,7 +172,7 @@ def PoseBounds(part: Part, pose: Pose) -> tuple[np.ndarray, np.ndarray]:
     Everything that needs to know where a placed part actually is asks
     this, or asks `Placement.Bounds`, which is this plus the position.
     """
-    turned = RotatePoints(part.contour, pose.orientation, part.size)
+    turned = RotatePoints(part.pocket_contour, pose.orientation, part.size)
     spun = SpinPoints(turned, pose.angle, RotatedSize(part.size, pose.orientation) / 2.0)
     return spun.min(axis=0), spun.max(axis=0)
 
@@ -266,15 +266,38 @@ class Placement:
         """
         return self.position + RotatedSize(part.size, self.orientation) / 2.0
 
-    def ToWorld(self, part: Part) -> np.ndarray:
-        """The part's contour placed into bin coordinates."""
-        turned = RotatePoints(part.contour, self.orientation, part.size) + self.position
+    def LocalToWorld(self, part: Part, points: np.ndarray) -> np.ndarray:
+        """Any points in this part's local frame, placed into bin
+        coordinates. The inverse of `ToLocal`.
+
+        Takes arbitrary points rather than only the part's own outline
+        because a Part carries two contours and a set of samples, all in
+        one frame, and every one of them needs the same trip: the pocket
+        to pack and cut, the object to draw inside it, the samples to
+        collide with. `part` is still required - the rotation is defined
+        within the part's bounding box, so it is the pocket's `size` that
+        sets the frame whatever is being carried through it, which is
+        also why a re-cut pocket smaller than the packed one still lands
+        in the right place.
+        """
+        turned = RotatePoints(points, self.orientation, part.size) + self.position
         return SpinPoints(turned, self.angle, self.Pivot(part))
+
+    def ToWorld(self, part: Part) -> np.ndarray:
+        """The part's pocket placed into bin coordinates - what the bin has
+        to find room for, and what gets cut.
+        """
+        return self.LocalToWorld(part, part.pocket_contour)
+
+    def ObjectToWorld(self, part: Part) -> np.ndarray:
+        """The part's object placed into bin coordinates - what the pocket
+        was cut for, and what a preview draws inside it.
+        """
+        return self.LocalToWorld(part, part.object_contour)
 
     def SamplesToWorld(self, part: Part) -> np.ndarray:
         """The part's boundary sample points placed into bin coordinates."""
-        turned = RotatePoints(part.samples, self.orientation, part.size) + self.position
-        return SpinPoints(turned, self.angle, self.Pivot(part))
+        return self.LocalToWorld(part, part.samples)
 
     def ToLocal(self, part: Part, points: np.ndarray) -> np.ndarray:
         """Bin coordinates back into this part's own local frame, ready to

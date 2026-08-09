@@ -49,7 +49,7 @@ instruction for the level below it.
 | Rectify | 1 homography, N contours | N contours in mm |
 | Export / dump | N contours | 1 svg + 1 pdf + 1 json |
 | Load | F files | N contours, renumbered |
-| `BuildPart` | 1 contour | 1 part |
+| `BuildPart` | 1 object contour | 1 part (its pocket) |
 | `Pack` | N parts | 1 layout |
 | `Group` | N parts | M layouts |
 | Preview, solid | 1 layout | 1 file |
@@ -114,7 +114,13 @@ descending order of how much it would buy:
 dict comprehension in `loading.BuildParts`. This is the one that scales
 with the size of a person's actual library — rasterizing a signed distance
 field is the single most expensive per-object step, and forty objects is
-forty independent rasterizations.
+forty independent rasterizations. It is now *two* rasterizations apiece,
+and the pocket's is by far the expensive one: it runs at
+`pocket_resolution` (0.05 mm) against the solver's 0.25 mm, which on
+`big_spoon` is a 3.58 Mpx raster against 0.18 Mpx. Measured, one part
+costs 115 ms — 87 ms of it the pocket trace, 4 ms the field the solver
+actually reads, and 3 ms for the whole thing at a zero offset. D5 widened
+the gap this would close rather than narrowing it.
 
 **The restart loop, per attempt.** Already independent, and already paid
 for: `SolveFixedGrid` seeds each attempt as

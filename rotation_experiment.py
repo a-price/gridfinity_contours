@@ -147,7 +147,7 @@ def SinglePartTable(stems: Sequence[str], params: LayoutParameters) -> list[str]
     for stem in stems:
         parts = LoadParts([f"test_data/{stem}.svg"], params)
         part = next(iter(parts.values()))
-        reach = Reach(part.contour, params)
+        reach = Reach(part.pocket_contour, params)
 
         best, worst = Cells(reach[FREE_ROTATION]), Cells(reach[QUARTER_TURNS])
         verdict = "same" if best == worst else f"saves {worst - best} cells" if worst < 10**6 else "newly packable"

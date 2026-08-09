@@ -120,8 +120,8 @@ def test_constructive_init_places_parts_without_overlapping():
 
 
 def test_constructive_init_solves_a_dense_bin_outright():
-    """Four 50x30 parts pack into a 3x2 as an obvious 2x2 grid (103.2 wide
-    against 116.4 available, 63.2 tall against 74.4), and bottom-left fill
+    """Four 50x30 parts pack into a 3x2 as an obvious 2x2 grid (101.2 wide
+    against 118.4 available, 61.2 tall against 76.4), and bottom-left fill
     should find it without the relaxation being involved at all.
 
     Random candidate positions could not: measured at 0 successes in 30
@@ -129,7 +129,10 @@ def test_constructive_init_solves_a_dense_bin_outright():
     once parts fill most of the bin the feasible region is a vanishing
     fraction of it.
     """
-    params = _quick()
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = _quick(pocket_offset=0.0)
     parts = BuildParts({i: _rectangle(50, 30) for i in range(4)}, params)
     container = BuildContainer(3, 2, params.inset)
 

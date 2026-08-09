@@ -106,10 +106,13 @@ def test_spring_parameters_leave_the_rest_of_the_budget_alone():
 
 
 def test_gaps_are_reported_as_slack_over_the_clearance():
-    params = _quick()
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = _quick(pocket_offset=0.0)
     parts = BuildParts({0: _rectangle(20, 20), 1: _rectangle(20, 20)}, params)
-    # 4mm apart edge to edge, so 4 - 3.2 of slack. Kept inside the field's
-    # reach, or the pair would not register as adjacent at all.
+    # 4mm apart edge to edge, so `4 - c_pair` of slack. Kept inside the
+    # field's reach, or the pair would not register as adjacent at all.
     placements = {0: Placement(0, np.array([0.0, 0.0])), 1: Placement(1, np.array([24.0, 0.0]))}
 
     gaps = Gaps(parts, placements, params)
@@ -132,7 +135,10 @@ def test_a_gap_is_measured_the_tighter_way_round():
     reverse holding, so a one-directional measurement can miss a contact
     the energy sees.
     """
-    params = _quick()
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = _quick(pocket_offset=0.0)
     parts = BuildParts({0: _rectangle(60, 10), 1: _rectangle(10, 10)}, params)
     placements = {0: Placement(0, np.array([0.0, 0.0])), 1: Placement(1, np.array([25.0, 14.0]))}
 
@@ -307,7 +313,10 @@ def test_distributing_never_breaks_a_clearance():
     kept, the same discipline `Spread` follows - concave parts make
     "further apart" a claim rather than a proof.
     """
-    params = _quick()
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = _quick(pocket_offset=0.0)
     parts = LoadParts(SPOONS, params)
     container = BuildContainer(5, 2, params.inset)
     layout = SolveFixedGrid(parts, 5, 2, params)
@@ -340,7 +349,10 @@ def test_inflating_leaves_the_arrangement_centered():
     Re-centering afterwards costs one translation, which cannot change any
     pair distance at all.
     """
-    params = _quick()
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = _quick(pocket_offset=0.0)
     contours = {0: _box(40.0, 18.0), 1: _box(30.0, 15.0), 2: _box(25.0, 12.0)}
     parts = BuildParts(contours, params)
     container = BuildContainer(4, 3, params.inset)

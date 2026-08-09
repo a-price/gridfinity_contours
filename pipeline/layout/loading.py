@@ -87,13 +87,30 @@ def ReadContours(paths: Sequence[str]) -> dict[int, np.ndarray]:
 
 
 def BuildParts(contours: dict[int, np.ndarray], params: LayoutParameters | None = None) -> dict[int, Part]:
-    """Rasterize a set of millimeter contours at the resolution and field
-    extent the given parameters call for. Sizing the fields from the same
-    parameters that set the clearances is what keeps a part's field wide
-    enough to feel every clearance it is subject to.
+    """Grow a set of millimeter *object* contours into their pockets and
+    rasterize those, at the offset, resolution and field extent the given
+    parameters call for.
+
+    Sizing the fields from the same parameters that set the clearances is
+    what keeps a part's field wide enough to feel every clearance it is
+    subject to. Taking the pocket offset from there too is what keeps the
+    layout and the cut solid talking about the same shape - this is the
+    one place a session's objects become pockets, so a caller that
+    reaches past it to `BuildPart` is choosing to pack something other
+    than what will be printed.
     """
     params = params or LayoutParameters()
-    return {part_id: BuildPart(contour, params.resolution, params.pad) for part_id, contour in sorted(contours.items())}
+    return {
+        part_id: BuildPart(
+            contour,
+            params.pocket_offset,
+            resolution=params.resolution,
+            pad=params.pad,
+            pocket_resolution=params.pocket_resolution,
+            pocket_simplify=params.pocket_simplify,
+        )
+        for part_id, contour in sorted(contours.items())
+    }
 
 
 def LoadParts(paths: Sequence[str], params: LayoutParameters | None = None) -> dict[int, Part]:

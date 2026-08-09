@@ -7,10 +7,12 @@ line and produces something printable.
 
 import io
 import os
+import re
 import signal
 from unittest import mock
 
 import matplotlib
+import numpy as np
 import pytest
 
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
@@ -25,6 +27,7 @@ from layout_cli import (
     ShouldShowProgress,
 )
 from pipeline.contour_io import LoadContours, SaveContours
+from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM
 from pipeline.layout.loading import LoadSvgContours
 from pipeline.layout.packer import Progress
 from pipeline.layout.parameters import LayoutParameters
@@ -99,15 +102,20 @@ def test_passed_flags_override():
     assert (params.seed, params.max_grid, params.pocket_offset) == (7, 3, 0.5)
 
 
-def test_pocket_offset_moves_both_clearances_together():
-    # They are derived from it rather than set independently, so a divider
-    # cannot be left too thin to print.
+def test_pocket_offset_no_longer_moves_the_clearances():
+    """It used to set both, because a part was an object and the room its
+    pocket would need had to be reserved in the clearance. The parts are
+    pockets now, so the offset is already in the shape being packed and
+    the clearances are the printable divider and wall, flat. Adding it
+    here as well would count it twice.
+    """
     args = BuildParser().parse_args(["in.svg", "--pocket-offset", "2.0"])
 
     params = ParametersFrom(args)
 
-    assert params.c_pair == pytest.approx(5.2)
-    assert params.c_wall == pytest.approx(2.95)
+    assert params.pocket_offset == pytest.approx(2.0)
+    assert params.c_pair == pytest.approx(DIVIDER_WIDTH_MM)
+    assert params.c_wall == pytest.approx(MIN_WALL_MM)
 
 
 # ---------------------------------------------------------------- end to end
@@ -385,6 +393,18 @@ def test_a_solid_that_cannot_be_cut_does_not_lose_the_preview(tmp_path, capsys):
     assert "could not generate the solid" in capsys.readouterr().out
 
 
+def _PocketExtents(scad: str) -> list[float]:
+    """The longer bounding-box side of every `polygon(...)` in a .scad, in
+    mm - a rotation-proof stand-in for "how big did that pocket come out",
+    since a quarter turn swaps which axis is which.
+    """
+    extents = []
+    for body in re.findall(r"polygon\(points=\[(.*?)\]\)", scad):
+        points = np.array([[float(x), float(y)] for x, y in re.findall(r"\[(-?[\d.]+), (-?[\d.]+)\]", body)])
+        extents.append(float((points.max(axis=0) - points.min(axis=0)).max()))
+    return extents
+
+
 def test_the_solid_tolerance_can_differ_from_the_layouts(tmp_path):
     """The freedom M7 exists to preserve: the tolerance is a property of
     the printer, so changing it re-cuts the solid instead of invalidating
@@ -396,4 +416,10 @@ def test_the_solid_tolerance_can_differ_from_the_layouts(tmp_path):
 
     Main([dump, "--out", out, "--max-grid", "2", "--pocket-offset", "1.0", "--solid-offset", "0.4"])
 
-    assert "offset(r = 0.4000)" in (tmp_path / "layout.scad").read_text()
+    # No `offset(r = ...)` to look for any more - the pocket is the polygon.
+    # So the check is geometric: cut at 0.4 rather than the 1.0 it packed
+    # at, each pocket is 1.2mm narrower across than the one the layout
+    # reserved room for.
+    scad = (tmp_path / "layout.scad").read_text()
+    assert "offset(" not in scad
+    assert sorted(_PocketExtents(scad)) == pytest.approx([18.0 + 0.8, 20.0 + 0.8], abs=0.15)

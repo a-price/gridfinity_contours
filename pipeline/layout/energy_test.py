@@ -134,22 +134,23 @@ def test_quarter_turns_stay_the_default():
     assert LayoutParameters().rotation == QUARTER_TURNS
 
 
-def test_clearances_derive_from_the_pocket_offset():
-    params = LayoutParameters(pocket_offset=1.0)
-
-    # Two pockets each cut 1mm oversize need 2mm plus a printable divider.
-    assert params.c_pair == pytest.approx(2.0 + DIVIDER_WIDTH_MM)
-    assert params.c_wall == pytest.approx(1.0 + MIN_WALL_MM)
-
-
-def test_clearances_track_a_changed_pocket_offset():
+def test_clearances_no_longer_move_with_the_pocket_offset():
+    """They used to be `2*offset + divider` and `offset + wall`, because a
+    part was an object and the room its pocket would need had to be
+    reserved here. A part is its pocket now, so the offset is already in
+    the shape being spaced and what is left between two of them is
+    divider, all of it. Carrying the offset here as well would count it
+    twice.
+    """
+    tight = LayoutParameters(pocket_offset=1.0)
     loose = LayoutParameters(pocket_offset=2.0)
 
-    assert loose.c_pair == pytest.approx(4.0 + DIVIDER_WIDTH_MM)
-    assert loose.c_wall == pytest.approx(2.0 + MIN_WALL_MM)
+    for params in (tight, loose):
+        assert params.c_pair == pytest.approx(DIVIDER_WIDTH_MM)
+        assert params.c_wall == pytest.approx(MIN_WALL_MM)
 
 
-def test_explicit_clearances_override_the_derivation():
+def test_explicit_clearances_override_the_printable_minimums():
     params = LayoutParameters(pocket_offset=1.0, pair_clearance=8.0, wall_clearance=4.0)
 
     assert params.c_pair == 8.0
@@ -195,21 +196,34 @@ def test_energy_falls_to_zero_as_squares_separate():
     """The M2 separation criterion: positive and decreasing while the parts
     are closer than the clearance, exactly zero once they are not.
     """
-    params = LayoutParameters(pocket_offset=1.0)
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = LayoutParameters(pocket_offset=0.0)
+
+    # Fractions of the clearance rather than millimetres, so the test asks
+    # about the shape of the penalty and not about how wide a divider
+    # happens to be. Written as absolute separations it quietly stopped
+    # testing anything when the clearances collapsed from 3.2 to 1.2 by D5:
+    # two of its four samples landed outside the penalty's support, where
+    # zero energy is the correct answer and `energy > 0` is simply wrong.
     energies = []
-    for separation in [0.0, 1.0, 2.0, 3.0]:
-        parts, placements = _square_pair(separation, params)
+    for fraction in [0.0, 0.25, 0.5, 0.75]:
+        parts, placements = _square_pair(fraction * params.c_pair_enforced, params)
         energies.append(ComputeEnergy(parts, placements, _roomy_container(), params).energy)
 
     assert all(energy > 0 for energy in energies)
     assert energies == sorted(energies, reverse=True), "energy should fall as parts separate"
 
-    parts, placements = _square_pair(params.c_pair + 0.5, params)
+    parts, placements = _square_pair(params.c_pair_enforced + 0.5, params)
     assert ComputeEnergy(parts, placements, _roomy_container(), params).energy == 0.0
 
 
 def test_separated_parts_feel_no_force():
-    params = LayoutParameters(pocket_offset=1.0)
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = LayoutParameters(pocket_offset=0.0)
     parts, placements = _square_pair(params.c_pair + 1.0, params)
 
     result = ComputeEnergy(parts, placements, _roomy_container(), params)
@@ -220,7 +234,10 @@ def test_separated_parts_feel_no_force():
 
 
 def test_forces_push_along_the_separating_axis():
-    params = LayoutParameters(pocket_offset=1.0)
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = LayoutParameters(pocket_offset=0.0)
     parts, placements = _square_pair(0.5, params)
 
     forces = ComputeEnergy(parts, placements, _roomy_container(), params).forces
@@ -414,7 +431,10 @@ def test_deepest_penetration_reports_how_far_things_have_gone_wrong():
     and restart, rather than trusting a force that may be pointing the
     wrong way.
     """
-    params = LayoutParameters(pocket_offset=1.0)
+    # Hand-computed geometry: at a zero offset the pocket is the shape
+    # written here, so the numbers below stay the ones a reader can check.
+    # What packs pockets for real is the fixtures that take the default.
+    params = LayoutParameters(pocket_offset=0.0)
 
     clear_parts, clear = _square_pair(params.c_pair + 1.0, params)
     touching_parts, touching = _square_pair(0.0, params)

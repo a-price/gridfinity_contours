@@ -7,11 +7,12 @@ pocket offset, the GUI edits them. Living in `energy.py` meant six of nine
 modules importing a configuration object from a module they otherwise had
 no business touching.
 
-The clearances are the interesting part - see D5. They are *derived* from
-`pocket_offset` rather than set independently, because they are not
-independent: a pocket is cut that much larger than its object, so two
-pockets `c_pair` apart leave a divider of `c_pair - 2*pocket_offset`,
-which has to stay printable.
+The clearances are the interesting part - see D5. They used to be
+*derived* from `pocket_offset`, because a part was an object and the
+space a pocket would need around it had to be reserved by hand. Since
+pockets became geometry the offset is already in the shape being packed,
+and the clearances are what is left over: the printable divider and the
+printable wall, and nothing else.
 """
 
 from dataclasses import dataclass
@@ -22,6 +23,11 @@ from pipeline.layout.container import (
     MIN_WALL_MM,
 )
 from pipeline.layout.part import DEFAULT_RESOLUTION_MM
+from pipeline.layout.pocket import (
+    DEFAULT_OFFSET_MM,
+    DEFAULT_RESOLUTION_MM as POCKET_RESOLUTION_MM,
+    DEFAULT_SIMPLIFY_MM as POCKET_SIMPLIFY_MM,
+)
 
 # How much freedom a part has to turn inside its bin. The values are what a
 # user types at `--rotation`, so they read as angles rather than as jargon.
@@ -43,13 +49,18 @@ ROTATIONS = (QUARTER_TURNS, EIGHTH_TURNS, FREE_ROTATION)
 class LayoutParameters:
     """Everything tunable about a layout, read by eleven modules.
 
-    The three clearances are derived from `pocket_offset` rather than set
-    independently, because they are not independent: a pocket is cut
-    `pocket_offset` larger than its object so the object drops in, so two
-    pockets `pair_clearance` apart leave a divider of
-    `pair_clearance - 2*pocket_offset`, which has to stay printable.
-    Setting them separately invites a layout whose dividers are too thin to
-    print. Explicit values still override.
+    **The clearances no longer carry the pocket offset, because the parts
+    do.** What gets packed is a `Part`, and a Part is its *pocket* - the
+    object already grown by `pocket_offset` before the solver ever sees
+    it. So the space between two of them is divider, all of it, and
+    `c_pair` is `DIVIDER_WIDTH_MM` flat. It used to be
+    `2*pocket_offset + DIVIDER_WIDTH_MM`, which was the same number
+    reached from the other end: back when a part was an *object*, the
+    room its pocket would eventually need had to be reserved in the
+    clearance instead. Keeping that form now would count the offset
+    twice - object to object would come out at `4*pocket_offset +
+    DIVIDER_WIDTH_MM` - and every bin would be packed far looser than
+    asked for. Explicit values still override.
 
     **Why this is one object and not three.** The fields fall into three
     groups that different people touch - what the answer must satisfy
@@ -61,15 +72,27 @@ class LayoutParameters:
     of them, which looks like an argument for splitting.
 
     It is not, because a single derivation chain runs straight through all
-    three: `pocket_offset` gives `c_pair`, plus `resolution` gives
-    `c_pair_enforced`, plus `spacing_margin` gives `spacing_pair`, which
-    gives `pad` - and `pad` is what the *rasterizer* sizes distance fields
-    from. Split the groups and that chain is scattered across three types
-    that have to reach into each other. One object with grouped fields
-    keeps it derivable in one place.
+    three: `c_pair` plus `resolution` gives `c_pair_enforced`, plus
+    `spacing_margin` gives `spacing_pair`, which gives `pad` - and `pad`
+    is what the *rasterizer* sizes distance fields from. Split the groups
+    and that chain is scattered across three types that have to reach into
+    each other. One object with grouped fields keeps it derivable in one
+    place.
     """
 
-    pocket_offset: float = 1.0
+    # How much larger than its object each pocket is cut. Read by
+    # `loading.BuildParts` on the way in and by `solid` on the way out,
+    # and - since pockets became geometry - by nothing in between: the
+    # solver packs shapes that already have it.
+    pocket_offset: float = DEFAULT_OFFSET_MM
+
+    # The raster the dilation is traced on, and how hard the traced
+    # outline is simplified afterwards. Separate from `resolution`, which
+    # sizes the *solver's* fields, because the two buy different things -
+    # see the `pocket` module docstring. Finer costs time quadratically
+    # and buys a tighter fit; the test suite turns it down.
+    pocket_resolution: float = POCKET_RESOLUTION_MM
+    pocket_simplify: float = POCKET_SIMPLIFY_MM
     pair_clearance: float | None = None
     wall_clearance: float | None = None
     resolution: float = DEFAULT_RESOLUTION_MM
@@ -191,21 +214,19 @@ class LayoutParameters:
 
     @property
     def c_pair(self) -> float:
-        """Minimum part-to-part spacing: enough for both pockets' offsets
-        plus a printable divider between them.
+        """Minimum pocket-to-pocket spacing: a printable divider, since
+        that is all the gap between two pockets has to be.
         """
         if self.pair_clearance is not None:
             return self.pair_clearance
-        return 2.0 * self.pocket_offset + DIVIDER_WIDTH_MM
+        return DIVIDER_WIDTH_MM
 
     @property
     def c_wall(self) -> float:
-        """Minimum part-to-wall spacing: the pocket's offset plus a
-        printable wall.
-        """
+        """Minimum pocket-to-wall spacing: a printable wall."""
         if self.wall_clearance is not None:
             return self.wall_clearance
-        return self.pocket_offset + MIN_WALL_MM
+        return MIN_WALL_MM
 
     @property
     def raster_margin(self) -> float:
@@ -214,7 +235,7 @@ class LayoutParameters:
 
         Part-to-part distance is read off a rasterized field and comes back
         short by up to the discretization error - measured at 0.04mm on a
-        layout the solver considered finished, against a 3.2mm clearance.
+        layout the solver considered finished, well inside one raster cell.
         Without this the solver stops at what it *measures* as `c_pair` and
         the true gap is a hair under, quietly falsifying the guarantee that
         zero energy means every clearance is met.
@@ -254,7 +275,7 @@ class LayoutParameters:
 
         Measured from `c_wall` rather than `c_pair`, so what the springs
         equalize is the *slack* over each contact's own clearance. The two
-        clearances differ (1.95 vs 3.2 by D5), and treating the raw
+        clearances differ (0.95 vs 1.2 by D5), and treating the raw
         distances as comparable would systematically favour one.
         """
         return self.c_wall + self.spacing_margin

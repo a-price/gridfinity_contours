@@ -30,8 +30,8 @@ from conftest import Rectangle as _rectangle, SPOONS
 ELL = np.array([[0.0, 0.0], [30.0, 0.0], [30.0, 8.0], [8.0, 8.0], [8.0, 20.0], [0.0, 20.0]])
 
 
-def _layout(contours: dict, positions: dict, grid=(2, 1)):
-    params = LayoutParameters()
+def _layout(contours: dict, positions: dict, grid=(2, 1), pocket_offset: float = 1.0):
+    params = LayoutParameters(pocket_offset=pocket_offset)
     parts = BuildParts(contours, params)
     placements = {part_id: Placement(part_id, np.array(position)) for part_id, position in positions.items()}
     return Layout(grid=grid, placements=placements), parts
@@ -49,26 +49,38 @@ def _polygons(scad: str) -> list[np.ndarray]:
 # ------------------------------------------------------------------- walls
 
 
-def test_a_divider_thins_at_twice_the_offset():
-    """Each pocket grows by the offset, so the gap between two loses twice
-    it - the mistake this exists to prevent is halving that.
+def test_a_divider_is_what_is_left_between_two_pockets():
+    """Twenty-millimetre squares whose *pockets* start 26mm apart. Each
+    pocket is 22mm across at a 1mm offset, so 26 - 22 leaves a 4mm
+    divider, and the objects inside them sit 6mm apart.
+
+    Both numbers are real and it matters which one this reports: the
+    divider is what gets printed. This used to be computed as the objects'
+    6mm minus twice the offset, which reached the same 4mm by prediction
+    rather than by measurement - and the mistake it existed to prevent was
+    deducting the offset once instead of twice.
     """
     layout, parts = _layout(
         {0: _rectangle(20, 20), 1: _rectangle(20, 20)},
-        {0: [4.0, 8.0], 1: [30.0, 8.0]},  # 6mm of gap
+        {0: [4.0, 8.0], 1: [30.0, 8.0]},
     )
 
-    divider, _ = ThinnestWalls(layout, parts, pocket_offset=1.0)
+    divider, _ = ThinnestWalls(layout, parts)
 
-    assert divider == pytest.approx(6.0 - 2.0, abs=0.15)
+    assert divider == pytest.approx(4.0, abs=0.15)
 
 
-def test_a_bin_wall_thins_at_the_offset_once():
+def test_a_bin_wall_is_measured_to_the_pocket_not_the_object():
+    """A placement positions the *pocket's* corner, so a pocket dropped at
+    5mm leaves 5mm of wall and the object inside it sits a further
+    millimetre in. This used to read the object's 6mm and deduct the
+    offset to get there; now there is nothing to deduct.
+    """
     layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
 
-    _, wall = ThinnestWalls(layout, parts, pocket_offset=1.0)
+    _, wall = ThinnestWalls(layout, parts)
 
-    assert wall == pytest.approx(5.0 - 1.0, abs=0.15)
+    assert wall == pytest.approx(5.0, abs=0.01)
 
 
 def test_the_divider_reads_exact_geometry_not_the_relaxations_raster():
@@ -81,11 +93,12 @@ def test_the_divider_reads_exact_geometry_not_the_relaxations_raster():
     layout, parts = _layout(
         {0: _rectangle(20, 20), 1: _rectangle(20, 20)},
         {0: [4.0, 8.0], 1: [30.0, 8.0]},  # exactly 6mm of gap
+        pocket_offset=0.0,  # so the pockets are the squares, to the micron
     )
 
-    divider, _ = ThinnestWalls(layout, parts, pocket_offset=1.0)
+    divider, _ = ThinnestWalls(layout, parts)
 
-    assert divider == pytest.approx(4.0, abs=1e-6)
+    assert divider == pytest.approx(6.0, abs=1e-6)
 
 
 def test_a_single_part_has_no_dividers():
@@ -122,14 +135,23 @@ def test_a_smaller_offset_than_the_layout_assumed_is_fine():
 
     scad = GenerateScad(layout, parts, pocket_offset=0.5)
 
-    assert "offset(r = 0.5000)" in scad
+    # Nothing to grep for in the program any more - the pocket *is* the
+    # polygon - so the check is that each one came out cut at 0.5 rather
+    # than the 1.0 it was packed at.
+    assert "offset(" not in scad
+    for polygon in _polygons(scad):
+        extent = polygon.max(axis=0) - polygon.min(axis=0)
+        assert extent == pytest.approx([21.0, 21.0], abs=0.15)
 
 
 def test_an_offset_that_eats_the_bin_wall_is_refused():
-    layout, parts = _layout({0: _rectangle(20, 20)}, {0: [2.0, 8.0]})
+    """Packed at 1.0 with its pocket 1mm off the wall, so the object is
+    2mm off it. Re-cutting at 2.5 grows the pocket through the wall.
+    """
+    layout, parts = _layout({0: _rectangle(20, 20)}, {0: [1.0, 8.0]})
 
     with pytest.raises(ValueError, match="wall"):
-        GenerateScad(layout, parts, pocket_offset=1.5)
+        GenerateScad(layout, parts, pocket_offset=2.5)
 
 
 def test_a_pocket_deeper_than_the_infill_is_refused():
@@ -217,7 +239,7 @@ def test_the_y_flip_is_a_reflection_not_a_rotation():
         x, y = polygon[:, 0], polygon[:, 1]
         return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
 
-    assert np.sign(signed_area(points)) == -np.sign(signed_area(parts[0].contour))
+    assert np.sign(signed_area(points)) == -np.sign(signed_area(parts[0].pocket_contour))
 
 
 # ------------------------------------------------------------- the program

@@ -483,7 +483,8 @@ class FloorplanStage(Stage):
 
         def show_clearances() -> None:
             clearances.setText(
-                f"→ {self.parameters.c_pair:.2f}mm between parts, {self.parameters.c_wall:.2f}mm to the wall"
+                f"→ pockets cut {self.parameters.pocket_offset:.2f}mm oversize, then "
+                f"{self.parameters.c_pair:.2f}mm dividers and {self.parameters.c_wall:.2f}mm walls"
             )
 
         def apply_offset(value: float) -> None:

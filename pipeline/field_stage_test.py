@@ -33,6 +33,18 @@ def _labels(widget) -> str:
     return "\n".join(label.text() for label in _widgets(widget, QLabel))
 
 
+def _object_span(part) -> np.ndarray:
+    """The object a part was built for, as a width and height.
+
+    Which contour is on screen is a question about the shape somebody
+    drew. `part.size` answers a different one - a part is its *pocket*, so
+    at the default offset it is a millimetre larger on every side, and a
+    test that reads it is asserting `pocket`'s arithmetic rather than this
+    stage's selection.
+    """
+    return part.object_contour.max(axis=0) - part.object_contour.min(axis=0)
+
+
 def _checkbox(widget, text: str) -> QCheckBox:
     (found,) = [box for box in _widgets(widget, QCheckBox) if box.text() == text]
     return found
@@ -52,7 +64,7 @@ def test_only_the_selected_contour_is_rasterized():
 
     assert stage.selected == 0
     assert stage.part is not None
-    assert stage.part.size == pytest.approx([20.0, 10.0])
+    assert _object_span(stage.part) == pytest.approx([20.0, 10.0])
 
 
 def test_selecting_another_contour_shows_it(stage):
@@ -61,7 +73,7 @@ def test_selecting_another_contour_shows_it(stage):
     stage.Select(1)
 
     assert stage.part is not None
-    assert stage.part.size == pytest.approx([40.0, 30.0])
+    assert _object_span(stage.part) == pytest.approx([40.0, 30.0])
 
 
 def test_the_selection_survives_a_reload(stage):
@@ -127,21 +139,27 @@ def test_the_resolution_rebuilds_the_raster(stage):
     assert stage.part.sdf.shape[0] < coarse.sdf.shape[0]
 
 
-def test_the_pocket_offset_reaches_the_raster_through_the_pad(stage):
-    """The clearances are derived from the offset and `pad` is derived
-    from those, so an offset that only moved the drawn rings would leave
-    the field too short to reach them.
+def test_the_pocket_offset_rebuilds_the_raster_around_a_bigger_pocket(stage):
+    """The offset used to reach the raster the long way round: clearances
+    were derived from it, `pad` from those, and the test was that the
+    field stayed long enough to reach the rings being drawn. Since D5 it
+    reaches by the short road instead - this stage rasterizes the
+    *pocket*, so the offset is in the geometry itself and `pad` no longer
+    moves with it at all. An offset wired only to the labels would leave
+    both of these unchanged.
     """
     stage.Run(_contours())
     assert stage.part is not None
-    narrow = stage.part.pad
+    object_span = _object_span(stage.part)
+    pad = stage.part.pad
 
     stage.parameters.pocket_offset = 4.0
     stage._Build()
 
     assert stage.part is not None
-    assert stage.part.pad > narrow
-    assert stage.parameters.spacing_pair <= stage.part.pad
+    assert _object_span(stage.part) == pytest.approx(object_span), "the object is not what grew"
+    assert (stage.part.size > object_span + 8.0).all(), "the pocket is, by twice the offset"
+    assert stage.part.pad == pad, "pad is derived from the clearances, which no longer carry the offset"
 
 
 def test_the_view_settings_change_only_the_picture(stage):

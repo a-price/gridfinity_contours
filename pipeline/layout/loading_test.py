@@ -4,6 +4,7 @@ import pytest
 
 from pipeline.layout.container import BuildContainer, InteriorSpan
 from pipeline.layout.loading import LoadParts, LoadSvgContours
+from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import BuildPart, PolygonArea
 from conftest import SPOONS
 
@@ -68,11 +69,28 @@ def test_svg_loader_refuses_units_it_cannot_interpret(tmp_path):
 
 
 def test_spoon_fixtures_build_parts_with_the_expected_footprints():
-    parts = LoadParts(SPOONS)
+    """The measured lengths are the *objects*; what `LoadParts` hands back
+    is their pockets, so the two are checked separately.
+
+    Stating the growth as a bound rather than a fourth measured number is
+    the point: it is exactly the guarantee `pocket` sells. Never less than
+    twice the offset, because the trace is deliberately one-sided so a
+    pocket always contains the ideal dilation; never more than the raster
+    cell plus simplification tolerance it spends per side.
+    """
+    params = LayoutParameters()
+    parts = LoadParts(SPOONS, params)
 
     assert len(parts) == 3
-    lengths = sorted(float(part.size[0]) for part in parts.values())
-    assert lengths == pytest.approx([73.93, 162.76, 200.26], abs=0.05)
+    objects = sorted(
+        float(part.object_contour[:, 0].max() - part.object_contour[:, 0].min()) for part in parts.values()
+    )
+    assert objects == pytest.approx([73.93, 162.76, 200.26], abs=0.05)
+
+    slack = 2.0 * (params.pocket_resolution + params.pocket_simplify)
+    for part in parts.values():
+        span = float(part.object_contour[:, 0].max() - part.object_contour[:, 0].min())
+        assert 2.0 * params.pocket_offset <= float(part.size[0]) - span <= 2.0 * params.pocket_offset + slack
 
 
 def test_spoon_areas_match_their_contours():

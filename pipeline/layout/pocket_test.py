@@ -28,7 +28,12 @@ from pipeline.layout.pocket import (
 from pipeline.layout.verify import ExactSignedDistance
 from conftest import Rectangle as _rectangle, SPOONS
 
-# How far outside the requested offset a pocket is allowed to sit.
+# How far outside the requested offset a pocket is allowed to sit. Not
+# `0.5 * resolution + simplify`, the level the trace is taken at: the
+# raster's error is two-sided, so the outline can land half a cell *past*
+# that level as easily as half a cell short of it. Measured, a 60-gon
+# circle reaches 0.0698mm at the defaults - which is what makes the whole
+# cell the honest budget.
 _OVERSHOOT_MM = DEFAULT_RESOLUTION_MM + DEFAULT_SIMPLIFY_MM
 
 

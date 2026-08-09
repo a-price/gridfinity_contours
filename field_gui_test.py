@@ -116,7 +116,11 @@ def test_choosing_a_contour_shows_that_one(gui, tmp_path):
 
     part = gui.field_stage.part
     assert part is not None
-    assert part.size == pytest.approx([40.0, 30.0])
+    # The object, not `part.size` - what identifies the contour somebody
+    # picked is the shape they drew, and the part built from it is a
+    # pocket a millimetre larger on every side.
+    span = part.object_contour.max(axis=0) - part.object_contour.min(axis=0)
+    assert span == pytest.approx([40.0, 30.0])
 
 
 def test_adding_a_file_does_not_move_the_selection(gui, tmp_path):

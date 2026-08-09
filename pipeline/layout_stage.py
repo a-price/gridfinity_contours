@@ -168,14 +168,15 @@ class LayoutStage(Stage):
 
         def show_clearances() -> None:
             clearances.setText(
-                f"→ {self.parameters.c_pair:.2f}mm between parts, {self.parameters.c_wall:.2f}mm to the wall"
+                f"→ pockets cut {self.parameters.pocket_offset:.2f}mm oversize, then "
+                f"{self.parameters.c_pair:.2f}mm dividers and {self.parameters.c_wall:.2f}mm walls"
             )
 
-        # Pocket offset drives both clearances rather than exposing them
-        # separately (D5): two pockets `c_pair` apart leave a divider of
-        # `c_pair - 2*offset`, so independent spin boxes would let a
-        # perfectly reasonable-looking pair of numbers produce a divider
-        # too thin to print. The derived values are shown read-only.
+        # The offset no longer drives the clearances - it grows the pocket
+        # itself, and what is left between two pockets is divider. Still
+        # worth showing all three together: the offset is the number a
+        # user turns, and the two it now sits *alongside* rather than
+        # feeding are what decide whether the result prints.
         def apply_offset(value: float) -> None:
             self.parameters.pocket_offset = value
             show_clearances()

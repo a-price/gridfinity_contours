@@ -91,7 +91,7 @@ def test_placement_round_trips_through_the_local_frame():
         placement = Placement(part_id=0, position=np.array([13.0, 29.0]), orientation=orientation)
         world = placement.ToWorld(part)
 
-        assert placement.ToLocal(part, world) == pytest.approx(part.contour, abs=1e-9)
+        assert placement.ToLocal(part, world) == pytest.approx(part.pocket_contour, abs=1e-9)
 
 
 def test_placement_orientation_rotates_the_footprint():
@@ -167,7 +167,7 @@ def test_local_and_world_are_inverses_at_a_free_angle():
     world = placement.ToWorld(part)
     back = placement.ToLocal(part, world)
 
-    assert back == pytest.approx(part.contour, abs=1e-9)
+    assert back == pytest.approx(part.pocket_contour, abs=1e-9)
 
 
 def test_turning_a_part_does_not_change_its_area():
@@ -175,7 +175,7 @@ def test_turning_a_part_does_not_change_its_area():
     still look like a rotation in a drawing.
     """
     part = BuildPart(_l_shape(), resolution=0.5, pad=2.0)
-    before = PolygonArea(part.contour)
+    before = PolygonArea(part.pocket_contour)
 
     for angle in (0.3, 1.2, -2.5):
         placed = Placement(0, np.array([1.0, 2.0]), orientation=1, angle=angle)

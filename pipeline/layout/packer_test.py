@@ -114,7 +114,9 @@ def test_required_area_does_not_overcount_a_concave_dilation():
     radius = params.c_pair / 2.0
     (part,) = parts.values()
 
-    perimeter = float(np.linalg.norm(np.diff(np.vstack([part.contour, part.contour[:1]]), axis=0), axis=1).sum())
+    perimeter = float(
+        np.linalg.norm(np.diff(np.vstack([part.pocket_contour, part.pocket_contour[:1]]), axis=0), axis=1).sum()
+    )
     formula = part.area + perimeter * radius + np.pi * radius**2
 
     assert part.DilatedArea(radius) < formula, "field measurement should come in under the convex formula"
@@ -179,10 +181,13 @@ def test_bounds_never_reject_a_bin_that_actually_packs():
 @pytest.mark.parametrize(
     "count, size, cells",
     [
-        (1, (30, 25), 1),  # 30 + 2*1.95 fits a 36.3 interior
-        (1, (70, 25), 2),  # 70 + 3.9 needs the 78.3 of a 2-cell run
-        (2, (30, 30), 2),  # 2*30 + 3.2 = 63.2 against 74.4 usable
-        (4, (24, 20), 3),  # 4*24 + 3*3.2 = 105.6, still inside 116.4
+        # Sizes are objects; what packs is each one's pocket, 2.24mm larger
+        # per axis at the quick fixture's offset and raster. Usable run is
+        # the interior less a 0.95mm wall at each end.
+        (1, (30, 25), 1),  # 32.24 fits the 34.4 usable of a 1-cell run
+        (1, (70, 25), 2),  # 72.24 does not, and needs the 76.4 of a 2-cell
+        (2, (30, 30), 2),  # 2*32.24 + 1.2 = 65.68 against that same 76.4
+        (4, (24, 20), 3),  # 4*26.24 + 3*1.2 = 108.56, inside a 3-cell 118.4
     ],
     ids=["one-small", "one-long", "two-square", "four-small"],
 )

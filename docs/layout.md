@@ -391,29 +391,75 @@ Everything is vectorized over sample points with NumPy; the per-pair loop
 stays in Python, which is fine for the ~10 parts a bin realistically
 holds.
 
-### D5: Clearances derive from print reality, not from geometry
+### D5: What gets packed is the pocket, so the clearances are only walls
 
-Three separate numbers, all parameters:
+**A `Part` is a pocket, not an object.** The pocket is the object
+Minkowski-summed with a disk of radius `pocket_offset` — the hole that
+gets cut, rather than the thing that goes in it. `loading.BuildParts` is
+the one place the conversion happens, so everything downstream of it
+(solver, packer, preview, `.scad`) is talking about the same shape.
+
+Three numbers, no longer derived from one another:
 
 - `pocket_offset` (default 1.0 mm) — how much bigger the pocket is than
-  the object, so the object actually drops in. This is `solid.py`'s
-  existing `offset(r=1)`.
-- `c_pair` (default 3.2 mm) — minimum part-to-part spacing, which must
-  be at least `2 * pocket_offset + d_div` (1.2 mm) so the divider between
-  two pockets is printable.
-- `c_wall` (default 2.0 mm) — minimum part-to-wall spacing, at least
-  `pocket_offset + d_wall`.
+  the object. It is *not* a print tolerance alone. It pays for the camera's
+  resolution, the printer's, the object shifting between the two, and the
+  fact that a pocket has to be got *out* of again: a deep one binds unless
+  the object can be lifted through its centre of mass, and the slack is
+  what buys that.
+- `c_pair` = `DIVIDER_WIDTH_MM` (1.2 mm) — minimum pocket-to-pocket
+  spacing. A printable divider, and nothing else: both neighbours already
+  carry their offset.
+- `c_wall` = `MIN_WALL_MM` (0.95 mm) — minimum pocket-to-wall spacing. A
+  printable wall, on the same reasoning.
 
-Deriving `c_pair` and `c_wall` from `pocket_offset` by default (rather
-than leaving three independent knobs) keeps them consistent; explicit
-overrides stay available. The defaults also leave headroom over the SDF's
-0.25 mm discretization error, so raster approximation never causes a real
-collision.
+Explicit overrides stay available for both clearances.
 
-Layout operates on the *raw* contours and enforces spacing between them;
-the pocket offset is applied downstream at solid-generation time. Keeping
-the offset out of the layout geometry means changing print tolerance does
-not invalidate a layout.
+**Why the derivation had to go.** `c_pair` used to be
+`2 * pocket_offset + d_div`, which was the same quantity reached from the
+other end: when a part was an *object*, the room its pocket would
+eventually need had to be reserved inside the clearance. Keep that form
+once parts are pockets and the offset is counted twice — object to object
+would come out at `4 * pocket_offset + d_div`, and every bin would pack
+looser than asked for.
+
+**Why pairwise spacing alone was not enough.** For separation the old
+scheme was exactly right, because `dist(A ⊕ disk(r), B ⊕ disk(r)) = dist(A, B) − 2r` holds for arbitrary shapes: enforcing `2r + d_div`
+between objects *is* enforcing `d_div` between their pockets. What that
+identity does not cover is everything that reads a part's own shape, and
+dilation is not a uniform ring:
+
+- A notch narrower than `2r` fills in solid. The pocket has fewer
+  features than the object, and its area is not `area + perimeter·r + πr²`.
+- Two lobes closer than `2r` merge; a concavity's dilation folds into
+  itself. `big_spoon`'s bowl does exactly this.
+- So a part's area, its bounding box, `packer.ProvablyTooSmall`'s bounds,
+  the preview sheet and the cut solid were all reasoning about a shape
+  nobody was going to print.
+
+**Why the solid generator no longer offsets.** `solid.py` used to emit
+`offset(r = 1)` and let OpenSCAD do the dilation. OpenSCAD implements
+`offset()` with Clipper's `ClipperOffset`, and sizes the arc tolerance
+from `Calc::get_fragments_from_r(|delta|, $fn, $fs, $fa)`, which has a
+floor of **five fragments per circle**. At `r = 1.0` with the default
+`$fs`/`$fa` that floor binds, and a 90° corner becomes a single straight
+chamfer 0.293 mm *inside* nominal — measured, a 10×10 square offset by 1
+came out at 142.000 mm² against an exact 143.1416 mm². The floor binds for
+any offset below `5/π ≈ 1.59 mm`, i.e. for every offset anyone would
+choose. The shape being packed and the shape being cut were different
+shapes, and not by a little.
+
+**How the pocket is computed.** `pocket.PocketContour` rasterizes the
+object, takes its signed distance field, and traces the `pocket_offset`
+level set with marching squares (`skimage.measure.find_contours`). A
+polygon offset would have to detect and repair self-intersection, notch
+fill and trapped voids; a scalar field's level set cannot self-intersect,
+so all three come free. The trace is deliberately one-sided — at
+`offset + 0.5·resolution + simplify` — so a pocket always *contains* the
+ideal dilation rather than straddling it.
+
+The remaining raster error is the *solver's*, not the pocket's, and is
+covered by `raster_margin` (D3).
 
 ### D6: Grid size search — smallest area first
 
@@ -438,14 +484,23 @@ cell of it, reasoning that a part clearing its run by less than the
 discretization error could never really be placed. That is wrong, and the
 fixtures disprove it: `big_spoon` has a 0.135 mm window in a 5-cell run
 and the solver seats it there reliably, with measured wall margins of
-2.064 mm and 1.972 mm against a required 1.95 mm.
+2.064 mm and 1.972 mm against a required 1.95 mm. (Measured when parts
+were objects and `c_wall` was derived from the offset. D5 narrowed the
+window to 0.06 mm by moving the same 1 mm into the geometry, which
+strengthens the point rather than dating it.)
 
 The distinction is worth holding onto, because it decides where margins
 are needed at all. **Part-to-wall distance is analytic** — the container
 is a rounded rectangle with a closed-form distance function (D2) — so it
 carries no raster error and needs no slack. **Part-to-part distance is
 rasterized**, so it does, which is why the solver's contact positions are
-offset by two raster cells. Same geometry, two different error regimes.
+offset by two raster cells past `c_pair`. The same two cells have to
+appear in the *cull* horizon that decides which neighbours a candidate is
+priced against: those bounds are exact geometry while the energy reads
+the raster, so a neighbour at exactly `c_pair_enforced` still prices as a
+small violation. Culling it there let the constructive sweep accept a
+position that the very next energy evaluation called infeasible. Same
+geometry, two different error regimes.
 
 Cap `N` and `M` at a configurable max (default 6, past which nothing fits
 in a normal drawer) and report failure rather than searching forever.
@@ -885,23 +940,26 @@ Slow randomized sweeps get the existing `slow` pytest marker.
 
 `test_data/` holds three real exported spoon contours. Measured:
 
-| Fixture | Bbox (mm) | Verts | Area (mm²) | Solo bin | Long-axis slack |
-| --- | --- | --- | --- | --- | --- |
-| `big_spoon.svg` | 200.26 x 41.67 | 40 | 3414 | 5x2 | **0.14 mm** |
-| `medium_spoon.svg` | 162.76 x 34.89 | 39 | 2356 | 5x2 | 37.67 mm |
-| `small_spoon.svg` | 73.93 x 14.20 | 42 | 437 | 2x1 | **0.49 mm** |
+| Fixture | Object bbox (mm) | Verts | Object area (mm²) | Pocket bbox (mm) | Pocket area (mm²) | Solo bin | Long-axis slack |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `big_spoon.svg` | 200.26 x 41.67 | 40 | 3414 | 202.34 x 43.74 | 3885 | 5x2 | **0.06 mm** |
+| `medium_spoon.svg` | 162.76 x 34.89 | 39 | 2356 | 164.84 x 36.99 | 2740 | 5x2 | 37.56 mm |
+| `small_spoon.svg` | 73.93 x 14.20 | 42 | 437 | 75.99 x 16.29 | 610 | 2x1 | **0.41 mm** |
 
-(Slack against `c_wall` = 1.95 mm, the value derived from a 1 mm pocket
-offset. An earlier draft of this table assumed 2.0 mm.)
+(Pockets at the default 1 mm offset; slack against `c_wall` = 0.95 mm. The
+pocket bboxes run about 0.04 mm over `object + 2 mm` because the trace is
+one-sided by D5. Two earlier drafts of this table measured the *objects*
+against a `c_wall` derived from the offset — 2.0 mm, then 1.95 mm — which
+is the same arithmetic from the other end and gave 0.14 / 0.49 mm.)
 
 They are a better test set than they look, for three reasons.
 
-**They sit on cell boundaries.** `big_spoon` at 200.26 mm needs 204.16 mm
-with `c_wall` on both ends, against a 5-cell interior of 204.30 mm — a
-0.14 mm window, well under the raster resolution. The solver seats it
-there reliably, which is the evidence behind D6 carrying *no* slack term:
-the wall constraint is analytic, so a sub-resolution window is real space,
-not measurement noise.
+**They sit on cell boundaries.** `big_spoon`'s pocket at 202.34 mm needs
+204.24 mm with `c_wall` on both ends, against a 5-cell interior of
+204.30 mm — a 0.06 mm window, a quarter of the raster resolution. The
+solver seats it there reliably, which is the evidence behind D6 carrying
+*no* slack term: the wall constraint is analytic, so a sub-resolution
+window is real space, not measurement noise.
 
 To be clear about what does *not* rescue it: rotation cannot. The x-extent
 of a rotated `L x W` box is `L cos θ + W sin θ`, whose derivative at
@@ -917,11 +975,16 @@ they come from the bin's diagonal rather than from its long axis —
 See D1.
 
 **Grouping has real headroom here.** One-per-bin costs 22 cells
-(10 + 10 + 2 — note `big_spoon` is 41.67 mm wide, over a 1-cell
-interior's 36.3 mm, so it needs two rows). All three share a 5x2 at 39%
-fill, and a 5x1 is not obviously out of reach at 84% fill. So M8 should
-turn 22 cells into 10, or 5 if nesting goes well — a concrete target
-rather than a vague "fewer".
+(10 + 10 + 2 — note `big_spoon`'s pocket is 43.74 mm wide, over a 1-cell
+interior's 36.3 mm, so it needs two rows). All three share a 5x2 at 45%
+fill. So M8 should turn 22 cells into 10 — a concrete target rather than a
+vague "fewer".
+
+A 5x1 is not the stretch goal an earlier draft made it. That draft summed
+the *object* areas, got 84% of a 5x1 interior and called it "not
+obviously out of reach"; the pockets sum to 97.6% of the same interior,
+which for irregular shapes is not a packing anyone should expect to
+find.
 
 **They are the entropy example.** Three different-size spoons is
 literally the case
@@ -939,11 +1002,15 @@ two formats silently comes in 3.78x wrong.
 ## Open questions
 
 - **Finger access.** A pocket that exactly fits a flat tool is hard to
-  get the tool *out* of. Real shadow boxes add a scoop or a thumb relief.
-  Is that a layout concern (reserve space next to each part, which
-  changes packing) or a solid-generation concern (subtract a scoop from
-  the pocket afterward)? Leaning toward the latter, but it affects
-  `c_pair`.
+  get the tool *out* of, and a deep one binds outright unless the object
+  can be lifted through its centre of mass. `pocket_offset` buys some of
+  that slack (D5), but it buys it uniformly, and what a hand needs is a
+  scoop or a thumb relief in one place. Is that a layout concern (reserve
+  space beside each part, which changes packing) or a solid-generation
+  concern (subtract a scoop from the pocket afterward)? Leaning toward
+  the latter — but a relief that reaches outside the pocket is exactly
+  the case where it becomes the layout's problem, since the pocket is now
+  the packed geometry.
 - **Orientation preference.** Should a user be able to pin a part's
   orientation (e.g. "all screwdrivers point the same way") for a layout
   that reads well, at a density cost? Cheap to add as a constraint on the

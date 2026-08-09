@@ -1,20 +1,20 @@
 """Turning a solved layout into a printable Gridfinity bin.
 
 Emits OpenSCAD that builds a bin of the layout's grid size and cuts one
-pocket per part, each the part's own outline grown by the print
-tolerance.
+pocket per part - and by this point a pocket is simply a polygon, so
+cutting it is `linear_extrude` around what `pocket.PocketContour` already
+produced. The dilation used to happen here, as an OpenSCAD `offset(r =
+...)` applied to the object's outline; `_Cutout` says what that cost.
 
-The tolerance is applied *here* rather than in the layout. A layout
-reserves enough room for it (D5 derives the clearances from
-`pocket_offset`), but the actual dilation is a property of the printer and
-the fit you want, so changing your mind about it re-cuts the solid instead
-of invalidating the arrangement. `ThinnestWalls` is what keeps that
-freedom honest: ask for a tolerance the layout did not budget for and the
-dividers between pockets go too thin to print, so this refuses rather
-than emitting a bin that fails on the bed.
+Cutting at a tolerance the layout was *not* packed at still works, which
+is what `--solid-offset` is for: `PocketPolygons` re-grows each pocket
+from `part.object_contour` in the part's own frame, so the arrangement
+survives. `ThinnestWalls` keeps that honest - ask for more than the
+layout reserved and the dividers go too thin to print, so this refuses
+rather than emitting a bin that fails on the bed.
 
 Two details in here are easy to get wrong and impossible to notice until
-the print is finished - see `_PocketPoints` and `_Cutout`.
+the print is finished - see `_ToOpenScad` and `_Cutout`.
 """
 
 import os
@@ -24,6 +24,7 @@ import numpy as np
 from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM, InteriorSpan
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import Part
+from pipeline.layout.pocket import PocketContour
 from pipeline.layout.placement import Layout
 from pipeline.layout.verify import DistanceToBoundary, MinimumSeparation
 
@@ -42,15 +43,64 @@ BASE_HEIGHT_MM = 7.0
 DEFAULT_HEIGHT_UNITS = 3
 
 
-def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float) -> tuple[float, float]:
-    """The thinnest divider between two pockets and the thinnest bin wall,
-    in mm, that `pocket_offset` would leave.
+def _PackedOffset(layout: Layout, parts: dict[int, Part]) -> float:
+    """The offset the placed parts were packed at.
 
-    Each pocket is its part grown by the offset, so a gap of `g` between
-    two parts becomes a divider of `g - 2*offset`, and a part sitting `w`
-    from the interior wall leaves `w - offset` of bin wall. Both shrink
-    twice as fast as intuition suggests on the divider, which is exactly
-    why this is worth computing rather than eyeballing.
+    Refuses a mixed set rather than picking one. Everything that goes
+    through `loading.BuildParts` shares an offset by construction, so a
+    disagreement here means a caller assembled parts by hand from two
+    parameter sets, and guessing which of them the bin should be cut at
+    is exactly the sort of quiet wrong answer this refactor exists to
+    remove.
+    """
+    offsets = {parts[part_id].pocket_offset for part_id in layout.placements}
+    if len(offsets) > 1:
+        raise ValueError(f"parts were packed at differing pocket offsets {sorted(offsets)}; pass one explicitly")
+    return offsets.pop() if offsets else LayoutParameters().pocket_offset
+
+
+def PocketPolygons(
+    layout: Layout,
+    parts: dict[int, Part],
+    pocket_offset: float | None = None,
+) -> dict[int, np.ndarray]:
+    """Every placed pocket in bin coordinates, cut at `pocket_offset`.
+
+    Defaults to the offset the parts were packed at, which is the whole
+    of the usual case and costs nothing: the pocket is already geometry
+    on the Part, so placing it is a rigid transform and no dilation runs
+    at all.
+
+    A *different* offset re-grows each pocket from `part.object_contour`,
+    which is what makes cutting at a tolerance the layout was not packed
+    at still mean something. It works in the part's own frame, so the
+    placement that was solved for the packed pocket carries the re-cut
+    one unchanged - `Placement.LocalToWorld` rotates within the packed
+    pocket's bounding box, and a pocket cut smaller simply sits inside
+    it. Larger is not free, though, and `ThinnestWalls` is what catches
+    it: the layout only reserved room for what it packed.
+    """
+    polygons = {}
+    for part_id, placement in layout.placements.items():
+        part = parts[part_id]
+        if pocket_offset is None or pocket_offset == part.pocket_offset:
+            polygons[part_id] = placement.ToWorld(part)
+        else:
+            recut = PocketContour(part.object_contour, pocket_offset)
+            polygons[part_id] = placement.LocalToWorld(part, recut)
+    return polygons
+
+
+def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float | None = None) -> tuple[float, float]:
+    """The thinnest divider between two pockets and the thinnest bin wall,
+    in mm, that these pockets leave.
+
+    Measured pocket to pocket, with nothing subtracted. It used to take
+    the gap between two *objects* and deduct `2*pocket_offset` for the
+    two pockets that would be cut around them, because a part was an
+    object and the pockets did not exist yet to be measured. Now they do,
+    so this reports what is actually there - which also means it no
+    longer has to assume the cut matches the prediction.
 
     Both measurements read exact polygon geometry - `verify.MinimumSeparation`
     for the divider, `DistanceToBoundary` for the wall - rather than the
@@ -64,25 +114,24 @@ def ThinnestWalls(layout: Layout, parts: dict[int, Part], pocket_offset: float) 
     Returns `inf` for whichever does not apply - a single part has no
     dividers.
     """
-    polygons = {part_id: placement.ToWorld(parts[part_id]) for part_id, placement in layout.placements.items()}
+    polygons = PocketPolygons(layout, parts, pocket_offset)
 
     divider = np.inf
     ordered = sorted(polygons)
     for index, id_a in enumerate(ordered):
         for id_b in ordered[index + 1 :]:
-            divider = min(divider, MinimumSeparation(polygons[id_a], polygons[id_b]) - 2.0 * pocket_offset)
+            divider = min(divider, MinimumSeparation(polygons[id_a], polygons[id_b]))
 
     envelope = layout.Envelope()
     wall = np.inf
     for polygon in polygons.values():
-        distance = float(np.min(DistanceToBoundary(polygon, envelope)))
-        wall = min(wall, distance - pocket_offset)
+        wall = min(wall, float(np.min(DistanceToBoundary(polygon, envelope))))
 
     return float(divider), float(wall)
 
 
-def _PocketPoints(layout: Layout, parts: dict[int, Part], part_id: int) -> np.ndarray:
-    """One part's outline in OpenSCAD's coordinates.
+def _ToOpenScad(layout: Layout, points: np.ndarray) -> np.ndarray:
+    """One placed pocket in OpenSCAD's coordinates.
 
     Two transforms, both load-bearing:
 
@@ -100,7 +149,6 @@ def _PocketPoints(layout: Layout, parts: dict[int, Part], part_id: int) -> np.nd
         [InteriorSpan(layout.grid[0], layout.inset), InteriorSpan(layout.grid[1], layout.inset)],
         dtype=np.float64,
     )
-    points = layout.placements[part_id].ToWorld(parts[part_id])
     centered = points - interior / 2.0
     return np.stack([centered[:, 0], -centered[:, 1]], axis=-1)
 
@@ -109,7 +157,7 @@ def _Polygon(points: np.ndarray) -> str:
     return "polygon(points=[" + ", ".join(f"[{x:.4f}, {y:.4f}]" for x, y in points) + "])"
 
 
-def _Cutout(points: np.ndarray, pocket_offset: float, depth: float) -> str:
+def _Cutout(points: np.ndarray, depth: float) -> str:
     """One pocket, as the cutout geometry `bin_render` expects.
 
     `bin_render(bin) { ... }` translates its children to the top of the
@@ -125,11 +173,23 @@ def _Cutout(points: np.ndarray, pocket_offset: float, depth: float) -> str:
     cut in the first place, instead of being cut and then repaired by
     unioning it back on top - which works, but only for as long as the
     caller remembers to do it.
+
+    **The polygon emitted is already the pocket.** There is no
+    `offset(r = ...)` here any more, and its absence is the point of the
+    whole exercise. OpenSCAD's `offset` tessellates its rounded joins
+    from `$fn`/`$fs`/`$fa`, and at a 1mm offset with the defaults
+    `Calc::get_fragments_from_r` returns five fragments for a full
+    circle - so a 90-degree corner became a single straight chamfer
+    sitting 0.293mm *inside* the nominal offset. Measured: a 10x10 square
+    offset by 1 came out 142.000mm^2 against an exact 143.142. Every
+    sharp convex corner was cut to about 0.71mm of clearance where the
+    layout had budgeted 1.0mm, silently. `pocket.PocketContour` does the
+    dilation instead, at an error that is bounded, one-sided and
+    measured.
     """
     return (
         f"    translate([0, 0, {-depth:.4f}])\n"
         f"    linear_extrude(height = {depth:.4f})\n"
-        f"    offset(r = {pocket_offset:.4f})\n"
         f"    {_Polygon(points)};"
     )
 
@@ -168,7 +228,7 @@ def GenerateScad(
         raise ValueError(f"height must be at least one 7mm unit, got {height_units}")
 
     if pocket_offset is None:
-        pocket_offset = LayoutParameters().pocket_offset
+        pocket_offset = _PackedOffset(layout, parts)
     if pocket_offset < 0:
         raise ValueError(f"pocket offset must not be negative, got {pocket_offset}")
 
@@ -191,6 +251,7 @@ def GenerateScad(
             f"{height_units}-unit bin; raise the height rather than the depth"
         )
 
+    polygons = PocketPolygons(layout, parts, pocket_offset)
     divider, wall = ThinnestWalls(layout, parts, pocket_offset)
     if divider < DIVIDER_WIDTH_MM:
         raise ValueError(
@@ -204,9 +265,7 @@ def GenerateScad(
         )
 
     n, m = layout.grid
-    cutouts = "\n".join(
-        _Cutout(_PocketPoints(layout, parts, part_id), pocket_offset, depth) for part_id in sorted(layout.placements)
-    )
+    cutouts = "\n".join(_Cutout(_ToOpenScad(layout, polygons[part_id]), depth) for part_id in sorted(layout.placements))
 
     return (
         f"// Generated by gridfinity_contours. {len(layout.placements)} pockets in a {n}x{m} bin.\n"

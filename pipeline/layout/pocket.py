@@ -72,6 +72,14 @@ The result is that the returned pocket always contains the ideal
 dilation and overshoots it by at most `resolution + simplify` - 0.07mm
 at the defaults, against the 0.29mm *under*shoot of the OpenSCAD
 `offset()` this replaces.
+
+Note that the overshoot budget is a *whole* cell while the level only
+carries half of one. The half cell is what stops the trace landing
+inside; the other half is the same error with the other sign, since
+nothing makes the raster round outward in particular. Measured, the
+spoon fixtures overshoot by 0.032 - 0.039mm and a 60-gon circle by
+0.0698mm, which is what makes the whole cell the honest bound rather
+than a doubled one.
 """
 
 import cv2
@@ -79,6 +87,13 @@ import numpy as np
 from skimage.measure import find_contours
 
 from pipeline.layout.raster import FieldGrid, SignedDistanceField
+
+# How much larger than its object a pocket is cut, in mm, when nobody
+# says otherwise. The canonical value: `LayoutParameters.pocket_offset`
+# defaults to it, the same way that class takes its raster resolution
+# from `part`. See D5 for what a millimetre is buying, and the module
+# docstring above for the fact that it is buying several things at once.
+DEFAULT_OFFSET_MM = 1.0
 
 # Raster resolution for the dilation, in mm per pixel. An order of
 # magnitude finer than a Part's, for the reason in the module docstring.
@@ -111,7 +126,8 @@ def PocketContour(
     Every point of the result is at least `offset` from the object, and
     at most `offset + resolution + simplify` (0.07mm past it at the
     defaults). The bias is deliberate and outward; see the module
-    docstring.
+    docstring. An `offset` of zero is the object itself, returned
+    unchanged rather than traced.
 
     **Holes are filled.** Dilating a horseshoe far enough closes its
     mouth and traps a void in the middle, which `find_contours` reports
@@ -131,6 +147,15 @@ def PocketContour(
         raise ValueError(f"resolution must be positive, got {resolution}")
     if simplify < 0:
         raise ValueError(f"simplify must be non-negative, got {simplify}")
+
+    # A pocket with no offset is the object, and is returned as the object
+    # rather than as a trace of it. Not a shortcut for speed: round-tripping
+    # a rectangle through a raster hands back a few hundred vertices sitting
+    # a simplification tolerance outside the four it started with, which is
+    # strictly worse than the answer, and would make every caller that wants
+    # a part with no clearance at all pay for the difference.
+    if offset == 0.0:
+        return points
 
     # Biased outward, half a cell for the raster and the full tolerance
     # for the simplification - see the module docstring for both numbers.

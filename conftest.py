@@ -48,8 +48,21 @@ def QuickParameters(**overrides) -> LayoutParameters:
     formality: too small a budget and comfortably packable fixtures start
     failing intermittently, too large and the suite crawls. Files that need
     a different budget pass overrides rather than restating the baseline.
+
+    `pocket_resolution` is the second dial, and it is the expensive one.
+    Dilating an object is a fine raster whose cost is quadratic in the
+    cell: at the 0.05mm default a single spoon takes 139ms against
+    `BuildPart`'s own 9ms, and the suite builds parts in twenty-three
+    files. At 0.2mm that is sixteen times less raster, and it costs the
+    tests nothing they measure - a pocket 0.22mm oversize instead of
+    0.07mm still packs, still verifies, and no fixture here asserts on a
+    pocket outline finely enough to notice. Anything that does asks for
+    the default back.
     """
-    return replace(LayoutParameters(restarts=6, iterations=150, patience=25), **overrides)
+    return replace(
+        LayoutParameters(restarts=6, iterations=150, patience=25, pocket_resolution=0.2),
+        **overrides,
+    )
 
 
 @pytest.fixture(scope="session")

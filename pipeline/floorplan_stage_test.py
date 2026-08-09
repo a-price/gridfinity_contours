@@ -611,11 +611,11 @@ def test_stop_is_offered_only_to_a_host_that_can_stop(qapp):
     assert not _button(with_cancel, "Plan").isEnabled()
 
 
-def test_the_panel_shows_the_clearances_the_offset_implies(qapp):
+def test_the_panel_shows_what_the_offset_buys(qapp):
     stage = _stage()
     widget = stage.CreateWidget(on_change=lambda: None)
 
-    assert "3.20mm between parts" in _labels(widget)
+    assert "pockets cut 1.00mm oversize" in _labels(widget)
 
 
 def test_the_export_button_names_every_format_it_writes(qapp):
