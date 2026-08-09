@@ -56,6 +56,22 @@ from pipeline.layout.render import RenderLayout, RenderLayouts
 
 DEFAULT_OUT = "docs/media"
 
+# Pocket offset the gallery is drawn at, rather than the 1mm default.
+# Neither reason is decoration.
+#
+# It exercises a *non-default* offset, so a drawing that had quietly
+# hardcoded the default - or that reached for an object where it meant a
+# pocket - comes out visibly wrong here rather than plausibly right.
+#
+# And it is legible at these scales. Each part is drawn as two outlines,
+# the pocket solid and the object dashed inside it (D5), separated by
+# exactly the offset. At the 2 to 3 pixels per mm these pictures are
+# rendered at, a 1mm ring collapses into one fuzzy band and the two lines
+# stop being two lines; 2.5mm keeps them apart. The printed PDF has no
+# such problem, being at true scale - this is a limit of the gallery, so
+# the gallery is what compensates.
+DEMO_POCKET_OFFSET_MM = 2.5
+
 # Prefix, so the stills group together in a directory that also holds the
 # animations and so a glob can find them without knowing their names.
 PREFIX = "preview_"
@@ -235,8 +251,12 @@ def Write(out: str, params: LayoutParameters | None = None, names: Sequence[str]
 
     PNG because these are compared by eye and by `git diff`, and a lossy
     format would show compression noise as though it were a change.
+
+    Defaults to `DEMO_POCKET_OFFSET_MM` rather than to the library's own
+    default - see that constant. A caller passing its own parameters gets
+    them untouched, including a 1mm offset if that is what it wants.
     """
-    params = params or LayoutParameters()
+    params = params or LayoutParameters(pocket_offset=DEMO_POCKET_OFFSET_MM)
     wanted = set(names) if names else None
 
     written = []

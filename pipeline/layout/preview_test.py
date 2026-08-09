@@ -18,11 +18,13 @@ from pipeline.layout.loading import BuildParts, LoadSvgContours
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.placement import Layout, Placement
 from pipeline.layout.preview import (
+    OBJECT_DASHES,
     LayoutShapes,
     OuterFootprint,
     WriteLayoutPdf,
     WriteLayoutSvg,
 )
+from pipeline.layout.verify import DistanceToBoundary
 from conftest import Rectangle as _rectangle
 
 
@@ -36,6 +38,22 @@ def _simple_layout(grid=(2, 1)):
     parts = _parts(block=_rectangle(20.0, 10.0))
     placements = {0: Placement(0, np.array([5.0, 5.0]))}
     return Layout(grid=grid, placements=placements), parts
+
+
+def _pockets(shapes) -> list:
+    """The pocket outlines, which are the only closed shapes drawn.
+
+    Selected by that invariant rather than by position. Each part
+    contributes two shapes now - a solid pocket and a dashed object - so
+    `shapes[-1]` is the object, and a test reaching for it would quietly
+    be checking the wrong contour.
+    """
+    return [shape for shape in shapes if shape.closed]
+
+
+def _objects(shapes) -> list:
+    """The dashed object outlines drawn inside those pockets."""
+    return [shape for shape in shapes if shape.dashes == OBJECT_DASHES]
 
 
 # ------------------------------------------------------------ page framing
@@ -66,11 +84,16 @@ def test_a_part_is_drawn_inset_from_the_page_edge_by_the_wall_thickness():
 
     shapes, _, _ = LayoutShapes(layout, parts)
 
-    outline = shapes[-1].points
-    # The part sits 5mm into the interior, and the interior starts `inset`
-    # in from the rim the page is drawn to.
+    # The *pocket* sits 5mm into the interior, and the interior starts
+    # `inset` in from the rim the page is drawn to. It is the pocket that
+    # a placement positions, so it is the pocket this measures.
+    outline = _pockets(shapes)[0].points
     assert outline.min(axis=0)[0] == pytest.approx(5.0 + inset, abs=1e-6)
     assert outline.min(axis=0)[1] == pytest.approx(5.0 + inset, abs=1e-6)
+
+    # And the object is drawn a further offset in, on both axes.
+    (drawn_object,) = _objects(shapes)
+    assert (drawn_object.points.min(axis=0) > outline.min(axis=0) + 0.9).all()
 
 
 def test_every_drawn_part_lands_inside_the_page():
@@ -141,6 +164,63 @@ def test_only_parts_are_drawn_closed():
     shapes, _, _ = LayoutShapes(layout, parts)
 
     assert sum(1 for shape in shapes if shape.closed) == len(layout.placements)
+
+
+def test_each_part_is_drawn_as_a_pocket_and_the_object_inside_it():
+    """Two outlines per part, because a printed sheet answers two
+    questions: the solid pocket is what gets cut, the dashed object is
+    what you lay the real tool against.
+    """
+    layout, parts = _simple_layout(grid=(2, 2))
+    layout = Layout(
+        grid=layout.grid,
+        placements={**layout.placements, 1: Placement(1, np.array([30.0, 5.0]))},
+    )
+    parts = {**parts, 1: _parts(block=_rectangle(12.0, 8.0))[0]}
+
+    shapes, _, _ = LayoutShapes(layout, parts)
+
+    assert len(_pockets(shapes)) == 2
+    assert len(_objects(shapes)) == 2
+    for drawn in _objects(shapes):
+        assert not drawn.closed, "the object is annotation as far as the file format is concerned"
+
+
+def test_the_object_outline_sits_one_offset_inside_its_pocket():
+    """The gap between the two drawn lines is `pocket_offset` at true
+    scale - the only place in the pipeline it is visible rather than
+    inferred. Measured off the drawing, so a wrong contour reaching the
+    page shows up here rather than in a print.
+    """
+    params = LayoutParameters()
+    parts = _parts(block=_rectangle(20.0, 10.0))
+    layout = Layout(grid=(2, 1), placements={0: Placement(0, np.array([5.0, 5.0]))})
+
+    shapes, _, _ = LayoutShapes(layout, parts)
+
+    pocket = _pockets(shapes)[0].points
+    drawn_object = _objects(shapes)[0].points
+    gap = DistanceToBoundary(drawn_object, pocket)
+
+    # Never under the offset, since the trace is one-sided; never over it
+    # by more than the raster cell plus simplification `pocket` spends.
+    slack = params.pocket_resolution + params.pocket_simplify
+    assert gap.min() >= params.pocket_offset - 1e-9
+    assert gap.min() <= params.pocket_offset + slack
+
+
+def test_a_zero_offset_draws_one_outline_rather_than_two_identical_ones():
+    """With no offset the pocket *is* the object, and a dashed line
+    printed along a solid one reads as a rendering fault rather than as
+    information.
+    """
+    parts = BuildParts({0: _rectangle(20.0, 10.0)}, LayoutParameters(pocket_offset=0.0))
+    layout = Layout(grid=(2, 1), placements={0: Placement(0, np.array([5.0, 5.0]))})
+
+    shapes, _, _ = LayoutShapes(layout, parts)
+
+    assert len(_pockets(shapes)) == 1
+    assert _objects(shapes) == []
 
 
 def test_a_written_preview_reads_back_as_only_its_parts(tmp_path):
@@ -216,14 +296,25 @@ def test_an_asymmetric_part_is_not_mirrored_by_being_drawn():
     A mirrored outline measures correctly and still will not fit, because
     a reflected tool sits upside down in its pocket (D1). An L drawn with
     its long arm the other way would pass every dimension check above.
+
+    Checked on both outlines. They travel through `LocalToWorld` by the
+    same route, so one flipping without the other is unlikely - but the
+    dashed object is the line somebody lays a real tool against, which
+    makes it the one where a flip would be believed.
     """
     corner = np.array([[0.0, 0.0], [30.0, 0.0], [30.0, 8.0], [8.0, 8.0], [8.0, 20.0], [0.0, 20.0]])
     parts = _parts(ell=corner)
-    layout = Layout(grid=(2, 1), placements={0: Placement(0, np.array([5.0, 5.0]))})
+    placement = Placement(0, np.array([5.0, 5.0]))
+    layout = Layout(grid=(2, 1), placements={0: placement})
 
     shapes, _, _ = LayoutShapes(layout, parts)
 
-    # The part's own local contour, translated - nothing else. Any flip or
+    # The part's own local contours, translated - nothing else. Any flip or
     # transpose would break this equality while preserving the bounding box.
-    expected = layout.placements[0].ToWorld(parts[0]) + layout.inset
-    np.testing.assert_allclose(shapes[-1].points, expected)
+    np.testing.assert_allclose(_pockets(shapes)[0].points, placement.ToWorld(parts[0]) + layout.inset)
+
+    # The object carries its repeated closing vertex, being drawn open.
+    drawn = _objects(shapes)[0].points
+    expected = placement.ObjectToWorld(parts[0]) + layout.inset
+    np.testing.assert_allclose(drawn[:-1], expected)
+    np.testing.assert_allclose(drawn[-1], expected[0])

@@ -461,6 +461,18 @@ ideal dilation rather than straddling it.
 The remaining raster error is the *solver's*, not the pocket's, and is
 covered by `raster_margin` (D3).
 
+**The printed sheet draws both.** Solid is the pocket, dashed is the
+object inside it. Once the two are different shapes, a sheet showing one
+of them is answering only one of the two questions it gets asked — *will
+this print* is about the pocket and its neighbours, *did the capture come
+out right* is about laying a real tool on the outline — and which one it
+answered would depend on a decision made in `preview.py` rather than on
+what the reader wanted. Drawing both also puts `pocket_offset` on paper
+at true scale, which is the one place it is visible rather than inferred.
+The object is drawn as an open polyline, like the rim and the cell grid,
+so `LoadSvgContours` still reads a written preview back as exactly the
+shapes that will be cut.
+
 ### D6: Grid size search — smallest area first
 
 Enumerate candidate `(N, M)` in increasing order of `N * M`, breaking

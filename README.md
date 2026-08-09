@@ -160,6 +160,13 @@ shifting between the two, and the slack a deep pocket needs before you
 can lift the object back out of it. Sizes reported above are pockets, so
 they run about 2 mm over what a tape measure says.
 
+The printed sheet draws both, which is what makes it worth printing:
+**solid is the pocket** that will be cut, **dashed is the object** it was
+cut for. Lay the real tool on the dashed line to check the capture came
+out right; the ring of white between the two lines is the offset, at true
+scale, and it is the only place you can actually see it before it is
+plastic.
+
 Useful flags: `--restarts` and `--seed` steer the search, `--max-grid`
 caps the bin size, `--pocket-offset` sets how much larger than its object
 each pocket is cut, `--height` sets the depth in 7 mm units, `--no-scad`

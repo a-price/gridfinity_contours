@@ -281,6 +281,13 @@ Two smaller notes:
   interior outline, and cell grid as polylines. Drawn on the bin's outer
   footprint rather than its interior, so the sheet can be laid under a
   real bin and checked rim-to-rim.
+  **Two outlines per part since D5** — the solid polygon is the pocket
+  that gets cut, and a dashed polyline inside it is the object it was cut
+  for. The sheet is asked two different questions, and one line could
+  only answer one of them: *will this print* wants the pocket, *did the
+  capture come out right* wants the object under a real tool. The object
+  is drawn open like every other annotation, so `LoadSvgContours` still
+  reads a written preview back as exactly the shapes that will be cut.
 
 **Added in M6:** the same progress and cancellation hooks the window uses
 also drive the CLI. A live one-line display when stdout is a terminal

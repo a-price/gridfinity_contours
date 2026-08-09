@@ -7,6 +7,14 @@ interior outline and cell boundaries are drawn inside that, so a part
 sitting suspiciously close to a wall is visible rather than merely
 implied.
 
+**Each part is two outlines.** Solid is the pocket that will be cut;
+dashed is the object it was cut for, sitting `pocket_offset` inside it.
+Drawing only one was a choice between two different questions the sheet
+gets asked - *will this print* wants the pocket, and *did the capture
+come out right* wants the object laid under a real tool - so it now
+answers both. The gap between the two lines is the offset, at true scale,
+which is the only place in the pipeline you can actually see it.
+
 There is deliberately no coordinate flip anywhere in here. The layout
 frame is whatever frame the input contours arrived in, and svg_writer
 writes that frame straight onto the page; adding a flip here would mirror
@@ -43,6 +51,15 @@ GRID_COLOR = "#c0c0c0"
 
 INTERIOR_DASHES = (2.0, 1.0)
 GRID_DASHES = (1.0, 1.0)
+
+# The object drawn inside its pocket. Shorter runs than either annotation
+# dash, so it reads as dotted against the interior's long dashes rather
+# than as a third kind of boundary.
+#
+# It has to stay distinct from GRID_DASHES for a second reason: the dash
+# pattern is how `preview_test` picks cell boundaries out of the shape
+# list, so an object contour sharing that tuple would be counted as one.
+OBJECT_DASHES = (0.6, 0.6)
 
 
 def OuterFootprint(n: int, m: int) -> tuple[float, float]:
@@ -124,8 +141,35 @@ def LayoutShapes(layout: Layout, parts: dict[int, Part]) -> tuple[list[Shape], f
 
     for part_id in sorted(layout.placements):
         placement = layout.placements[part_id]
-        outline = placement.ToWorld(parts[part_id]) + inset
-        shapes.append(Shape(outline, stroke=PART_COLOR, stroke_width=PART_STROKE_MM))
+        part = parts[part_id]
+        shapes.append(Shape(placement.ToWorld(part) + inset, stroke=PART_COLOR, stroke_width=PART_STROKE_MM))
+
+        # Both contours, because a printed sheet answers two questions and
+        # they have different answers. The solid line is the pocket - what
+        # gets cut, and what has to clear its neighbours. The dashed one is
+        # the object, and it is the line you lay the real tool against to
+        # check the capture before committing to a print. Same weight and
+        # colour: neither is annotation, and which is which is carried by
+        # the dash rather than by importance.
+        #
+        # Drawn open like every other non-part outline, so
+        # `loading.LoadSvgContours` still reads a written preview back as
+        # exactly the shapes that will be cut, rather than as twice as many
+        # objects to pack.
+        #
+        # Skipped where the offset is zero and the two are the same
+        # polygon - a dashed line printed exactly along a solid one reads
+        # as a rendering fault, not as information.
+        if part.pocket_offset > 0.0:
+            shapes.append(
+                Shape(
+                    ClosedRing(placement.ObjectToWorld(part) + inset),
+                    closed=False,
+                    stroke=PART_COLOR,
+                    stroke_width=PART_STROKE_MM,
+                    dashes=OBJECT_DASHES,
+                )
+            )
 
     return shapes, width, height
 

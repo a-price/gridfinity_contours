@@ -43,6 +43,21 @@ def test_every_preview_renders_something(name, tmp_path):
     assert image.min() < 100, "expected something drawn on it"
 
 
+def test_the_gallery_is_drawn_at_a_non_default_pocket_offset():
+    """Deliberate, and worth pinning so a later tidy-up does not quietly
+    restore the default.
+
+    A gallery drawn at the library's own default cannot show a drawing
+    that hardcoded that default, or one that reached for an object where
+    it meant a pocket - both come out looking exactly right. It also has
+    to be big enough to see: each part is drawn as a pocket and the
+    object inside it, and at these render scales a 1mm ring between them
+    is one fuzzy band rather than two lines.
+    """
+    assert render_demo.DEMO_POCKET_OFFSET_MM != LayoutParameters().pocket_offset
+    assert render_demo.DEMO_POCKET_OFFSET_MM > LayoutParameters().pocket_offset
+
+
 def test_the_gallery_covers_every_drawing_path(tmp_path):
     """The point of the gallery is that each renderer has a picture. A
     path added without one is a path whose appearance nothing watches.
