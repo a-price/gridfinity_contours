@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from pipeline.contour_extraction import PCABox
+from pipeline.layout.raster import SignedDistanceField
 
 # Raster resolution for the signed distance fields, in mm per pixel. Fine
 # enough that discretization error stays well under the millimeter-scale
@@ -242,34 +243,6 @@ class Part:
         return result
 
 
-def _RasterizePolygon(pixels: np.ndarray, height: int, width: int) -> np.ndarray:
-    """A boolean mask of which pixel centers fall inside a polygon given in
-    pixel coordinates, where pixel (r, c)'s center is at (c, r).
-
-    This is a crossing-number test rather than cv2.fillPoly, which rounds
-    the polygon's coordinates to whole pixels and fills inclusively - so an
-    edge landing on a half-pixel (the common case, since a bounding box
-    corner maps to one exactly) gains an extra row or column on the high
-    side but not the low side. That asymmetric half-pixel is invisible in a
-    mask and shows up later as a distance field that disagrees with the
-    geometry by more at one end of a part than the other.
-    """
-    grid_x, grid_y = np.meshgrid(np.arange(width, dtype=np.float64), np.arange(height, dtype=np.float64))
-    x, y = grid_x.ravel(), grid_y.ravel()
-
-    inside = np.zeros(x.shape, dtype=bool)
-    starts = pixels
-    ends = np.roll(pixels, -1, axis=0)
-    for (x0, y0), (x1, y1) in zip(starts, ends):
-        if y0 == y1:
-            continue  # horizontal edges cross no horizontal ray
-        straddles = (y0 > y) != (y1 > y)
-        crossing_x = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
-        inside ^= straddles & (x < crossing_x)
-
-    return inside.reshape(height, width)
-
-
 def BuildPart(
     contour: np.ndarray,
     resolution: float = DEFAULT_RESOLUTION_MM,
@@ -288,22 +261,14 @@ def BuildPart(
     if len(local) < 3:
         raise ValueError(f"a contour needs at least 3 points, got {len(local)}")
 
+    # Stated rather than derived from `local.min(axis=0)`: _AlignToLocalFrame
+    # already put the minimum corner at the origin, to within the rounding
+    # error PCA's float32 basis leaves behind.
     extent = local.max(axis=0)
     origin = np.array([-pad, -pad])
     width = int(np.ceil((extent[0] + 2 * pad) / resolution))
     height = int(np.ceil((extent[1] + 2 * pad) / resolution))
-
-    mask = _RasterizePolygon((local - origin) / resolution - 0.5, height, width)
-
-    # distanceTransform measures to the nearest pixel of opposite state, so
-    # a pixel one step inside the boundary reports 1.0 where the true
-    # distance to the edge between them is 0.5. Subtracting that half pixel
-    # from both sides puts the zero level set on the polygon boundary
-    # instead of half a pixel outside it.
-    filled = mask.astype(np.uint8) * 255
-    inside = cv2.distanceTransform(filled, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
-    outside = cv2.distanceTransform(255 - filled, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
-    sdf = (np.where(mask, -(inside - 0.5), outside - 0.5) * resolution).astype(np.float32)
+    sdf = SignedDistanceField(local, origin, height, width, resolution)
 
     return Part(
         contour=local,
