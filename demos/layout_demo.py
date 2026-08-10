@@ -37,8 +37,8 @@ from typing import Sequence
 import numpy as np
 
 from export.gif_writer import DEFAULT_COLORS, Canvas, WriteGif
-from pipeline.layout.descent import Snapshot
-from pipeline.layout.drawer import (
+from layout.descent import Snapshot
+from layout.drawer import (
     PLACED,
     AdmissibleFootprints,
     Assign,
@@ -47,15 +47,15 @@ from pipeline.layout.drawer import (
     DrawerCells,
     Trial,
 )
-from pipeline.layout.drawer import ParseDrawer as _ParseDrawer
-from pipeline.layout.floorplan import FloorplanPages
-from pipeline.layout.grouping import FirstFit, Group, Improve, OnePerBin, Step
-from pipeline.layout.loading import BuildParts, ReadContours
-from pipeline.layout.packer import Pack
-from pipeline.layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters
-from pipeline.layout.part import Part
-from pipeline.layout.placement import Layout
-from pipeline.layout.render import Bordered, InRows, RenderLayout, RenderShapes, SideBySide
+from layout.drawer import ParseDrawer as _ParseDrawer
+from layout.floorplan import FloorplanPages
+from layout.grouping import FirstFit, Group, Improve, OnePerBin, Step
+from layout.loading import BuildParts, ReadContours
+from layout.packer import Pack
+from layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters
+from layout.part import Part
+from layout.placement import Layout
+from layout.render import Bordered, InRows, RenderLayout, RenderShapes, SideBySide
 
 # Half the screen preview's scale. A 4x2 bin comes out around 340px wide,
 # which is legible inline in a README and keeps a few hundred frames inside

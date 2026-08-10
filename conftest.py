@@ -19,7 +19,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from pipeline.layout.parameters import LayoutParameters
+from layout.parameters import LayoutParameters
 
 # Set before any test module imports PyQt5, so a Qt test needs no display.
 # Lives here rather than in each Qt test file because conftest is imported

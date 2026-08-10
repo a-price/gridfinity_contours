@@ -45,10 +45,10 @@ from PyQt5.QtWidgets import (
 )
 
 from pipeline.core import CreateGroupBox, FixQtOpenCvPluginPath
-from pipeline.layout.container import BASE_GAP_MM, GRID_PITCH_MM
-from pipeline.layout.drawer import ParseDrawer
-from pipeline.layout.loading import ReadContours
-from pipeline.layout.plan import ReadDrawers, SaveDrawers
+from layout.container import BASE_GAP_MM, GRID_PITCH_MM
+from layout.drawer import ParseDrawer
+from layout.loading import ReadContours
+from layout.plan import ReadDrawers, SaveDrawers
 from pipeline.floorplan_stage import EXPORT_EXTENSIONS, FloorplanStage
 
 FixQtOpenCvPluginPath()

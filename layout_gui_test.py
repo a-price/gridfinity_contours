@@ -10,7 +10,7 @@ import os
 import pytest
 
 from export.contour_io import SaveContours
-from pipeline.layout.parameters import LayoutParameters
+from layout.parameters import LayoutParameters
 from pipeline.layout_stage import EXPORT_EXTENSIONS
 from layout_gui import LayoutGui
 from conftest import Rectangle as _rectangle, SPOONS

@@ -4,7 +4,7 @@
 
 Small on purpose rather than by accident. `PCABox` is the most widely
 shared thing in this repository - `export.svg_writer` aligns contours with
-it, `pipeline.morphology` measures masks with it, `pipeline.layout.part`
+it, `pipeline.morphology` measures masks with it, `layout.part`
 builds a part's local frame from it, and `silhouette_gui` transforms
 clicked points with it. Four consumers spanning every layer, which is
 exactly why it cannot live in any one of them.

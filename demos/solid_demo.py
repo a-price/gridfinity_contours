@@ -33,10 +33,10 @@ from typing import Sequence
 import cv2
 import numpy as np
 
-from pipeline.layout.loading import BuildParts, ReadContours
-from pipeline.layout.packer import Pack
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.solid import WriteScad
+from layout.loading import BuildParts, ReadContours
+from layout.packer import Pack
+from layout.parameters import LayoutParameters
+from layout.solid import WriteScad
 
 DEFAULT_OUT = "docs/media"
 

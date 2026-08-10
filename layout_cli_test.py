@@ -27,10 +27,10 @@ from layout_cli import (
     ShouldShowProgress,
 )
 from export.contour_io import LoadContours, SaveContours
-from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM
-from pipeline.layout.loading import LoadSvgContours
-from pipeline.layout.packer import Progress
-from pipeline.layout.parameters import LayoutParameters
+from layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM
+from layout.loading import LoadSvgContours
+from layout.packer import Progress
+from layout.parameters import LayoutParameters
 from conftest import Rectangle as _rectangle, SPOONS
 
 # ------------------------------------------------------------------ inputs

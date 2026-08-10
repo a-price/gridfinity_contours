@@ -32,17 +32,17 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from pipeline.core import CreateChoice, CreateGroupBox, CreateSpinBox, Stage
-from pipeline.layout.drawer import Assign, AssignmentResult, Drawer, FirstFit
-from pipeline.layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
-from pipeline.layout.loading import BuildParts
-from pipeline.layout.parameters import ROTATIONS, LayoutParameters
-from pipeline.layout.part import Part
-from pipeline.layout.grouping import Grouping
-from pipeline.layout.placement import Layout
-from pipeline.layout.plan import BuildPlan, Progress, StoragePlan
-from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
-from pipeline.layout.session import Changes, LoadSession, SaveSession, Verify
-from pipeline.layout.solid import WriteScad
+from layout.drawer import Assign, AssignmentResult, Drawer, FirstFit
+from layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
+from layout.loading import BuildParts
+from layout.parameters import ROTATIONS, LayoutParameters
+from layout.part import Part
+from layout.grouping import Grouping
+from layout.placement import Layout
+from layout.plan import BuildPlan, Progress, StoragePlan
+from layout.preview import WriteLayoutPdf, WriteLayoutSvg
+from layout.session import Changes, LoadSession, SaveSession, Verify
+from layout.solid import WriteScad
 
 # One page per drawer, so a floorplan is a PDF and not an SVG - see
 # `pdf_writer.WriteShapesPdf` on why the page size has to be unambiguous.

@@ -56,7 +56,7 @@ into an align-then-write wrapper over a write-these-coordinates core
 ([svg_writer.py](../export/svg_writer.py))); the preview uses the core.
 
 The `.scad` is generated from a `Layout` by
-[pipeline/layout/solid.py](../pipeline/layout/solid.py) — a separate
+[layout/solid.py](../layout/solid.py) — a separate
 module, so layout stays pure geometry. It supersedes the root
 `solid.py`, whose single-contour path predates `Layout`.
 
@@ -268,7 +268,7 @@ what D8 addresses.
 ### D8: Even spacing — a spring network at an inflated rest length
 
 Once a layout is feasible, a second pass evens out the gaps
-([spacing.py](../pipeline/layout/spacing.py)). Every pair of parts near
+([spacing.py](../layout/spacing.py)). Every pair of parts near
 enough to sense each other, and every part near a wall, gets a quadratic
 spring pulling toward one shared rest length, `clearance + spacing_margin`.
 Where they cannot all reach it — which in a bin worth packing is
@@ -528,29 +528,29 @@ distinct concerns, and one file holding all of them passed 800 lines
 before the solver was even written, against a house style of 100-375.
 
 ```
-pipeline/layout/container.py   the bin interior, from the Gridfinity spec
-pipeline/layout/part.py        a contour and its signed distance field
-pipeline/layout/placement.py   a part positioned in a bin
-pipeline/layout/parameters.py  everything tunable, in one place
-pipeline/layout/energy.py      clearance violation and the forces to fix it
-pipeline/layout/descent.py     moving parts along those forces
-pipeline/layout/solver.py      arranging parts inside a bin of fixed size
-pipeline/layout/packer.py      choosing the bin size, with the bounds that
+layout/container.py            the bin interior, from the Gridfinity spec
+layout/part.py                 a contour and its signed distance field
+layout/placement.py            a part positioned in a bin
+layout/parameters.py           everything tunable, in one place
+layout/energy.py               clearance violation and the forces to fix it
+layout/descent.py              moving parts along those forces
+layout/solver.py               arranging parts inside a bin of fixed size
+layout/packer.py               choosing the bin size, with the bounds that
                                reject one without running the solver
-pipeline/layout/grouping.py    partitioning parts across several bins
-pipeline/layout/drawer.py      which bins share a drawer, in whole cells
-pipeline/layout/floorplan.py   a whole drawer at true scale, to print
-pipeline/layout/loading.py     getting parts in, from SVGs or from
+layout/grouping.py             partitioning parts across several bins
+layout/drawer.py               which bins share a drawer, in whole cells
+layout/floorplan.py            a whole drawer at true scale, to print
+layout/loading.py              getting parts in, from SVGs or from
                                contours you already have
-pipeline/layout/spacing.py     evening out the gaps once a layout fits
-pipeline/layout/preview.py     drawing a solved layout at true scale
-pipeline/layout/solid.py       the printable bin, as OpenSCAD
-pipeline/layout/render.py      the same drawing, rasterized for a screen
-pipeline/layout/field.py       a part's distance field, false-colored
-pipeline/layout/plan.py        the whole stack: parts to bins to drawers
-pipeline/layout/session.py     saving a floorplan and resuming it
-pipeline/layout/verify.py      independent checks, no code shared with above
-pipeline/layout/*_test.py      one test module per source module
+layout/spacing.py              evening out the gaps once a layout fits
+layout/preview.py              drawing a solved layout at true scale
+layout/solid.py                the printable bin, as OpenSCAD
+layout/render.py               the same drawing, rasterized for a screen
+layout/field.py                a part's distance field, false-colored
+layout/plan.py                 the whole stack: parts to bins to drawers
+layout/session.py              saving a floorplan and resuming it
+layout/verify.py               independent checks, no code shared with above
+layout/*_test.py               one test module per source module
 demos/render_demo.py           one committed still per drawing path
 pipeline/layout_stage.py       Stage subclass, group box, Qt
 pipeline/field_stage.py        the same, for the field viewer
@@ -620,7 +620,7 @@ A library grows one object at a time, and by the time the second one
 arrives half the answer is already printed and sitting in a drawer. So
 the question is not "where does everything go" but *"where does this go,
 and what do I have to reprint"* — which is what
-[session.py](../pipeline/layout/session.py) makes askable.
+[session.py](../layout/session.py) makes askable.
 
 `BuildPlan` takes an optional `start` grouping. Given one, it opens a bin
 for any part the grouping does not account for and hands the whole thing
@@ -799,7 +799,7 @@ controls are exactly the kind a person drags.
 ## Grouping
 
 Phase 2 turns "pack this set" into "partition these parts into bins"
-([grouping.py](../pipeline/layout/grouping.py)). The arrangement packer is
+([grouping.py](../layout/grouping.py)). The arrangement packer is
 the feasibility oracle; the search around it:
 
 1. Sort parts by area, descending.

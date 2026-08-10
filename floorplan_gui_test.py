@@ -9,9 +9,9 @@ import pytest
 from PyQt5.QtCore import Qt
 
 from export.contour_io import SaveContours
-from pipeline.layout.drawer import Drawer
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.plan import GROUPING, Progress, SaveDrawers
+from layout.drawer import Drawer
+from layout.parameters import LayoutParameters
+from layout.plan import GROUPING, Progress, SaveDrawers
 from floorplan_gui import FloorplanGui
 from conftest import QuickParameters as _quick, Rectangle as _rectangle
 

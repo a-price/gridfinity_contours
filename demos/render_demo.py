@@ -44,15 +44,15 @@ from typing import Callable, Sequence
 import cv2
 import numpy as np
 
-from pipeline.layout.container import DEFAULT_INTERIOR_INSET_MM, InteriorSpan
-from pipeline.layout.drawer import Assign, Drawer
-from pipeline.layout.field import FieldView, RenderField
-from pipeline.layout.floorplan import RenderFloorplan
-from pipeline.layout.loading import BuildParts, LoadParts
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.part import BuildPart, Part
-from pipeline.layout.placement import Layout, Placement
-from pipeline.layout.render import RenderLayout, RenderLayouts
+from layout.container import DEFAULT_INTERIOR_INSET_MM, InteriorSpan
+from layout.drawer import Assign, Drawer
+from layout.field import FieldView, RenderField
+from layout.floorplan import RenderFloorplan
+from layout.loading import BuildParts, LoadParts
+from layout.parameters import LayoutParameters
+from layout.part import BuildPart, Part
+from layout.placement import Layout, Placement
+from layout.render import RenderLayout, RenderLayouts
 
 DEFAULT_OUT = "docs/media"
 

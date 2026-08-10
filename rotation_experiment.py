@@ -60,11 +60,11 @@ from typing import Sequence
 
 import numpy as np
 
-from pipeline.layout.container import BuildContainer
-from pipeline.layout.loading import LoadParts
-from pipeline.layout.packer import GridsFor, Pack
-from pipeline.layout.parameters import EIGHTH_TURNS, FREE_ROTATION, QUARTER_TURNS, ROTATIONS, LayoutParameters
-from pipeline.layout.verify import CheckLayout
+from layout.container import BuildContainer
+from layout.loading import LoadParts
+from layout.packer import GridsFor, Pack
+from layout.parameters import EIGHTH_TURNS, FREE_ROTATION, QUARTER_TURNS, ROTATIONS, LayoutParameters
+from layout.verify import CheckLayout
 
 # How finely the exact single-part sweep steps, in degrees. Fine enough
 # that the reported angle is meaningful, and the cost is linear in it - the

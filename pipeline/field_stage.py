@@ -20,9 +20,9 @@ import numpy as np
 from PyQt5.QtWidgets import QCheckBox, QLabel, QWidget
 
 from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
-from pipeline.layout.field import FieldView, PixelToLocal, RenderField
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.part import DISTANT_MM, BuildPart, Part
+from layout.field import FieldView, PixelToLocal, RenderField
+from layout.parameters import LayoutParameters
+from layout.part import DISTANT_MM, BuildPart, Part
 
 # Named rather than inline so a test can find the toggle it means to
 # click, the same way `layout_stage_test` finds a button by its text.

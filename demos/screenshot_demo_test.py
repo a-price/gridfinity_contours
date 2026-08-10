@@ -42,7 +42,7 @@ def test_the_drawers_parse_as_millimetres():
     """Typed into the box the way a person would, so a size this script
     cannot enter is one the window would reject too.
     """
-    from pipeline.layout.drawer import ParseDrawer
+    from layout.drawer import ParseDrawer
 
     for text in DRAWERS:
         drawer = ParseDrawer(text)
@@ -55,7 +55,7 @@ def test_the_drawers_have_room_for_more_than_the_answer():
     picture that says "not placed" - a broken screenshot that still looks
     like a screenshot.
     """
-    from pipeline.layout.drawer import ParseDrawer
+    from layout.drawer import ParseDrawer
 
     space = sum(ParseDrawer(text).cells for text in DRAWERS)
 
@@ -66,7 +66,7 @@ def test_the_search_budget_is_below_the_default():
     """The one thing this script changes about the windows it photographs,
     and it is a time budget rather than anything the panel reports.
     """
-    from pipeline.layout.parameters import LayoutParameters
+    from layout.parameters import LayoutParameters
 
     assert screenshot_demo.SCREENSHOT_RESTARTS < LayoutParameters().restarts
 

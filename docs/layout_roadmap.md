@@ -27,7 +27,7 @@ design rather than to add it.
 
 ## M1 — Geometry primitives
 
-`pipeline/layout/`, no solver yet.
+`layout/`, no solver yet.
 
 - [x] Gridfinity constants: pitch, interior inset, corner radius, wall
   and divider minimums, sourced from
@@ -58,7 +58,7 @@ rectangle and an L-shape; rotating a part 90° gives a field equal to the
 field of the rotated polygon; the independent overlap predicate agrees
 with hand-checked cases; the three `test_data/` spoons load at their
 measured sizes (200.26, 162.76, 73.93 mm long). **Met** — across
-`pipeline/layout/{container,part,loading,verify}_test.py`.
+`layout/{container,part,loading,verify}_test.py`.
 
 Two things M1 turned up that later milestones inherit:
 
@@ -96,7 +96,7 @@ energy that is positive-and-decreasing, then exactly zero past `c_pair`;
 force directions point along the separating axis; a part straddling the
 wall is pushed inward. Finite-difference check: numerical gradient of
 `ComputeEnergy` matches the returned forces. **Met** —
-`pipeline/layout/energy_test.py`.
+`layout/energy_test.py`.
 
 Notes for later milestones:
 
@@ -154,7 +154,7 @@ byte-identical layout; a deliberately over-full bin fails cleanly rather
 than returning an overlapping layout; and a run started from deliberately
 stacked parts either separates them or reports failure — it must never
 return a layout with parts on top of each other. **Met** —
-`pipeline/layout/solver_test.py`.
+`layout/solver_test.py`.
 
 Three things M3 turned up, all of which M4 inherits:
 
@@ -229,7 +229,7 @@ report cleanly explains any smaller size it rejected; the sweep finds
 zero overlaps across a few hundred random cases.
 **This is the gate for everything downstream** — if the sweep is not
 clean, the raster resolution or clearance defaults are wrong, and no
-amount of GUI work will fix that. **Met** — `pipeline/layout/packer_test.py`,
+amount of GUI work will fix that. **Met** — `layout/packer_test.py`,
 sweep clean over 120 randomized sets.
 
 **The gate earned its place on its first run.** It failed, on exactly the
@@ -276,7 +276,7 @@ Two smaller notes:
   wrapper over a write-these-coordinates core (`WriteShapesSvg`,
   `WriteShapesPdf`, taking a `Shape` carrying geometry plus stroke).
   Existing tests unchanged and passing.
-- [x] Preview ([preview.py](../pipeline/layout/preview.py)) on top of that
+- [x] Preview ([preview.py](../layout/preview.py)) on top of that
   core, as both SVG and PDF: one polygon per placed part, plus the rim,
   interior outline, and cell grid as polylines. Drawn on the bin's outer
   footprint rather than its interior, so the sheet can be laid under a
@@ -319,7 +319,7 @@ print against a physical bin is Andrew's check.
   [SvgExportStage](../pipeline/svg_export_stage.py) — packing takes
   seconds and must not run on slider drags. Pack is also disabled while a
   pack runs, since the status label pumps the event loop.
-- [x] `pipeline/layout/render.py`: rasterize `preview.LayoutShapes` for
+- [x] `layout/render.py`: rasterize `preview.LayoutShapes` for
   the image view, so the screen and the printed sheet cannot drift apart.
 - [x] Report grid size, any failure reason, and whether a smaller size was
   skipped, in the panel.
@@ -360,7 +360,7 @@ captures load and pack to 5x2 in the window.
 
 ## M7 — Solid generation
 
-- [x] [pipeline/layout/solid.py](../pipeline/layout/solid.py) takes a
+- [x] [layout/solid.py](../layout/solid.py) takes a
   `Layout` — one pocket per part, bin sized from the layout's grid.
   A new module rather than an extension of the root `solid.py`, which
   keeps layout in one package and leaves the old single-contour path
@@ -420,13 +420,13 @@ See [Grouping](layout.md#grouping).
 - [x] Wire into a front end — deferred on purpose until the drawer level
   existed, so it could be plumbed once against the final shape rather
   than twice. Landed as
-  [plan.py](../pipeline/layout/plan.py) and
+  [plan.py](../layout/plan.py) and
   [floorplan_gui.py](../floorplan_gui.py).
 
 **Done when:** the three `test_data/` spoons group from 22 cells
 (one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
 passing the independent overlap check. **Met** —
-`pipeline/layout/grouping_test.py`; the spoons group to a single 5x2 at
+`layout/grouping_test.py`; the spoons group to a single 5x2 at
 **10 cells**, every bin clean under `CheckLayout`.
 
 **The gate was only half met when this was built.** M4's sweep is clean,
@@ -525,7 +525,7 @@ the rest of this document uses.
 - [x] Admissible-footprint predicate on `packer.CandidateGrids`, via
   `LayoutParameters.admissible_grids` and `packer.GridsFor`.
 - [x] The **drawer floorplan**
-  ([floorplan.py](../pipeline/layout/floorplan.py)): one true-scale PDF
+  ([floorplan.py](../layout/floorplan.py)): one true-scale PDF
   page per drawer, showing the bins where the assignment put them and the
   objects inside those bins. It draws `preview.LayoutShapes` rather than
   walking the layouts itself, so the bin on the floorplan and the bin
@@ -535,12 +535,12 @@ the rest of this document uses.
   for the whole stack rather than one per level, since a bin's footprint
   has to exist before it can be placed and nothing between the two is a
   useful thing to stop at. [floorplan_gui.py](../floorplan_gui.py), on
-  [plan.py](../pipeline/layout/plan.py).
+  [plan.py](../layout/plan.py).
 
 **Done when:** a set of bins with a known-tight drawer packing is placed
 exactly, and a set that passes the area bound but cannot tile is reported
 infeasible *as a fact* rather than as a failed search. **Met** —
-`pipeline/layout/drawer_test.py`. Three 2x2 bins into a 3x4 drawer is
+`layout/drawer_test.py`. Three 2x2 bins into a 3x4 drawer is
 exactly 12 cells into 12 and provably does not tile; the search says so in
 under a millisecond, having placed two.
 

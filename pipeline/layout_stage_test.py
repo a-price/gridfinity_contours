@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 from PyQt5.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QPushButton
 
-from pipeline.layout.loading import BuildParts
-from pipeline.layout.packer import NOT_FOUND, PACKED, GridAttempt, PackResult
-from pipeline.layout.parameters import FREE_ROTATION, ROTATIONS, LayoutParameters
-from pipeline.layout.placement import Layout
+from layout.loading import BuildParts
+from layout.packer import NOT_FOUND, PACKED, GridAttempt, PackResult
+from layout.parameters import FREE_ROTATION, ROTATIONS, LayoutParameters
+from layout.placement import Layout
 from pipeline.layout_stage import LayoutStage
 from conftest import QuickParameters, Rectangle as _rectangle
 

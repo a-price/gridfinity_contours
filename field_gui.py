@@ -40,7 +40,7 @@ from PyQt5.QtWidgets import (
 from pipeline.click_recorder import WidgetToImageCoords
 from pipeline.core import CreateGroupBox, FixQtOpenCvPluginPath
 from pipeline.field_stage import FieldStage
-from pipeline.layout.loading import ReadContours
+from layout.loading import ReadContours
 
 FixQtOpenCvPluginPath()
 

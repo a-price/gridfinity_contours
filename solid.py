@@ -1,6 +1,6 @@
 """The original single-contour bin generator.
 
-Superseded by [pipeline/layout/solid.py](pipeline/layout/solid.py), which
+Superseded by [layout/solid.py](layout/solid.py), which
 takes a whole `Layout` and cuts a pocket per part.
 
 This one differences against `bin_render(...)` from the outside and then

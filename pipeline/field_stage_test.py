@@ -11,8 +11,8 @@ import pytest
 from PyQt5.QtWidgets import QCheckBox, QDoubleSpinBox, QLabel
 
 from pipeline.field_stage import GRADIENT_LABEL, SAMPLES_LABEL, FieldStage
-from pipeline.layout.field import FieldView
-from pipeline.layout.parameters import LayoutParameters
+from layout.field import FieldView
+from layout.parameters import LayoutParameters
 from conftest import Rectangle as _rectangle
 
 

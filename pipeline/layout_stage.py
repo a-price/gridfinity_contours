@@ -13,13 +13,13 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from pipeline.core import CreateChoice, CreateGroupBox, CreateSpinBox, Stage
-from pipeline.layout.loading import BuildParts
-from pipeline.layout.packer import Pack, PackResult, Progress
-from pipeline.layout.parameters import ROTATIONS, LayoutParameters
-from pipeline.layout.part import Part
-from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
-from pipeline.layout.render import DEFAULT_PIXELS_PER_MM, RenderLayout
-from pipeline.layout.solid import WriteScad
+from layout.loading import BuildParts
+from layout.packer import Pack, PackResult, Progress
+from layout.parameters import ROTATIONS, LayoutParameters
+from layout.part import Part
+from layout.preview import WriteLayoutPdf, WriteLayoutSvg
+from layout.render import DEFAULT_PIXELS_PER_MM, RenderLayout
+from layout.solid import WriteScad
 
 # What `Export` writes, in the order it writes them. Named here because a
 # caller offering a filename has to strip exactly what gets appended, and

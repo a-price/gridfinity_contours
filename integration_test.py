@@ -34,15 +34,15 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.layout.container import GRID_PITCH_MM
-from pipeline.layout.drawer import Assign, DrawerCells, FreeCells, LargestFreeRegion
-from pipeline.layout.floorplan import WriteFloorplanPdf
-from pipeline.layout.grouping import FirstFit, Group
-from pipeline.layout.loading import LoadParts
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
-from pipeline.layout.solid import WriteScad
-from pipeline.layout.verify import CheckLayout
+from layout.container import GRID_PITCH_MM
+from layout.drawer import Assign, DrawerCells, FreeCells, LargestFreeRegion
+from layout.floorplan import WriteFloorplanPdf
+from layout.grouping import FirstFit, Group
+from layout.loading import LoadParts
+from layout.parameters import LayoutParameters
+from layout.preview import WriteLayoutPdf, WriteLayoutSvg
+from layout.solid import WriteScad
+from layout.verify import CheckLayout
 
 # Every distinct object in test_data/, by glob rather than by list, so a
 # new capture is exercised the moment it is dropped in.

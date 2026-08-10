@@ -20,7 +20,7 @@ import pytest
 
 import demos.render_demo as render_demo
 from demos.render_demo import PREFIX, PREVIEWS, Main, Write
-from pipeline.layout.parameters import LayoutParameters
+from layout.parameters import LayoutParameters
 
 
 def _names() -> list[str]:
@@ -114,10 +114,10 @@ def test_the_gallery_never_reaches_for_a_stochastic_search():
             imported.update(alias.name for alias in node.names)
 
     stochastic = {
-        "pipeline.layout.solver",
-        "pipeline.layout.packer",
-        "pipeline.layout.grouping",
-        "pipeline.layout.plan",
+        "layout.solver",
+        "layout.packer",
+        "layout.grouping",
+        "layout.plan",
     }
     assert not (imported & stochastic), f"a reference rendering must not run a search: {imported & stochastic}"
 

@@ -14,10 +14,10 @@ from dataclasses import replace
 import numpy as np
 import pytest
 from PyQt5.QtWidgets import QComboBox, QLabel, QPushButton
-from pipeline.layout.parameters import FREE_ROTATION, ROTATIONS
+from layout.parameters import FREE_ROTATION, ROTATIONS
 
-from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot
-from pipeline.layout.plan import ASSIGNING, FILLING, GROUPING, Progress
+from layout.drawer import PLACED, AssignmentResult, Drawer, Slot
+from layout.plan import ASSIGNING, FILLING, GROUPING, Progress
 from pipeline.floorplan_stage import EXPORT_EXTENSIONS, FloorplanStage
 from conftest import QuickParameters as _quick, Rectangle as _rectangle
 

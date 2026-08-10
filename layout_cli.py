@@ -18,11 +18,11 @@ from contextlib import contextmanager
 from typing import Callable, Iterator, Sequence, TextIO
 
 from export.contour_io import SaveContours
-from pipeline.layout.loading import BuildParts, ReadContours
-from pipeline.layout.packer import Pack, Progress
-from pipeline.layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters
-from pipeline.layout.preview import WriteLayoutPdf, WriteLayoutSvg
-from pipeline.layout.solid import DEFAULT_HEIGHT_UNITS, WriteScad
+from layout.loading import BuildParts, ReadContours
+from layout.packer import Pack, Progress
+from layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters
+from layout.preview import WriteLayoutPdf, WriteLayoutSvg
+from layout.solid import DEFAULT_HEIGHT_UNITS, WriteScad
 
 
 def ShouldShowProgress(stream: TextIO, quiet: bool) -> bool:

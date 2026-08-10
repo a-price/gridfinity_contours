@@ -20,13 +20,13 @@ from demos.layout_demo import (
     ParseDrawer,
     Recording,
 )
-from pipeline.layout.descent import RELAXING, Snapshot
-from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot, Trial
-from pipeline.layout.loading import BuildParts, ReadContours
-from pipeline.layout.packer import Pack
-from pipeline.layout.parameters import LayoutParameters
-from pipeline.layout.placement import Layout, Placement
-from pipeline.layout.render import RenderLayout
+from layout.descent import RELAXING, Snapshot
+from layout.drawer import PLACED, AssignmentResult, Drawer, Slot, Trial
+from layout.loading import BuildParts, ReadContours
+from layout.packer import Pack
+from layout.parameters import LayoutParameters
+from layout.placement import Layout, Placement
+from layout.render import RenderLayout
 from conftest import QuickParameters, SPOONS
 
 
