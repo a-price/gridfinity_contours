@@ -38,6 +38,44 @@ That asymmetry is worth stating because it decides what each level may
 *conclude*. Only the drawer level can turn its own failure into an
 instruction for the level below it.
 
+## Where the code lives
+
+Seven packages, plus the entry points at the repository root.
+
+| Package | What is in it |
+| --- | --- |
+| `capture/` | photo to contour: five algorithms, the five stages that configure them, and the `Pipeline` that sequences them |
+| `layout/` | arrangement, grouping and drawer assignment — the top three levels above |
+| `panels/` | the controls behind each planner window, one per window |
+| `export/` | the file formats this project writes: SVG, PDF, JSON, GIF |
+| `geometry/` | shape math with no project concepts in it |
+| `qt_utils/` | Qt helpers that know nothing about contours or bins |
+| `demos/` | the scripts that write every picture in this documentation |
+
+The dependency graph is acyclic and shallow:
+
+```
+root entry points ─┬─► panels/ ──► layout/ ──┬─► export/ ──► geometry/
+                   ├─► capture/ ─────────────┘
+                   └─► qt_utils/                      (a leaf, with geometry/)
+```
+
+**Three packages contain no Qt at all** — `layout/`, `export/` and
+`geometry/`. That is worth stating as an invariant rather than an
+observation, because it is what lets the entire packing stack be tested
+without a display, and nothing but discipline currently prevents an
+`import PyQt5` from drifting into it.
+
+The split runs *inside* `capture/` too, by suffix rather than by
+directory: `morphology.py` is Qt-free and `morphology_stage.py` is not.
+Algorithm and stage are one concept in two layers, so they sit together;
+see that package's docstring for why that beat filing them apart.
+
+**Tests live beside the module they exercise**, everywhere, with no
+`tests/` tree. The exceptions are principled: `integration_test.py` at the
+root is cross-cutting by design, and the handful of modules without a
+`_test.py` are thin adapters covered through the window that drives them.
+
 ## Cardinality, stage by stage
 
 | Stage | In | Out |
@@ -69,6 +107,21 @@ files that have no other relationship to each other. The millimeter frame
 is the project's universal currency; the JSON dump is where it is written
 down.
 
+**That currency has no type.** A millimetre contour is a bare
+`np.ndarray`, and `dict[int, np.ndarray]` appears in about three dozen
+signatures. The only distinction the type system makes is accidental:
+pixel-space contours happen to be `cv2.typing.MatLike` while millimetre
+ones are plain arrays. Everything else is carried by naming and comment —
+local frame versus bin frame, and most sharply **object contour versus
+pocket contour**, which `Part` holds as two identically-typed fields with
+a docstring explaining that confusing them is the mistake to avoid.
+
+Whether that deserves a real `Contour` type is open. It would belong in
+`geometry/`, it would touch nearly every signature in the project, and it
+trades ergonomics for making one live distinction unmixable rather than
+merely well documented. Recorded here because it is the one seam in this
+document that the code does not enforce.
+
 ## Where the boundaries actually bite
 
 Three cardinality boundaries exist today. Two are settled and one is not.
@@ -78,28 +131,38 @@ holds because of the millimeter frame above.
 
 **N contours → 1 bin** is settled. That is the whole of M3–M7.
 
-**N parts → M bins** is built but *unplumbed*. `Group` returns a list of
-layouts, and nothing downstream accepts one: `preview.LayoutShapes`,
-`render.RenderLayout`, `solid.GenerateScad`, `LayoutPanel`, `layout_cli`
-and `layout_gui` all take a single `Layout` and write a single set of
-files. M8 left this as an explicit unchecked box rather than
-half-answering it.
+**N parts → M bins** is settled now, but it was the one that stayed open
+longest, and how it closed is the point.
 
-The drawer level adds a fourth, **M bins → D drawers**, and it lands
-directly on top of the unfinished third one.
+The seam is *not* that every writer learned to take many layouts. The
+per-bin writers stayed per-bin, correctly: `preview.LayoutShapes`,
+`solid.WriteScad` and `render.RenderLayout` each still take one `Layout`,
+because one bin is what they draw and one bin is what gets printed. What
+arrived above them is a plural layer — `render.RenderLayouts`,
+`floorplan.WriteFloorplanPdf` and `plan.StoragePlan` all carry
+`dict[int, Layout]` — and `FloorplanPanel.Export` walks it, writing the
+map and then one set of files per bin on it.
+
+So the single-bin front ends are single-bin *by design*, not by omission.
+`layout_cli` and `layout_gui` pack one bin because that is the question
+they ask; `floorplan_gui` is the one that asks the plural question.
+
+**M bins → D drawers** landed on top of that, and is the fourth boundary.
 
 ### The consequence for build order
 
-Plumbing multi-bin output through the front ends *now* means doing it
-twice. The output currency today is one `Layout`. After grouping it
-becomes a list of layouts. After drawer assignment it becomes a list of
-layouts *with a drawer and a cell position each* — a different type again,
-and the one that the preview actually wants, because a drawer
-floorplan is the thing you print and lay in the drawer.
+This was the call that decided the order, and it held up.
 
-So the recommended order is: build the drawer level headless first, on
-top of `Grouping` as it already exists, and then plumb the front ends once
-against the final shape. The drawer level needs nothing from the GUI to be
+Plumbing multi-bin output through the front ends early would have meant
+doing it twice. The output currency was one `Layout`. After grouping it
+became a list of layouts. After drawer assignment it became a list of
+layouts *with a drawer and a cell position each* — a different type again,
+and the one the floorplan actually wants, because a drawer plan is the
+thing you print and lay in the drawer.
+
+So the drawer level was built headless first, on top of `Grouping` as it
+already existed, and the front ends were plumbed once against the final
+shape. That worked because the drawer level needs nothing from a GUI to be
 testable — it consumes integer footprints and drawer sizes, and its
 correctness is entirely a matter of whether rectangles tile.
 
