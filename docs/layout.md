@@ -7,7 +7,7 @@ Built through M9. Companion implementation plan:
 ## Problem
 
 The capture pipeline turns a photo into one real-world-scale contour per
-object. `solid.py` then wraps a *single* contour in the smallest
+object. `docs/solid.py` then wraps a *single* contour in the smallest
 Gridfinity bin that holds it. That is wasteful: a spoon needs a 1x4 bin
 almost all of which is empty, and a drawer full of one-tool-per-bin
 shadow boxes squanders most of its grid.
@@ -57,8 +57,15 @@ into an align-then-write wrapper over a write-these-coordinates core
 
 The `.scad` is generated from a `Layout` by
 [layout/solid.py](../layout/solid.py) — a separate
-module, so layout stays pure geometry. It supersedes the root
-`solid.py`, whose single-contour path predates `Layout`.
+module, so layout stays pure geometry. It supersedes
+[solid.py](solid.py), the single-contour generator that predates `Layout`
+and is kept here as the worked example of the older technique.
+
+![a 3D render of a printable Gridfinity bin with a single spoon-shaped pocket](media/solid_pocket.png)
+
+One pocket, which is all the older path could cut. The picture is
+actually the *newer* generator given a single object, because the two
+produce the same shape here and differ only in how.
 
 That older path subtracts its cutout from *outside* `bin_render` and then
 unions `bin_render_base` back on top. It is sound — the outer union
@@ -70,6 +77,12 @@ The new generator passes pockets as children of `bin_render`, the
 mechanism the library provides, which places them at the top of the
 infill extending downward by a stated depth and never cuts the base at
 all.
+
+It also bakes an absolute path to the vendored library, where the older
+one emits a relative include — so a `.scad` from `solid.py` renders only
+alongside the submodule, and OpenSCAD reports the difference as a warning
+it then exits 0 on. For anything with more than one object in it, use
+`layout_cli.py`.
 
 ## Container geometry
 
@@ -439,7 +452,7 @@ dilation is not a uniform ring:
   the preview sheet and the cut solid were all reasoning about a shape
   nobody was going to print.
 
-**Why the solid generator no longer offsets.** `solid.py` used to emit
+**Why the solid generator no longer offsets.** `docs/solid.py` used to emit
 `offset(r = 1)` and let OpenSCAD do the dilation. OpenSCAD implements
 `offset()` with Clipper's `ClipperOffset`, and sizes the arc tolerance
 from `Calc::get_fragments_from_r(|delta|, $fn, $fs, $fa)`, which has a

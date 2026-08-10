@@ -1,6 +1,6 @@
 """The original single-contour bin generator.
 
-Superseded by [layout/solid.py](layout/solid.py), which
+Superseded by [layout/solid.py](../layout/solid.py), which
 takes a whole `Layout` and cuts a pocket per part.
 
 This one differences against `bin_render(...)` from the outside and then
@@ -10,6 +10,20 @@ depth implicit, since a bare `linear_extrude()` cuts 100mm upward from
 z=0 and the floor ends up wherever the base happens to start. The newer
 generator passes cutouts as children of `bin_render`, which is the
 mechanism the library provides, and states the depth.
+
+Kept as the worked example of that older technique rather than for use:
+for anything with more than one object in it, `layout_cli.py` takes a
+whole set of contours and writes the `.scad` for you. Paste a contour into
+the `points` array at the bottom and run it:
+
+    .venv/bin/python3 docs/solid.py     # writes test.scad into the cwd
+
+**Run it from the repository root, and render it there too.** The `.scad`
+it emits includes the vendored library by *relative* path, and OpenSCAD
+resolves those against the file's own directory - so a `test.scad`
+written anywhere else renders an empty object, and says so only as a
+warning it then exits 0 on. `layout.solid` avoids this by baking an
+absolute `LIBRARY_PATH`; this one predates that and is left as it was.
 """
 
 from typing import Sequence

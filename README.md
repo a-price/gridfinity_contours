@@ -255,26 +255,6 @@ Print at 100% scale and keep it in frame — any scaling silently
 invalidates every measurement downstream. Its defaults already match what
 the calibration stage expects, so nothing needs configuring.
 
-### `solid.py` — one contour, one bin
-
-![a 3D render of a printable Gridfinity bin with a single spoon-shaped pocket](docs/media/solid_pocket.png)
-
-A bin with one cutout, which is the shape this writes: paste an exported
-contour into the `points` array at the bottom and it produces the
-Gridfinity `.scad`. Needs the `gridfinity-rebuilt-openscad` submodule and
-OpenSCAD.
-
-Kept for reference rather than for use. The picture above is actually the
-*newer* generator given a single object, because the two differ in a way
-worth knowing about: this one subtracts the pocket from outside the bin
-and unions the base back on, which works but leaves the pocket depth
-implicit — a bare `linear_extrude()` cuts 100 mm upward from z=0 and the
-floor lands wherever the base happens to start.
-
-**For anything with more than one object in it, use `layout_cli.py`** — it
-takes a whole set of contours, states the depth, and writes the `.scad`
-for you.
-
 ### `postprocess_gcode_for_prusa_i3.py` — two-tone prints
 
 ```
@@ -320,7 +300,7 @@ what each one costs and what it needs.
    source .venv/bin/activate
    ```
 2. Install dependencies: `pip install -r requirements.txt`
-3. For `solid.py` and the bin renders, fetch the OpenSCAD submodule:
+3. For `docs/solid.py` and the bin renders, fetch the OpenSCAD submodule:
    `git submodule update --init`
 4. The SAM2 model (`facebook/sam2-hiera-tiny`) is loaded offline
    (`local_files_only=True`) by default, so it needs to be cached first —

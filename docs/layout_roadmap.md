@@ -362,7 +362,7 @@ captures load and pack to 5x2 in the window.
 
 - [x] [layout/solid.py](../layout/solid.py) takes a
   `Layout` — one pocket per part, bin sized from the layout's grid.
-  A new module rather than an extension of the root `solid.py`, which
+  A new module rather than an extension of the older `docs/solid.py`, which
   keeps layout in one package and leaves the old single-contour path
   alone; the root script's import-time side effect (it wrote `test.scad`
   on import) is now behind a `__main__` guard.
