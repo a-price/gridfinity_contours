@@ -310,7 +310,7 @@ print against a physical bin is Andrew's check.
 
 ## M6 — GUI stage
 
-- [x] `pipeline/layout_stage.py`: `LayoutStage(Stage)` with a "Layout"
+- [x] `panels/layout_panel.py`: `LayoutPanel` with a "Layout"
   group box — pocket offset, max grid size, seed, and a "Pack" button.
   Offset rather than two independent clearance boxes: they are derived
   from it (D5), and typing them separately invites a divider too thin to
@@ -349,7 +349,7 @@ search is recorded as `CANCELLED`, never `NOT_FOUND` — "you stopped me"
 is not evidence about the bin, and must not land in `skipped` claiming a
 tighter packing might exist at a size never actually searched.
 
-`LayoutStage.Run` touches no widgets as a result: progress arrives through
+`LayoutPanel.Run` touches no widgets as a result: progress arrives through
 a callback the window marshals onto the UI thread, because a label written
 from a worker thread is undefined behavior in Qt rather than merely poor
 style.

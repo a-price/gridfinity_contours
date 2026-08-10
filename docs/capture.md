@@ -7,7 +7,7 @@ this produces.
 
 ![the capture window, from an empty view to a millimetre-scale contour](media/capture.gif)
 
-The window is a chain of `pipeline.core.Stage` objects, each owning its
+The window is a chain of `capture.pipeline.Stage` objects, each owning its
 own parameters, its own group box in the control panel, and its own debug
 image. `Pipeline` wires them together and re-runs everything downstream of
 whatever changed, which is why nudging the closing radius redraws the

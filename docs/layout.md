@@ -552,9 +552,9 @@ layout/session.py              saving a floorplan and resuming it
 layout/verify.py               independent checks, no code shared with above
 layout/*_test.py               one test module per source module
 demos/render_demo.py           one committed still per drawing path
-pipeline/layout_stage.py       Stage subclass, group box, Qt
-pipeline/field_stage.py        the same, for the field viewer
-pipeline/floorplan_stage.py    the same, for the whole-library floorplan
+panels/layout_panel.py         the packing window's controls
+panels/field_panel.py          the same, for the field viewer
+panels/floorplan_panel.py      the same, for the whole-library floorplan
 layout_cli.py                  headless entry point
 layout_gui.py                  interactive entry point
 field_gui.py                   the field viewer's window
@@ -647,8 +647,8 @@ nothing about whether its answer still holds.
 #### Getting the bins out
 
 The drawer map says where bins go. What you *make* is a bin, and until
-`FloorplanStage.Export` wrote them, nothing in the project produced a
-solid for a bin the **grouping** search had chosen — `LayoutStage` and
+`FloorplanPanel.Export` wrote them, nothing in the project produced a
+solid for a bin the **grouping** search had chosen — `LayoutPanel` and
 `layout_cli` both hold exactly one bin, packed directly.
 
 That left one route from a library plan to something printable: read the

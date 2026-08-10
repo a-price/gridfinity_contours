@@ -19,7 +19,7 @@ from conftest import QuickParameters as _quick, Rectangle as _rectangle
 @pytest.fixture
 def gui(qapp):
     window = FloorplanGui()
-    window.floorplan_stage.parameters = _quick(max_grid=3)
+    window.floorplan_panel.parameters = _quick(max_grid=3)
     return window
 
 
@@ -56,7 +56,7 @@ def test_a_drawer_is_typed_in_millimetres_and_kept_in_cells(gui):
 
     gui.add_drawer()
 
-    assert gui.floorplan_stage.drawers == [Drawer(11, 9)]
+    assert gui.floorplan_panel.drawers == [Drawer(11, 9)]
     assert gui.drawer_edit.text() == "", "the box should clear, ready for the next one"
 
 
@@ -69,7 +69,7 @@ def test_a_drawer_can_be_typed_in_cells_instead(gui):
 
     gui.add_drawer()
 
-    assert gui.floorplan_stage.drawers == [Drawer(11, 9)]
+    assert gui.floorplan_panel.drawers == [Drawer(11, 9)]
 
 
 def test_the_two_units_agree(gui):
@@ -77,7 +77,7 @@ def test_the_two_units_agree(gui):
         gui.drawer_edit.setText(text)
         gui.add_drawer()
 
-    assert gui.floorplan_stage.drawers[0] == gui.floorplan_stage.drawers[1]
+    assert gui.floorplan_panel.drawers[0] == gui.floorplan_panel.drawers[1]
 
 
 def test_the_list_shows_both_units(gui):
@@ -99,7 +99,7 @@ def test_several_drawers_accumulate(gui):
         gui.drawer_edit.setText(size)
         gui.add_drawer()
 
-    assert len(gui.floorplan_stage.drawers) == 2
+    assert len(gui.floorplan_panel.drawers) == 2
     assert gui.drawer_list.count() == 2
     assert "2 drawer(s)" in gui.drawer_label.text()
 
@@ -109,7 +109,7 @@ def test_a_drawer_that_does_not_parse_is_reported_not_raised(gui):
 
     gui.add_drawer()
 
-    assert gui.floorplan_stage.drawers == []
+    assert gui.floorplan_panel.drawers == []
     assert "WIDTHxHEIGHT" in gui.drawer_label.text()
 
 
@@ -118,7 +118,7 @@ def test_a_drawer_too_small_for_a_cell_is_reported(gui):
 
     gui.add_drawer()
 
-    assert gui.floorplan_stage.drawers == []
+    assert gui.floorplan_panel.drawers == []
     assert "no whole" in gui.drawer_label.text()
 
 
@@ -130,7 +130,7 @@ def test_a_drawer_can_be_removed(gui):
     gui.drawer_list.setCurrentRow(0)
     gui.remove_drawer()
 
-    assert gui.floorplan_stage.drawers == [Drawer(7, 4)]
+    assert gui.floorplan_panel.drawers == [Drawer(7, 4)]
 
 
 def test_drawers_round_trip_through_a_file(gui, tmp_path):
@@ -139,7 +139,7 @@ def test_drawers_round_trip_through_a_file(gui, tmp_path):
 
     gui.load_drawers(path)
 
-    assert gui.floorplan_stage.drawers == [Drawer(11, 9), Drawer(4, 3)]
+    assert gui.floorplan_panel.drawers == [Drawer(11, 9), Drawer(4, 3)]
     assert gui.drawer_list.count() == 2
 
 
@@ -149,7 +149,7 @@ def test_an_unreadable_drawer_file_is_reported_not_raised(gui, tmp_path):
 
     gui.load_drawers(str(bad))
 
-    assert gui.floorplan_stage.drawers == []
+    assert gui.floorplan_panel.drawers == []
     assert "Could not load" in gui.drawer_label.text()
 
 
@@ -159,12 +159,12 @@ def test_changing_the_drawers_drops_a_stale_plan(gui, tmp_path):
     """
     _loaded(gui, tmp_path)
     _plan(gui)
-    assert gui.floorplan_stage.plan is not None
+    assert gui.floorplan_panel.plan is not None
 
     gui.drawer_edit.setText("300x200")
     gui.add_drawer()
 
-    assert gui.floorplan_stage.plan is None
+    assert gui.floorplan_panel.plan is None
 
 
 # -------------------------------------------------------------- contours
@@ -193,11 +193,11 @@ def test_an_unreadable_contour_file_is_reported_not_raised(gui, tmp_path):
 def test_loading_more_contours_drops_a_stale_plan(gui, tmp_path):
     _loaded(gui, tmp_path)
     _plan(gui)
-    assert gui.floorplan_stage.plan is not None
+    assert gui.floorplan_panel.plan is not None
 
     gui.load_contours([_dump(tmp_path, "more.json", {0: _rectangle(18.0, 12.0)})])
 
-    assert gui.floorplan_stage.plan is None
+    assert gui.floorplan_panel.plan is None
 
 
 # --------------------------------------------------------------- session
@@ -210,14 +210,14 @@ def test_a_session_reloads_into_a_drawn_floorplan(gui, tmp_path):
     _loaded(gui, tmp_path)
     _plan(gui)
     path = str(tmp_path / "s.json")
-    gui.floorplan_stage.Save(path, gui.contours)
+    gui.floorplan_panel.Save(path, gui.contours)
 
     later = FloorplanGui()
     later.load_session(path)
 
     assert len(later.contours) == len(gui.contours)
-    assert later.floorplan_stage.drawers == gui.floorplan_stage.drawers
-    assert later.floorplan_stage.resume is not None
+    assert later.floorplan_panel.drawers == gui.floorplan_panel.drawers
+    assert later.floorplan_panel.resume is not None
     pixmap = later.image_label.pixmap()
     assert pixmap is not None and not pixmap.isNull()
     assert "Resuming" in later.session_label.text()
@@ -230,19 +230,19 @@ def test_adding_a_tool_to_a_reloaded_session_reprints_only_what_moved(gui, tmp_p
     _loaded(gui, tmp_path)
     _plan(gui)
     path = str(tmp_path / "s.json")
-    gui.floorplan_stage.Save(path, gui.contours)
+    gui.floorplan_panel.Save(path, gui.contours)
 
     later = FloorplanGui()
-    later.floorplan_stage.parameters = _quick(max_grid=3)
+    later.floorplan_panel.parameters = _quick(max_grid=3)
     later.load_session(path)
     later.load_contours([_dump(tmp_path, "newtool.json", {0: _rectangle(50.0, 25.0)})])
     _plan(later)
 
-    changes = later.floorplan_stage.changes
+    changes = later.floorplan_panel.changes
     assert changes is not None
     kept, changed = changes
     assert kept, "adding one tool should not invalidate every bin"
-    assert "unchanged" in later.floorplan_stage.Summary()
+    assert "unchanged" in later.floorplan_panel.Summary()
 
 
 def test_an_unreadable_session_is_reported_not_raised(gui, tmp_path):
@@ -261,7 +261,7 @@ def test_a_session_replaces_rather_than_accumulates(gui, tmp_path):
     _loaded(gui, tmp_path)
     _plan(gui)
     path = str(tmp_path / "s.json")
-    gui.floorplan_stage.Save(path, gui.contours)
+    gui.floorplan_panel.Save(path, gui.contours)
     gui.load_contours([_dump(tmp_path, "extra.json", {0: _rectangle(18.0, 12.0)})])
     assert len(gui.contours) == 4
 
@@ -283,7 +283,7 @@ def test_the_bin_list_appears_once_there_is_something_to_pin(gui, tmp_path):
 
     _plan(gui)
 
-    assert gui.pin_list.count() == len(gui.floorplan_stage.Bins())
+    assert gui.pin_list.count() == len(gui.floorplan_panel.Bins())
     assert "holding" in gui.pin_list.item(0).text()
 
 
@@ -296,7 +296,7 @@ def test_ticking_a_bin_pins_it_at_once(gui, tmp_path):
 
     _pin(gui, 0)
 
-    assert gui.floorplan_stage.PinnedIds() == frozenset([0])
+    assert gui.floorplan_panel.PinnedIds() == frozenset([0])
     assert "1 of" in gui.pin_label.text()
 
 
@@ -307,25 +307,25 @@ def test_a_pinned_bin_survives_the_next_plan(gui, tmp_path):
     _loaded(gui, tmp_path, count=4)
     _plan(gui)
     _pin(gui, 0)
-    held = gui.floorplan_stage.Bins()[0]
+    held = gui.floorplan_panel.Bins()[0]
 
     gui.load_contours([_dump(tmp_path, "newtool.json", {0: _rectangle(50.0, 25.0)})])
     _plan(gui)
 
-    assert gui.floorplan_stage.plan is not None
-    assert gui.floorplan_stage.plan.layouts[0] is held
-    assert "pinned" in gui.floorplan_stage.Summary()
+    assert gui.floorplan_panel.plan is not None
+    assert gui.floorplan_panel.plan.layouts[0] is held
+    assert "pinned" in gui.floorplan_panel.Summary()
 
 
 def test_pinning_everything_leaves_nothing_to_search(gui, tmp_path):
     _loaded(gui, tmp_path, count=4)
     _plan(gui)
-    before = list(gui.floorplan_stage.Bins().values())
+    before = list(gui.floorplan_panel.Bins().values())
 
     gui.pin_all()
     _plan(gui)
 
-    assert list(gui.floorplan_stage.Bins().values()) == before
+    assert list(gui.floorplan_panel.Bins().values()) == before
     assert all(gui.pin_list.item(row).checkState() == Qt.CheckState.Checked for row in range(gui.pin_list.count()))
 
 
@@ -336,7 +336,7 @@ def test_unpinning_puts_the_bins_back_in_play(gui, tmp_path):
 
     gui.unpin_all()
 
-    assert gui.floorplan_stage.pinned == []
+    assert gui.floorplan_panel.pinned == []
     assert "Nothing pinned" in gui.pin_label.text()
 
 
@@ -350,7 +350,7 @@ def test_clearing_the_library_drops_the_pins(gui, tmp_path):
 
     gui.clear_contours()
 
-    assert gui.floorplan_stage.pinned == []
+    assert gui.floorplan_panel.pinned == []
     assert gui.pin_list.count() == 0
 
 
@@ -359,12 +359,12 @@ def test_pins_come_back_with_a_session(gui, tmp_path):
     _plan(gui)
     _pin(gui, 0)
     path = str(tmp_path / "s.json")
-    gui.floorplan_stage.Save(path, gui.contours)
+    gui.floorplan_panel.Save(path, gui.contours)
 
     later = FloorplanGui()
     later.load_session(path)
 
-    assert later.floorplan_stage.PinnedIds() == frozenset([0])
+    assert later.floorplan_panel.PinnedIds() == frozenset([0])
 
     restored = later.pin_list.item(0)
     assert restored is not None, "the resumed session listed no bins to pin"
@@ -377,11 +377,11 @@ def test_pins_come_back_with_a_session(gui, tmp_path):
 def test_planning_runs_only_when_triggered(gui, tmp_path):
     _loaded(gui, tmp_path)
 
-    assert gui.floorplan_stage.plan is None, "loading must not start a search"
+    assert gui.floorplan_panel.plan is None, "loading must not start a search"
 
     _plan(gui)
 
-    assert gui.floorplan_stage.plan is not None
+    assert gui.floorplan_panel.plan is not None
 
 
 def test_planning_runs_on_a_worker_thread(gui, tmp_path):
@@ -389,7 +389,7 @@ def test_planning_runs_on_a_worker_thread(gui, tmp_path):
     none of the progress reporting matters - a thread that is joined
     immediately is just a slow function call.
     """
-    gui.floorplan_stage.parameters = LayoutParameters(restarts=200, iterations=400, patience=200, max_grid=5)
+    gui.floorplan_panel.parameters = LayoutParameters(restarts=200, iterations=400, patience=200, max_grid=5)
     _loaded(gui, tmp_path, count=6)
 
     gui.plan()
@@ -477,7 +477,7 @@ def test_a_finished_plan_reaches_the_image_view(gui, tmp_path):
 def test_progress_reaches_the_panel_while_searching(gui, tmp_path):
     _loaded(gui, tmp_path)
     seen = []
-    gui.floorplan_stage.SetStatus = lambda text: seen.append(text)
+    gui.floorplan_panel.SetStatus = lambda text: seen.append(text)
 
     _plan(gui)
 
@@ -490,18 +490,18 @@ def test_a_report_with_an_answer_draws_it_mid_search(gui, tmp_path):
     """
     _loaded(gui, tmp_path)
     _plan(gui)
-    bins = tuple(gui.floorplan_stage.plan.layouts.values())
+    bins = tuple(gui.floorplan_panel.plan.layouts.values())
 
     # Mid-search is exactly this: the parts are built and reports are
     # arriving, but no finished plan exists yet.
-    gui.floorplan_stage.plan = None
+    gui.floorplan_panel.plan = None
     gui.image_label.setPixmap(type(gui.image_label.pixmap())())
 
     gui._OnProgress(Progress(GROUPING, 5, bins))
 
     pixmap = gui.image_label.pixmap()
     assert pixmap is not None and not pixmap.isNull()
-    assert "best so far" in gui.floorplan_stage.Summary()
+    assert "best so far" in gui.floorplan_panel.Summary()
 
 
 # --------------------------------------------------------------- export
@@ -526,7 +526,7 @@ def test_a_solid_that_cannot_be_cut_is_an_alert_not_a_failure(gui, tmp_path):
     """
     _loaded(gui, tmp_path)
     _plan(gui)
-    gui.floorplan_stage.parameters.pocket_offset = 20.0
+    gui.floorplan_panel.parameters.pocket_offset = 20.0
     gui.export_edit.setText(str(tmp_path / "plan"))
 
     gui.export_plan()
@@ -556,7 +556,7 @@ def test_a_real_library_plans_into_a_real_drawer(qapp):
     into bins and laid out in a drawer.
     """
     window = FloorplanGui()
-    window.floorplan_stage.parameters = LayoutParameters(restarts=3, iterations=150, patience=20, max_grid=6, seed=0)
+    window.floorplan_panel.parameters = LayoutParameters(restarts=3, iterations=150, patience=20, max_grid=6, seed=0)
     window.drawer_edit.setText("500x400")
     window.add_drawer()
     window.load_contours(
@@ -571,7 +571,7 @@ def test_a_real_library_plans_into_a_real_drawer(qapp):
 
     _plan(window)
 
-    plan = window.floorplan_stage.plan
+    plan = window.floorplan_panel.plan
     assert plan is not None and plan.placed
     assert len(plan.layouts) < 5, "grouping should beat one bin per object"
     assert "in one piece" in plan.Report()

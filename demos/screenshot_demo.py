@@ -193,7 +193,7 @@ def PlanFloorplan():
 
     _Application()
     window = _Shown(FloorplanGui(), FLOORPLAN_WINDOW)
-    stage = window.floorplan_stage
+    stage = window.floorplan_panel
     stage.parameters = replace(stage.parameters, restarts=SCREENSHOT_RESTARTS)
 
     window.load_contours(LIBRARY)

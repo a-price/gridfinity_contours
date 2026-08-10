@@ -8,7 +8,7 @@
 
 **Run as modules, not as scripts.** `python demos/render_demo.py` puts
 `demos/` on `sys.path` rather than the repository root, so every
-`from pipeline...` and `from silhouette_gui...` in here fails. This
+`from layout...` and `from silhouette_gui...` in here fails. This
 package exists to make the module form work:
 
     .venv/bin/python3 -m demos.render_demo --out docs/media

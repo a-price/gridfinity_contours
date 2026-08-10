@@ -5,7 +5,7 @@
     window_capture   a window as an array, once it has stopped changing
 
 Nothing here mentions a contour, a bin or a drawer. That is the whole
-membership test, and it is what separates this from `pipeline.core`: a
+membership test, and it is what separates this from `capture.pipeline`: a
 `Stage` and a `Pipeline` are this project's idea of how a capture step is
 structured, while a spin box that waits for you to stop typing is not.
 

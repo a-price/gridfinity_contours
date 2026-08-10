@@ -6,7 +6,7 @@ the image-to-mm transform, and optionally support manual selection.
 `generate_aruco_sheet.py`'s sheet and its markers are found automatically.
 `IdentityCalibration`, `HoughCircleCalibration` and `PaperCalibration` are
 alternative strategies with no Qt stage wired into the current app; see
-`pipeline/calibration_stage.py`.
+`capture/calibration_stage.py`.
 """
 
 from dataclasses import dataclass, field

@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QLabel, QWidget
 
 from qt_utils.click_recorder import ClickRecorder, ClickRecorderParameters
 from qt_utils.widgets import CreateGroupBox, CreateSlider
-from pipeline.core import Stage
+from capture.pipeline import Stage
 from capture.segmenter import Segmenter, SegmenterLike
 
 # SAM2's processor typically ranks 3 mask hypotheses per click set (0 =

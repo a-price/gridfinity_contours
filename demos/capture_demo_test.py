@@ -7,7 +7,7 @@ milliseconds. Actually recording the flow loads SAM2 and segments a
 make the animation worth having: that it shows the real window, and that
 the calibration it demonstrates genuinely resolved.
 
-The grabbing underneath all of it is `pipeline/window_capture.py`, and is
+The grabbing underneath all of it is `qt_utils/window_capture.py`, and is
 tested there.
 
 Deliberately no comparison against the committed GIF. That would be the

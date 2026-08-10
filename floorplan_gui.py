@@ -49,7 +49,7 @@ from layout.container import BASE_GAP_MM, GRID_PITCH_MM
 from layout.drawer import ParseDrawer
 from layout.loading import ReadContours
 from layout.plan import ReadDrawers, SaveDrawers
-from pipeline.floorplan_stage import EXPORT_EXTENSIONS, FloorplanStage
+from panels.floorplan_panel import EXPORT_EXTENSIONS, FloorplanPanel
 
 FixQtOpenCvPluginPath()
 
@@ -69,16 +69,16 @@ class FloorplanWorker(QThread):
     but with more riding on it: this search runs for minutes, so the
     window has to stay responsive enough to show progress and accept a
     Stop the entire time. The search touches no Qt and shares nothing but
-    the stage it was handed, which the main thread agrees not to read
+    the panel it was handed, which the main thread agrees not to read
     until `finished` arrives.
     """
 
     progressed = pyqtSignal(object)  # plan.Progress
     planned = pyqtSignal()
 
-    def __init__(self, stage: FloorplanStage, contours: dict[int, np.ndarray]) -> None:
+    def __init__(self, panel: FloorplanPanel, contours: dict[int, np.ndarray]) -> None:
         super().__init__()
-        self._stage = stage
+        self._panel = panel
         self._contours = contours
         self._cancelled = False
 
@@ -92,7 +92,7 @@ class FloorplanWorker(QThread):
         self._cancelled = True
 
     def run(self) -> None:
-        self._stage.Run(self._contours, report=self.progressed.emit, cancelled=lambda: self._cancelled)
+        self._panel.Run(self._contours, report=self.progressed.emit, cancelled=lambda: self._cancelled)
         self.planned.emit()
 
 
@@ -108,7 +108,7 @@ class FloorplanGui(QMainWindow):
 
         self.contours: dict[int, np.ndarray] = {}
         self.sources: list[str] = []
-        self.floorplan_stage = FloorplanStage()
+        self.floorplan_panel = FloorplanPanel()
 
         self._worker: FloorplanWorker | None = None
 
@@ -129,7 +129,7 @@ class FloorplanGui(QMainWindow):
         control_layout.addWidget(self.source_group)
         control_layout.addWidget(self.drawer_group)
 
-        control_layout.addWidget(self.floorplan_stage.CreateWidget(on_change=self.plan, on_cancel=self.cancel_plan))
+        control_layout.addWidget(self.floorplan_panel.CreateWidget(on_change=self.plan, on_cancel=self.cancel_plan))
 
         self.pin_group = self._CreatePinWidget()
         control_layout.addWidget(self.pin_group)
@@ -337,7 +337,7 @@ class FloorplanGui(QMainWindow):
         self.sources.extend(paths)
 
         # Anything already found described the old library.
-        self.floorplan_stage.Clear()
+        self.floorplan_panel.Clear()
         self._UpdateSourceLabel()
         self.update_display()
 
@@ -348,12 +348,12 @@ class FloorplanGui(QMainWindow):
     def clear_contours(self) -> None:
         self.contours = {}
         self.sources = []
-        self.floorplan_stage.Clear()
+        self.floorplan_panel.Clear()
         # The pins go too. They name bins made of parts that no longer
         # exist, and holding them would refuse the next search rather than
         # preserve anything.
-        self.floorplan_stage.pinned = []
-        self.floorplan_stage.resume = None
+        self.floorplan_panel.pinned = []
+        self.floorplan_panel.resume = None
         self._UpdateSourceLabel()
         self.update_display()
 
@@ -377,27 +377,27 @@ class FloorplanGui(QMainWindow):
             self.drawer_label.setText(str(error))
             return
 
-        self.floorplan_stage.drawers.append(drawer)
+        self.floorplan_panel.drawers.append(drawer)
         self.drawer_edit.clear()
-        self.floorplan_stage.Clear()
+        self.floorplan_panel.Clear()
         self._RefreshDrawers()
         self.update_display()
 
     def remove_drawer(self) -> None:
         row = self.drawer_list.currentRow()
-        if 0 <= row < len(self.floorplan_stage.drawers):
-            del self.floorplan_stage.drawers[row]
-            self.floorplan_stage.Clear()
+        if 0 <= row < len(self.floorplan_panel.drawers):
+            del self.floorplan_panel.drawers[row]
+            self.floorplan_panel.Clear()
             self._RefreshDrawers()
             self.update_display()
 
     def load_drawers(self, path: str) -> None:
         try:
-            self.floorplan_stage.drawers = ReadDrawers(path)
+            self.floorplan_panel.drawers = ReadDrawers(path)
         except (OSError, ValueError) as error:
             self.drawer_label.setText(f"Could not load: {error}")
             return
-        self.floorplan_stage.Clear()
+        self.floorplan_panel.Clear()
         self._RefreshDrawers()
         self.update_display()
 
@@ -411,7 +411,7 @@ class FloorplanGui(QMainWindow):
         if not path:
             return
         try:
-            SaveDrawers(path, self.floorplan_stage.drawers)
+            SaveDrawers(path, self.floorplan_panel.drawers)
         except (OSError, ValueError) as error:
             self.drawer_label.setText(f"Could not save: {error}")
             return
@@ -431,11 +431,11 @@ class FloorplanGui(QMainWindow):
         measured is the room the floorplan will not reach into.
         """
         self.drawer_list.clear()
-        for drawer in self.floorplan_stage.drawers:
+        for drawer in self.floorplan_panel.drawers:
             span = tuple(GRID_PITCH_MM * cells - BASE_GAP_MM for cells in (drawer.width, drawer.height))
             self.drawer_list.addItem(f"{drawer.width} x {drawer.height} cells  ({span[0]:.1f} x {span[1]:.1f}mm)")
 
-        drawers = self.floorplan_stage.drawers
+        drawers = self.floorplan_panel.drawers
         if not drawers:
             self.drawer_label.setText("No drawers yet - type a size in mm, or load a list.")
             return
@@ -451,8 +451,8 @@ class FloorplanGui(QMainWindow):
         state fires `itemChanged` and would write the half-built list back
         over the pins it is being built from.
         """
-        bins = self.floorplan_stage.Bins()
-        pinned = self.floorplan_stage.PinnedIds()
+        bins = self.floorplan_panel.Bins()
+        pinned = self.floorplan_panel.PinnedIds()
 
         self.pin_list.blockSignals(True)
         self.pin_list.clear()
@@ -468,7 +468,7 @@ class FloorplanGui(QMainWindow):
         if not bins:
             self.pin_label.setText("Plan or load a floorplan, then tick the bins to keep as they are.")
             return
-        held = len(self.floorplan_stage.pinned)
+        held = len(self.floorplan_panel.pinned)
         self.pin_label.setText(
             f"{held} of {len(bins)} bin(s) pinned - held out of the next search entirely."
             if held
@@ -486,18 +486,18 @@ class FloorplanGui(QMainWindow):
             if item is not None and item.checkState() == Qt.CheckState.Checked
         ]
         try:
-            self.floorplan_stage.Pin(checked)
+            self.floorplan_panel.Pin(checked)
         except ValueError as error:
             self.pin_label.setText(str(error))
             return
         self.update_display()
 
     def pin_all(self) -> None:
-        self.floorplan_stage.Pin(sorted(self.floorplan_stage.Bins()))
+        self.floorplan_panel.Pin(sorted(self.floorplan_panel.Bins()))
         self.update_display()
 
     def unpin_all(self) -> None:
-        self.floorplan_stage.Pin([])
+        self.floorplan_panel.Pin([])
         self.update_display()
 
     # -------------------------------------------------------------- session
@@ -512,15 +512,15 @@ class FloorplanGui(QMainWindow):
         things in each.
         """
         try:
-            contours = self.floorplan_stage.Load(path)
+            contours = self.floorplan_panel.Load(path)
         except (OSError, ValueError, KeyError, TypeError) as error:
             self.session_label.setText(f"Could not load: {error}")
             return
 
         self.contours = dict(contours)
         self.sources = [path]
-        stage = self.floorplan_stage
-        bins = 0 if stage.resume is None else len(stage.resume.bins)
+        panel = self.floorplan_panel
+        bins = 0 if panel.resume is None else len(panel.resume.bins)
         self.session_label.setText(
             f"Resuming {os.path.basename(path)}: {len(self.contours)} objects in {bins} bins.\n"
             "Add a contour and press Plan to fit it in."
@@ -539,7 +539,7 @@ class FloorplanGui(QMainWindow):
         if not path:
             return
         try:
-            self.floorplan_stage.Save(path, self.contours)
+            self.floorplan_panel.Save(path, self.contours)
         except (OSError, ValueError) as error:
             self.session_label.setText(f"Could not save: {error}")
             return
@@ -554,11 +554,11 @@ class FloorplanGui(QMainWindow):
 
         # A snapshot, so loading more contours mid-search cannot change the
         # library underneath it.
-        self._worker = FloorplanWorker(self.floorplan_stage, dict(self.contours))
+        self._worker = FloorplanWorker(self.floorplan_panel, dict(self.contours))
         self._worker.progressed.connect(self._OnProgress)
         self._worker.planned.connect(self._OnPlanned)
-        self.floorplan_stage.SetBusy(True)
-        self.floorplan_stage.SetStatus(f"Floorplan: grouping {len(self.contours)} objects...")
+        self.floorplan_panel.SetBusy(True)
+        self.floorplan_panel.SetStatus(f"Floorplan: grouping {len(self.contours)} objects...")
         self._SetInputsEditable(False)
         self._worker.start()
 
@@ -566,7 +566,7 @@ class FloorplanGui(QMainWindow):
         worker = self._worker
         if worker is not None:
             worker.Cancel()
-            self.floorplan_stage.SetStatus("Floorplan: stopping...")
+            self.floorplan_panel.SetStatus("Floorplan: stopping...")
 
     def _OnProgress(self, progress) -> None:
         """Show the best arrangement found so far, and that it is alive.
@@ -576,15 +576,15 @@ class FloorplanGui(QMainWindow):
         kilopixels and the search between two reports is a quarter second
         of work.
         """
-        self.floorplan_stage.SetProgress(progress)
-        self.floorplan_stage.SetStatus(f"Floorplan: {progress}")
+        self.floorplan_panel.SetProgress(progress)
+        self.floorplan_panel.SetStatus(f"Floorplan: {progress}")
         self._DrawImage()
 
     def _OnPlanned(self) -> None:
         self._worker = None
-        self.floorplan_stage.SetBusy(False)
+        self.floorplan_panel.SetBusy(False)
         self._SetInputsEditable(True)
-        self.floorplan_stage.RefreshStatus()
+        self.floorplan_panel.RefreshStatus()
         self.update_display()
 
     def _SetInputsEditable(self, editable: bool) -> None:
@@ -626,12 +626,12 @@ class FloorplanGui(QMainWindow):
     # -------------------------------------------------------------- display
 
     def update_display(self) -> None:
-        self.floorplan_stage.RefreshStatus()
+        self.floorplan_panel.RefreshStatus()
         self._RefreshPins()
         self._DrawImage()
 
     def _DrawImage(self) -> None:
-        image = self.floorplan_stage.Render()
+        image = self.floorplan_panel.Render()
         if image is None:
             # The only way back is an empty drawer list: a drawer draws
             # itself whether or not anything has been planned into it.
@@ -652,7 +652,7 @@ class FloorplanGui(QMainWindow):
     # --------------------------------------------------------------- export
 
     def browse_for_export(self) -> None:
-        """Choose the *basename* the export writes under, since the stage
+        """Choose the *basename* the export writes under, since the panel
         appends its own extension.
         """
         pattern = " ".join(f"*{extension}" for extension in EXPORT_EXTENSIONS)
@@ -672,7 +672,7 @@ class FloorplanGui(QMainWindow):
         changed and the export repeated.
         """
         try:
-            report = self.floorplan_stage.Export(self.export_edit.text())
+            report = self.floorplan_panel.Export(self.export_edit.text())
         except (OSError, ValueError) as error:
             self.export_label.setText(f"Could not export: {error}")
             return

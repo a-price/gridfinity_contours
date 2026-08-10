@@ -16,12 +16,12 @@ it.
 `Pipeline` holds no Qt at all - it is a dict of callbacks and a recursion.
 The controls a stage builds its widget from live in `qt_utils.widgets`.
 
-**Only `silhouette_gui` actually runs one of these.** The capture window
-registers eight nodes and re-runs downstream synchronously. The three
-`*_stage` modules left in this package subclass `Stage` without being
-sequenced by a `Pipeline`: two of them run a cancellable search on a
+**Only `silhouette_gui` runs one of these**, over the five stages in
+`capture`. The planner windows do not: their work takes minutes on a
 worker thread, for which "re-run everything downstream as soon as the
-stage returns" is precisely wrong. See the note in `layout_gui`.
+stage returns" is precisely wrong, so a finished signal sequences them
+instead. What they own is a `panels.*Panel`, which deliberately does not
+subclass `Stage`.
 """
 
 from typing import Callable, Sequence

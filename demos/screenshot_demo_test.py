@@ -139,7 +139,7 @@ def test_the_floorplan_picture_actually_placed_its_bins(tmp_path, qapp):
     Asserted on the window rather than on the picture, since no pixel
     count can tell those two apart either.
     """
-    stage = screenshot_demo.PlanFloorplan().floorplan_stage
+    stage = screenshot_demo.PlanFloorplan().floorplan_panel
 
     assignment = stage.plan.assignment if stage.plan is not None else None
     assert assignment is not None, "the search returned no assignment at all"

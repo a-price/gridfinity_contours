@@ -80,7 +80,7 @@ holds because of the millimeter frame above.
 
 **N parts → M bins** is built but *unplumbed*. `Group` returns a list of
 layouts, and nothing downstream accepts one: `preview.LayoutShapes`,
-`render.RenderLayout`, `solid.GenerateScad`, `LayoutStage`, `layout_cli`
+`render.RenderLayout`, `solid.GenerateScad`, `LayoutPanel`, `layout_cli`
 and `layout_gui` all take a single `Layout` and write a single set of
 files. M8 left this as an explicit unchecked box rather than
 half-answering it.

@@ -39,7 +39,7 @@ from PyQt5.QtWidgets import (
 
 from qt_utils.click_recorder import WidgetToImageCoords
 from qt_utils.widgets import CreateGroupBox, FixQtOpenCvPluginPath
-from pipeline.field_stage import FieldStage
+from panels.field_panel import FieldPanel
 from layout.loading import ReadContours
 
 FixQtOpenCvPluginPath()
@@ -57,7 +57,7 @@ class FieldGui(QMainWindow):
 
         self.contours: dict[int, np.ndarray] = {}
         self.sources: list[str] = []
-        self.field_stage = FieldStage()
+        self.field_panel = FieldPanel()
 
         # The rendered image's shape, which the readout needs to undo the
         # pixmap's letterboxing. Held rather than re-derived because the
@@ -76,7 +76,7 @@ class FieldGui(QMainWindow):
         control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         control_layout.addWidget(self._CreateSourceWidget())
-        control_layout.addWidget(self.field_stage.CreateWidget(on_change=self.update_display))
+        control_layout.addWidget(self.field_panel.CreateWidget(on_change=self.update_display))
         control_layout.addStretch(1)
 
         self.image_label = QLabel()
@@ -126,8 +126,9 @@ class FieldGui(QMainWindow):
         layout.addWidget(clear_button)
 
         # Which contour is on screen is a property of what is loaded, so
-        # it lives here beside the file list rather than in the stage's
-        # panel - the stage decides how a field is built and drawn, not
+        # it lives here beside the file list rather than in the panel's
+        # own controls - the panel decides how a field is built and drawn,
+        # not
         # which one.
         self.contour_box = QComboBox()
         self.contour_box.currentIndexChanged.connect(self.select_contour)
@@ -173,7 +174,7 @@ class FieldGui(QMainWindow):
     def clear_contours(self) -> None:
         self.contours = {}
         self.sources = []
-        self.field_stage.Clear()
+        self.field_panel.Clear()
         self._RepopulateContourBox()
         self._UpdateSourceLabel()
         self.refresh()
@@ -185,7 +186,7 @@ class FieldGui(QMainWindow):
         box emits a change to index -1, which would otherwise deselect the
         contour being looked at every time another file was added.
         """
-        previous = self.field_stage.selected
+        previous = self.field_panel.selected
         self.contour_box.blockSignals(True)
         self.contour_box.clear()
         for contour_id in sorted(self.contours):
@@ -202,21 +203,21 @@ class FieldGui(QMainWindow):
         self.source_label.setText(f"{len(self.contours)} contours from {len(self.sources)} file(s):\n{names}")
 
     def select_contour(self, index: int) -> None:
-        self.field_stage.Select(self.contour_box.itemData(index))
+        self.field_panel.Select(self.contour_box.itemData(index))
         self.update_display()
 
     # ------------------------------------------------------------- display
 
     def refresh(self) -> None:
         """Rebuild the field from the current contours, then redraw."""
-        self.field_stage.Run(self.contours)
+        self.field_panel.Run(self.contours)
         self.update_display()
 
     def update_display(self) -> None:
-        self.field_stage.RefreshStatus()
+        self.field_panel.RefreshStatus()
         self.readout_label.setText("")
 
-        image = self.field_stage.Render()
+        image = self.field_panel.Render()
         if image is None:
             self.image_label.setPixmap(QPixmap())
             self.image_label.setText("Load contours to see their distance fields.")
@@ -229,11 +230,11 @@ class FieldGui(QMainWindow):
 
     def image_hovered(self, ev: QMouseEvent | None) -> None:
         """Report what the field reads under the pointer."""
-        if ev is None or self.field_stage.part is None:
+        if ev is None or self.field_panel.part is None:
             return
 
         coords = WidgetToImageCoords(self.image_label, self._image_shape, ev)
-        self.readout_label.setText("" if coords is None else self.field_stage.Probe(coords))
+        self.readout_label.setText("" if coords is None else self.field_panel.Probe(coords))
 
 
 def main() -> None:

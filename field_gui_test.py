@@ -2,7 +2,7 @@
 
 Two things worth pinning. Loading is additive, like `layout_gui` and for
 the same reason - contours arrive a capture session at a time. And the
-selector survives a reload: every parameter edit re-runs the stage, so a
+selector survives a reload: every parameter edit re-runs the panel, so a
 window that reset the selection on each one would snap back to the first
 contour every time the resolution was nudged.
 """
@@ -55,7 +55,7 @@ def test_clearing_removes_everything(gui, tmp_path):
 
     assert gui.contours == {}
     assert gui.contour_box.count() == 0
-    assert gui.field_stage.part is None
+    assert gui.field_panel.part is None
 
 
 def test_the_panel_lists_what_is_loaded(gui, tmp_path):
@@ -100,7 +100,7 @@ def test_the_field_is_shown_pixel_for_pixel(gui, tmp_path):
     not a picture of it.
     """
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(120.0, 40.0)})])
-    image = gui.field_stage.Render()
+    image = gui.field_panel.Render()
     assert image is not None
 
     pixmap = gui.image_label.pixmap()
@@ -114,7 +114,7 @@ def test_choosing_a_contour_shows_that_one(gui, tmp_path):
 
     gui.contour_box.setCurrentIndex(1)
 
-    part = gui.field_stage.part
+    part = gui.field_panel.part
     assert part is not None
     # The object, not `part.size` - what identifies the contour somebody
     # picked is the shape they drew, and the part built from it is a
@@ -133,7 +133,7 @@ def test_adding_a_file_does_not_move_the_selection(gui, tmp_path):
 
     gui.load_contours([_dump(tmp_path, "b.json", {0: _rectangle(18.0, 12.0)})])
 
-    assert gui.field_stage.selected == 1
+    assert gui.field_panel.selected == 1
     assert gui.contour_box.currentData() == 1
 
 
@@ -142,15 +142,15 @@ def test_adding_a_file_does_not_move_the_selection(gui, tmp_path):
 
 def test_the_readout_reports_the_field_under_the_pointer(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
-    part = gui.field_stage.part
+    part = gui.field_panel.part
     assert part is not None
 
-    # Straight through the stage, which is where the coordinate math is -
+    # Straight through the panel, which is where the coordinate math is -
     # the window only undoes the pixmap's letterboxing.
     low = part.origin + 0.5 * part.resolution
-    pixel = tuple((np.array([10.0, 5.0]) - low) * gui.field_stage.view.pixels_per_mm)
+    pixel = tuple((np.array([10.0, 5.0]) - low) * gui.field_panel.view.pixels_per_mm)
 
-    assert "inside the part" in gui.field_stage.Probe(pixel)
+    assert "inside the part" in gui.field_panel.Probe(pixel)
 
 
 def test_hovering_with_nothing_loaded_does_not_raise(gui):
@@ -172,6 +172,6 @@ def test_a_captured_spoon_shows_its_field(qapp):
 
     assert len(window.contours) == 3
 
-    image = window.field_stage.Render()
+    image = window.field_panel.Render()
     assert image is not None and image.shape[2] == 3
-    assert "reaching" in window.field_stage.Summary()
+    assert "reaching" in window.field_panel.Summary()

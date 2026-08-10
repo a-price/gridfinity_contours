@@ -1,7 +1,7 @@
 """Interactive capture: photo to rectified, real-world-scale contour.
 
 Each pipeline stage carries its own configuration parameters, its
-inputs/outputs, and (where relevant) debug output - see `pipeline.core`.
+inputs/outputs, and (where relevant) debug output - see `capture.pipeline`.
 This window wires them into one Qt session:
 
   * Load Image
@@ -50,7 +50,7 @@ from capture.contour_selection_stage import ContourSelectionStage
 from capture.rectify import Rectify
 from capture.svg_export_stage import SvgExportStage
 from qt_utils.widgets import FixQtOpenCvPluginPath
-from pipeline.core import Pipeline
+from capture.pipeline import Pipeline
 
 FixQtOpenCvPluginPath()
 

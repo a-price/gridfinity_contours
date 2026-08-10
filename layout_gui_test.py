@@ -11,7 +11,7 @@ import pytest
 
 from export.contour_io import SaveContours
 from layout.parameters import LayoutParameters
-from pipeline.layout_stage import EXPORT_EXTENSIONS
+from panels.layout_panel import EXPORT_EXTENSIONS
 from layout_gui import LayoutGui
 from conftest import Rectangle as _rectangle, SPOONS
 
@@ -19,7 +19,7 @@ from conftest import Rectangle as _rectangle, SPOONS
 @pytest.fixture
 def gui(qapp):
     window = LayoutGui()
-    window.layout_stage.parameters = LayoutParameters(restarts=4, iterations=120, patience=25, max_grid=2)
+    window.layout_panel.parameters = LayoutParameters(restarts=4, iterations=120, patience=25, max_grid=2)
     return window
 
 
@@ -117,11 +117,11 @@ def test_loading_more_contours_drops_a_stale_layout(gui, tmp_path):
     """
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
     _pack(gui)
-    assert gui.layout_stage.layout is not None
+    assert gui.layout_panel.layout is not None
 
     gui.load_contours([_dump(tmp_path, "b.json", {0: _rectangle(18.0, 12.0)})])
 
-    assert gui.layout_stage.layout is None
+    assert gui.layout_panel.layout is None
 
 
 # ------------------------------------------------------------------ packing
@@ -130,18 +130,18 @@ def test_loading_more_contours_drops_a_stale_layout(gui, tmp_path):
 def test_packing_runs_only_when_triggered(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(20.0, 10.0)})])
 
-    assert gui.layout_stage.layout is None, "loading must not pack"
+    assert gui.layout_panel.layout is None, "loading must not pack"
 
     _pack(gui)
 
-    assert gui.layout_stage.layout is not None
+    assert gui.layout_panel.layout is not None
 
 
 def test_packing_with_nothing_loaded_says_so(gui):
     _pack(gui)
 
-    assert gui.layout_stage.layout is None
-    assert "no contours" in gui.layout_stage.Summary().lower()
+    assert gui.layout_panel.layout is None
+    assert "no contours" in gui.layout_panel.Summary().lower()
 
 
 def test_a_packed_layout_reaches_the_image_view(gui, tmp_path):
@@ -186,7 +186,7 @@ def test_exporting_before_packing_is_reported_not_raised(gui, tmp_path):
 
 @pytest.mark.parametrize("extension", EXPORT_EXTENSIONS)
 def test_a_chosen_filename_does_not_gain_a_second_extension(gui, tmp_path, extension):
-    """The save dialog offers a filename, but the stage appends its own -
+    """The save dialog offers a filename, but the panel appends its own -
     so every extension it writes has to be strippable, not just the two
     it happened to write first.
     """
@@ -234,14 +234,14 @@ def test_a_pack_runs_on_a_worker_thread(gui, tmp_path):
     Given a search long enough that it cannot plausibly have finished in
     the time it takes to return.
     """
-    gui.layout_stage.parameters = _slow()
+    gui.layout_panel.parameters = _slow()
     gui.load_contours([_dump(tmp_path, "a.json", _unpackable())])
 
     gui.pack()
 
     assert gui._worker is not None
     assert gui._worker.isRunning(), "pack() returned only after the search finished"
-    assert gui.layout_stage.result is None, "no result should exist yet"
+    assert gui.layout_panel.result is None, "no result should exist yet"
 
     gui.cancel_pack()
     gui.WaitForPack()
@@ -251,7 +251,7 @@ def test_a_pack_runs_on_a_worker_thread(gui, tmp_path):
 def test_progress_reaches_the_panel_while_packing(gui, tmp_path):
     gui.load_contours([_dump(tmp_path, "a.json", {0: _rectangle(60.0, 25.0)})])
     seen = []
-    gui.layout_stage.SetStatus = lambda text: seen.append(text)
+    gui.layout_panel.SetStatus = lambda text: seen.append(text)
 
     _pack(gui)
 
@@ -262,18 +262,18 @@ def test_cancelling_stops_the_search_without_claiming_failure(gui, tmp_path):
     """A cancelled search says nothing about whether the parts fit, so the
     panel must not read as though the bin were too small.
     """
-    gui.layout_stage.parameters = _slow()
+    gui.layout_panel.parameters = _slow()
     gui.load_contours([_dump(tmp_path, "a.json", _unpackable())])
 
     gui.pack()
     gui.cancel_pack()
     gui.WaitForPack()
 
-    result = gui.layout_stage.result
+    result = gui.layout_panel.result
     assert result is not None and result.cancelled
     assert result.layout is None
-    assert "cancelled" in gui.layout_stage.Summary().lower()
-    assert "no fit" not in gui.layout_stage.Summary()
+    assert "cancelled" in gui.layout_panel.Summary().lower()
+    assert "no fit" not in gui.layout_panel.Summary()
 
 
 def test_a_second_pack_is_ignored_while_one_is_running(gui, tmp_path):
@@ -329,10 +329,10 @@ def test_the_three_spoon_captures_pack_in_the_window(qapp):
 
     _pack(window)
 
-    layout = window.layout_stage.layout
+    layout = window.layout_panel.layout
     assert layout is not None
     assert layout.grid == (5, 2)
-    assert "3 parts in 5x2" in window.layout_stage.Summary()
+    assert "3 parts in 5x2" in window.layout_panel.Summary()
 
     pixmap = window.image_label.pixmap()
     assert pixmap is not None and not pixmap.isNull()

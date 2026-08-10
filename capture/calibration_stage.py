@@ -2,7 +2,7 @@
 
 Only `ArucoCalibrationStage` lives here - the one calibration strategy
 `silhouette_gui.py` actually wires into the app. `IdentityCalibration` and
-`HoughCircleCalibration` (see `pipeline/calibration.py`) have no Qt
+`HoughCircleCalibration` (see `capture/calibration.py`) have no Qt
 wiring of their own for the same reason: nothing in this project
 constructs a calibration stage other than this one.
 """
@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import QLabel, QWidget
 
 from capture.calibration import ArucoCalibration
 from qt_utils.widgets import CreateGroupBox
-from pipeline.core import Stage
+from capture.pipeline import Stage
 
 
 class ArucoCalibrationStage(Stage):

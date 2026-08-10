@@ -1,7 +1,7 @@
 """Qt wiring for the whole-library floorplan: parts to bins to drawers.
 
-The third stage in this project and the slowest by a wide margin. Packing
-one bin takes seconds, so `LayoutStage` runs on an explicit button;
+The third panel in this project and the slowest by a wide margin. Packing
+one bin takes seconds, so `LayoutPanel` runs on an explicit button;
 grouping a real library and then fitting the bins into drawers takes
 minutes, which changes what the panel has to do rather than merely how
 long it waits. Two things follow:
@@ -13,7 +13,7 @@ long it waits. Two things follow:
   to draw.
 * **And what it draws is always the drawers.** Empty from the moment one
   is typed in, then filling as bins are found for them. The subject of
-  this stage is the drawer, so it is on screen at every stage rather than
+  this panel is the drawer, so it is on screen throughout rather than
   only at the end - see `Render`.
 * **Stopping has to give you something.** A cancelled search returns the
   best grouping it had found, flagged, rather than nothing - so a person
@@ -32,7 +32,6 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from qt_utils.widgets import CreateChoice, CreateGroupBox, CreateSpinBox
-from pipeline.core import Stage
 from layout.drawer import Assign, AssignmentResult, Drawer, FirstFit
 from layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
 from layout.loading import BuildParts
@@ -51,7 +50,7 @@ EXPORT_EXTENSIONS = (".pdf",)
 
 # What every bin in the plan gets alongside it: the sheet to print and lay
 # on the bin, and the solid to print the bin from. The same three
-# `LayoutStage` writes for a single bin, for the same reasons - the map
+# `LayoutPanel` writes for a single bin, for the same reasons - the map
 # says where bins go, but what you actually make is a bin.
 BIN_EXTENSIONS = (".svg", ".pdf", ".scad")
 
@@ -89,7 +88,7 @@ class ExportReport:
         )
 
 
-class FloorplanStage(Stage):
+class FloorplanPanel:
     """Groups parts into bins, fits those bins into the drawers, and draws
     whatever the search has found so far.
 
@@ -255,7 +254,7 @@ class FloorplanStage(Stage):
         best arrangement the search has reached. Empty when there is
         neither - which draws the bare drawers, and is the honest picture.
 
-        A report can outlive the parts it describes: clearing the stage
+        A report can outlive the parts it describes: clearing the panel
         while a stale one is still held, say. This is a repaint path, so
         that case drops the bins and draws the drawers alone rather than
         raising up through Qt.
@@ -542,7 +541,7 @@ class FloorplanStage(Stage):
         layout.addLayout(seed["layout"])
 
         # The only thing that starts a search. Parameter edits deliberately
-        # do not, as in LayoutStage and for the same reason several times
+        # do not, as in LayoutPanel and for the same reason several times
         # over - this one takes minutes.
         self._plan_button = QPushButton("Plan")
         self._plan_button.clicked.connect(on_change)

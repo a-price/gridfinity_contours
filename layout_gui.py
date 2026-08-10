@@ -36,7 +36,7 @@ from PyQt5.QtWidgets import (
 
 from qt_utils.widgets import CreateGroupBox, FixQtOpenCvPluginPath
 from layout.loading import ReadContours
-from pipeline.layout_stage import EXPORT_EXTENSIONS, LayoutStage
+from panels.layout_panel import EXPORT_EXTENSIONS, LayoutPanel
 
 FixQtOpenCvPluginPath()
 
@@ -49,16 +49,16 @@ class PackWorker(QThread):
     Worth the thread rather than pumping the event loop between restarts:
     pumping re-enters every widget mid-computation, so the panel has to be
     disabled to stay safe, and the window still cannot repaint or resize.
-    The packer touches no Qt and shares nothing but the stage it was handed,
+    The packer touches no Qt and shares nothing but the panel it was handed,
     which the main thread agrees not to read until `packed` arrives.
     """
 
     progressed = pyqtSignal(object)  # packer.Progress
     packed = pyqtSignal()
 
-    def __init__(self, stage: LayoutStage, contours: dict[int, np.ndarray]) -> None:
+    def __init__(self, panel: LayoutPanel, contours: dict[int, np.ndarray]) -> None:
         super().__init__()
-        self._stage = stage
+        self._panel = panel
         self._contours = contours
         self._cancelled = False
 
@@ -72,7 +72,7 @@ class PackWorker(QThread):
         self._cancelled = True
 
     def run(self) -> None:
-        self._stage.Run(self._contours, progress=self.progressed.emit, cancelled=lambda: self._cancelled)
+        self._panel.Run(self._contours, progress=self.progressed.emit, cancelled=lambda: self._cancelled)
         self.packed.emit()
 
 
@@ -88,7 +88,7 @@ class LayoutGui(QMainWindow):
 
         self.contours: dict[int, np.ndarray] = {}
         self.sources: list[str] = []
-        self.layout_stage = LayoutStage()
+        self.layout_panel = LayoutPanel()
 
         # No `Pipeline` here, unlike the capture window. Its stages run
         # downstream targets as soon as the stage returns, which is exactly
@@ -115,8 +115,8 @@ class LayoutGui(QMainWindow):
         control_layout.addWidget(self.source_group)
 
         # Packing runs on the Pack button inside this group box, never on a
-        # parameter edit - see LayoutStage.
-        control_layout.addWidget(self.layout_stage.CreateWidget(on_change=self.pack, on_cancel=self.cancel_pack))
+        # parameter edit - see LayoutPanel.
+        control_layout.addWidget(self.layout_panel.CreateWidget(on_change=self.pack, on_cancel=self.cancel_pack))
 
         self.export_group = self._CreateExportWidget()
         control_layout.addWidget(self.export_group)
@@ -159,7 +159,7 @@ class LayoutGui(QMainWindow):
         row.addWidget(browse_button)
         layout.addLayout(row)
 
-        # Named from what the stage actually writes, so adding a format
+        # Named from what the panel actually writes, so adding a format
         # cannot leave the button advertising the old set.
         self.export_button = QPushButton("Export " + " + ".join(e.lstrip(".").upper() for e in EXPORT_EXTENSIONS))
         self.export_button.clicked.connect(self.export_layout)
@@ -193,7 +193,7 @@ class LayoutGui(QMainWindow):
         self.sources.extend(paths)
 
         # Anything already packed described the old set.
-        self.layout_stage.Clear()
+        self.layout_panel.Clear()
         self._UpdateSourceLabel()
         self.update_display()
 
@@ -204,7 +204,7 @@ class LayoutGui(QMainWindow):
     def clear_contours(self) -> None:
         self.contours = {}
         self.sources = []
-        self.layout_stage.Clear()
+        self.layout_panel.Clear()
         self._UpdateSourceLabel()
         self.update_display()
 
@@ -224,11 +224,11 @@ class LayoutGui(QMainWindow):
 
         # A snapshot, so loading more contours mid-pack cannot change the
         # set underneath the search.
-        self._worker = PackWorker(self.layout_stage, dict(self.contours))
+        self._worker = PackWorker(self.layout_panel, dict(self.contours))
         self._worker.progressed.connect(self._OnProgress)
         self._worker.packed.connect(self._OnPacked)
-        self.layout_stage.SetBusy(True)
-        self.layout_stage.SetStatus(f"Layout: packing {len(self.contours)} contours...")
+        self.layout_panel.SetBusy(True)
+        self.layout_panel.SetStatus(f"Layout: packing {len(self.contours)} contours...")
         self._SetSourcesEditable(False)
         self._worker.start()
 
@@ -236,16 +236,16 @@ class LayoutGui(QMainWindow):
         worker = self._worker
         if worker is not None:
             worker.Cancel()
-            self.layout_stage.SetStatus("Layout: stopping...")
+            self.layout_panel.SetStatus("Layout: stopping...")
 
     def _OnProgress(self, progress) -> None:
-        self.layout_stage.SetStatus(f"Layout: packing... {progress}")
+        self.layout_panel.SetStatus(f"Layout: packing... {progress}")
 
     def _OnPacked(self) -> None:
         self._worker = None
-        self.layout_stage.SetBusy(False)
+        self.layout_panel.SetBusy(False)
         self._SetSourcesEditable(True)
-        self.layout_stage.RefreshStatus()
+        self.layout_panel.RefreshStatus()
         self.update_display()
 
     def _SetSourcesEditable(self, editable: bool) -> None:
@@ -281,7 +281,7 @@ class LayoutGui(QMainWindow):
     # ------------------------------------------------------------- display
 
     def update_display(self) -> None:
-        image = self.layout_stage.Render()
+        image = self.layout_panel.Render()
         if image is None:
             self.image_label.setPixmap(QPixmap())
             self.image_label.setText("Load contours, then press Pack.")
@@ -303,7 +303,7 @@ class LayoutGui(QMainWindow):
         """Choose the *basename* the export writes all its formats under.
 
         A save dialog naturally offers a filename, so whatever extension
-        comes back has to come off again - the stage appends its own, and
+        comes back has to come off again - the panel appends its own, and
         picking `layout.scad` would otherwise write `layout.scad.scad`.
         """
         pattern = " ".join(f"*{extension}" for extension in EXPORT_EXTENSIONS)
@@ -316,7 +316,7 @@ class LayoutGui(QMainWindow):
 
     def export_layout(self) -> None:
         try:
-            written = self.layout_stage.Export(self.export_edit.text())
+            written = self.layout_panel.Export(self.export_edit.text())
         except (OSError, ValueError) as error:
             self.export_label.setText(f"Could not export: {error}")
             return

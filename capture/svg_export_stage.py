@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QW
 
 from export.contour_io import SaveContours
 from qt_utils.widgets import CreateGroupBox
-from pipeline.core import Stage
+from capture.pipeline import Stage
 from export.pdf_writer import WritePdf
 from export.svg_writer import WriteSvg
 

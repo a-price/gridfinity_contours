@@ -13,7 +13,6 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
 from qt_utils.widgets import CreateChoice, CreateGroupBox, CreateSpinBox
-from pipeline.core import Stage
 from layout.loading import BuildParts
 from layout.packer import Pack, PackResult, Progress
 from layout.parameters import ROTATIONS, LayoutParameters
@@ -28,7 +27,7 @@ from layout.solid import WriteScad
 EXPORT_EXTENSIONS = (".svg", ".pdf", ".scad")
 
 
-class LayoutStage(Stage):
+class LayoutPanel:
     """Packs the rectified contours into the smallest Gridfinity bin that
     holds them, and renders the result for the image view.
 

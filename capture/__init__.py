@@ -9,23 +9,28 @@ The algorithms, and the configurable widget over each:
     rectify                                        that homography, applied
                        + svg_export_stage          the three exported files
 
+    pipeline                                       what sequences the above
+
 **Why the pairs live together.** A `*_stage` is the configurable UI over
 one step of the capture graph: it holds that step's parameters, builds the
 group box that edits them, and re-runs everything downstream when one
-changes. That is a real contract - `core.Pipeline` sequences these, and
-`silhouette_gui` is the window it drives. Algorithm and stage are one
+changes. That is a real contract - `pipeline.Pipeline` sequences these,
+and `silhouette_gui` is the window it drives. Algorithm and stage are one
 concept in two layers, so separating them by Qt-ness would file half of
 each pair away from the other for a distinction the `_stage` suffix
 already makes.
+
+`pipeline` is here rather than somewhere shared because this is the only
+place it is used. It was `pipeline/core.py` back when the package holding
+it also held the layout solver and the Qt widget helpers, neither of which
+ever wanted it.
 
 The algorithms are Qt-free and the stages are not. That split is worth
 keeping *within* the package: `morphology.py` can be tested without a
 display, and only `morphology_stage.py` knows a slider exists.
 
-Note that `pipeline.field_stage`, `pipeline.layout_stage` and
-`pipeline.floorplan_stage` are named for this pattern but do not follow
-it - no `Pipeline` sequences them, and the latter two run on a worker
-thread with progress and cancellation. See the note in `layout_gui`.
+The planner windows own a similar-looking object each. Those are not
+stages and no longer claim to be - see `panels`.
 
 Design: docs/capture.md.
 """

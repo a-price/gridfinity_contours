@@ -1,10 +1,10 @@
 """Qt wiring for the distance-field viewer.
 
-The mirror image of `LayoutStage`, and for the opposite reason. Packing
-takes seconds, so that stage runs only on an explicit button; rasterizing
+The mirror image of `LayoutPanel`, and for the opposite reason. Packing
+takes seconds, so that panel runs only on an explicit button; rasterizing
 one part and colorizing it takes milliseconds, and watching the field
 change as the resolution moves is the entire point of this one. So
-`on_change` here means what it means everywhere else in `pipeline.core`:
+`on_change` here means what it means everywhere else in `capture.pipeline`:
 a parameter settled, redraw.
 
 Only the part being looked at is ever built. Every control on the panel
@@ -20,7 +20,6 @@ import numpy as np
 from PyQt5.QtWidgets import QCheckBox, QLabel, QWidget
 
 from qt_utils.widgets import CreateGroupBox, CreateSpinBox
-from pipeline.core import Stage
 from layout.field import FieldView, PixelToLocal, RenderField
 from layout.parameters import LayoutParameters
 from layout.part import DISTANT_MM, BuildPart, Part
@@ -31,7 +30,7 @@ GRADIENT_LABEL = "Gradient magnitude (shows the creases)"
 SAMPLES_LABEL = "Boundary samples (zoom in to separate them)"
 
 
-class FieldStage(Stage):
+class FieldPanel:
     """Rasterizes one contour into a Part and renders its distance field.
 
     Holds a `LayoutParameters` for what the field *is* and a `FieldView`
@@ -205,7 +204,7 @@ class FieldStage(Stage):
         )
         layout.addLayout(resolution["layout"])
 
-        # The clearances beside it stay read-only, same as LayoutStage's
+        # The clearances beside it stay read-only, same as LayoutPanel's
         # panel: they are what a printable divider and wall measure, not
         # something to type over. What the offset changes here is the
         # outline itself - this view rasterizes the pocket, so the whole
