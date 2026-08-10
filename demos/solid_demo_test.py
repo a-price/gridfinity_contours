@@ -13,8 +13,8 @@ import os
 import numpy as np
 import pytest
 
-import solid_demo
-from solid_demo import ONE, PREFIX, SOLIDS, SPOONS, Available, Trim, WriteSolid
+import demos.solid_demo as solid_demo
+from demos.solid_demo import ONE, PREFIX, SOLIDS, SPOONS, Available, Trim, WriteSolid
 
 
 def _Image(fill: int = 245, size: tuple[int, int] = (100, 120)) -> np.ndarray:

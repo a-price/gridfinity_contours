@@ -37,11 +37,11 @@ a file — never that a picture looks like a stored copy of itself.
 
 | Script | Writes | Cost | Needs |
 | --- | --- | --- | --- |
-| `capture_demo.py` | `capture.gif` | ~10 s | Qt, a cached SAM2 checkpoint |
-| `layout_demo.py` | `pack.gif`, `group.gif`, `drawer.gif` | 15 s / 2.5 min / 30 s | — |
-| `screenshot_demo.py` | `window_*.png` | ~2 min | Qt |
-| `solid_demo.py` | `solid_*.png` | ~30 s | OpenSCAD, the submodule |
-| `render_demo.py` | `preview_*.png` | ~5 s | — |
+| `demos/capture_demo.py` | `capture.gif` | ~10 s | Qt, a cached SAM2 checkpoint |
+| `demos/layout_demo.py` | `pack.gif`, `group.gif`, `drawer.gif` | 15 s / 2.5 min / 30 s | — |
+| `demos/screenshot_demo.py` | `window_*.png` | ~2 min | Qt |
+| `demos/solid_demo.py` | `solid_*.png` | ~30 s | OpenSCAD, the submodule |
+| `demos/render_demo.py` | `preview_*.png` | ~5 s | — |
 | `generate_aruco_sheet.py` | `sheet_aruco.png` | ~2 s | — |
 
 All of it lands in `docs/media/`. The Makefile targets are `gifs`
@@ -57,20 +57,20 @@ is threaded, so on a spare machine that is close to a 4× saving.
 These are what the `gif-*` targets run. Keep the two in step.
 
 ```
-capture_demo.py --out docs/media/capture.gif
+python3 -m demos.capture_demo --out docs/media/capture.gif
 
-layout_demo.py pack \
+python3 -m demos.layout_demo pack \
     test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
     test_data/medium_fork.svg --out docs/media/pack.gif \
     --restarts 8 --every 8 --pixels-per-mm 1.4 --colors 8
 
-layout_demo.py group \
+python3 -m demos.layout_demo group \
     test_data/big_spoon.svg test_data/small_spoon.svg test_data/screwdriver.svg \
     test_data/spreader.svg test_data/big_measure.svg test_data/small_measure.svg \
     --start one-per-bin --restarts 12 --every 1 \
     --out docs/media/group.gif
 
-layout_demo.py drawer \
+python3 -m demos.layout_demo drawer \
     test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
     test_data/small_fork.svg test_data/medium_fork.svg test_data/big_fork.svg \
     test_data/spreader.svg test_data/screwdriver.svg \
@@ -122,7 +122,7 @@ picture:
 
 ### The capture animation
 
-`capture_demo.py` records six beats: empty window, photo loaded and
+`demos/capture_demo.py` records six beats: empty window, photo loaded and
 calibrated, the two click points, the segmented outline, lateral symmetry
 ticked, the contour selected and rectified. Frame-to-frame differences on
 the committed recording:
@@ -151,7 +151,7 @@ readable is the question calibration answers.
 
 ### The window screenshots
 
-`screenshot_demo.py` drives each window through the same methods a
+`demos/screenshot_demo.py` drives each window through the same methods a
 person's clicks reach: load these files, type this drawer size, press
 Plan, wait. The floorplan picture runs a real search with a reduced
 restart budget (8 rather than 24 — measured to reach the same 25-cell
@@ -164,7 +164,7 @@ through — a screenshot advertising a status the window could not show.
 
 ## Renders of the actual bin
 
-`solid_demo.py` packs real contours, writes the same `.scad`
+`demos/solid_demo.py` packs real contours, writes the same `.scad`
 `layout_cli.py` writes, and hands it to OpenSCAD. The picture at the top
 of the README is therefore the solid somebody would slice, pockets and
 stacking lip and all.
@@ -184,7 +184,7 @@ would produce a diff on every checkout that regenerated the picture.
 
 ## The still renderings
 
-`render_demo.py` photographs the *renderers*, one picture per drawing
+`demos/render_demo.py` photographs the *renderers*, one picture per drawing
 path, and everything it draws is deterministic: hand-written placements,
 fixtures loaded from files, and the drawer assignment, which is exhaustive
 and carries no RNG. Nothing there calls the stochastic solver, or the

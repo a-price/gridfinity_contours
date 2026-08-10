@@ -1,5 +1,12 @@
 PYTHON := .venv/bin/python3
-PY_FILES := $(wildcard *.py) $(wildcard pipeline/*.py) $(wildcard pipeline/*/*.py)
+# Found rather than listed. A wildcard list stops covering a directory the
+# moment code moves into a new one, and does it silently: `make check` goes
+# on passing while black and pyflakes quietly skip everything that moved.
+# The exclusions are the two trees that are not this project's code.
+PY_FILES := $(shell find . -name '*.py' \
+	-not -path './.venv/*' \
+	-not -path './gridfinity-rebuilt-openscad/*' \
+	-not -path '*/__pycache__/*')
 MD_FILES := $(wildcard *.md) $(wildcard docs/*.md)
 DOT_FILES := $(wildcard docs/*.dot)
 DOT_SVGS := $(DOT_FILES:.dot=.svg)
@@ -74,20 +81,20 @@ docs-check:
 # a test that failed on it would be a stored-image assertion by another
 # route - the exact thing this is built to avoid.
 previews:
-	$(PYTHON) render_demo.py --out docs/media
+	$(PYTHON) -m demos.render_demo --out docs/media
 
 # One picture of each window, for the README. ~2 minutes, nearly all of it
 # the floorplan search - see screenshot_demo.py. Needs Qt, driven
 # offscreen, so nothing pops open on whoever ran this.
 screenshots:
-	$(PYTHON) screenshot_demo.py --out docs/media
+	$(PYTHON) -m demos.screenshot_demo --out docs/media
 
 # The bin itself, rendered by OpenSCAD. ~30 seconds. The only target here
 # that needs a tool outside requirements.txt, which is why it is separate
 # from `screenshots` rather than folded into it: a machine with Qt but no
 # OpenSCAD should still be able to regenerate everything else.
 solids:
-	$(PYTHON) solid_demo.py --out docs/media
+	$(PYTHON) -m demos.solid_demo --out docs/media
 
 # The calibration sheet, as a picture rather than as the PDF you print.
 sheet:
@@ -124,11 +131,11 @@ gifs: gif-capture gif-pack gif-group gif-drawer
 # silhouette_gui.py this target fails rather than quietly downloading a
 # few hundred megabytes mid-build.
 gif-capture:
-	$(PYTHON) capture_demo.py --out docs/media/capture.gif
+	$(PYTHON) -m demos.capture_demo --out docs/media/capture.gif
 
 # ~15 seconds.
 gif-pack:
-	$(PYTHON) layout_demo.py pack \
+	$(PYTHON) -m demos.layout_demo pack \
 		test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
 		test_data/medium_fork.svg --out docs/media/pack.gif \
 		--restarts 8 --every 8 --pixels-per-mm 1.4 --colors 8
@@ -136,7 +143,7 @@ gif-pack:
 # ~2.5 minutes - the grouping search is quadratic in bins and every
 # surviving candidate is a full stochastic solve. See docs/architecture.md.
 gif-group:
-	$(PYTHON) layout_demo.py group \
+	$(PYTHON) -m demos.layout_demo group \
 		test_data/big_spoon.svg test_data/small_spoon.svg test_data/screwdriver.svg \
 		test_data/spreader.svg test_data/big_measure.svg test_data/small_measure.svg \
 		--start one-per-bin --restarts 12 --every 1 \
@@ -144,7 +151,7 @@ gif-group:
 
 # ~30 seconds.
 gif-drawer:
-	$(PYTHON) layout_demo.py drawer \
+	$(PYTHON) -m demos.layout_demo drawer \
 		test_data/small_spoon.svg test_data/medium_spoon.svg test_data/big_spoon.svg \
 		test_data/small_fork.svg test_data/medium_fork.svg test_data/big_fork.svg \
 		test_data/spreader.svg test_data/screwdriver.svg \

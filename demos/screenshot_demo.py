@@ -1,6 +1,6 @@
 """One picture of each window, for the README.
 
-    screenshot_demo.py --out docs/media
+    python3 -m demos.screenshot_demo --out docs/media
 
 The still-image counterpart to `capture_demo.py`. That one animates a
 flow; this one photographs the *tools*, one picture per window, so the
@@ -58,15 +58,15 @@ DEFAULT_OUT = "docs/media"
 # uses for the drawings.
 PREFIX = "window_"
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _Path(*parts: str) -> str:
-    """A fixture path, resolved against this file rather than the working
-    directory, so the pictures come out identical wherever they were
-    generated from.
+    """A fixture path, resolved against the repository root - one level up
+    from `demos/` - rather than the working directory, so the pictures come
+    out identical wherever they were generated from.
     """
-    return os.path.join(_HERE, *parts)
+    return os.path.join(_ROOT, *parts)
 
 
 # The same four objects `make gif-pack` animates. Deliberately the same:

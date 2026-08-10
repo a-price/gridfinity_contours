@@ -287,8 +287,12 @@ different colour from the top, on printers without an AMS.
 
 ### The demo scripts
 
-`capture_demo.py`, `layout_demo.py`, `screenshot_demo.py`,
-`render_demo.py` and `solid_demo.py` write every picture on this page.
+The five scripts in [demos/](demos/) — `capture_demo.py`,
+`layout_demo.py`, `screenshot_demo.py`, `render_demo.py` and
+`solid_demo.py` — write every picture on this page. They run as modules,
+so that imports resolve from the repository root:
+`.venv/bin/python3 -m demos.render_demo --out docs/media`.
+
 `make media` regenerates the lot; see [docs/media.md](docs/media.md) for
 what each one costs and what it needs.
 

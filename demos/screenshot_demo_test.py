@@ -19,8 +19,8 @@ import os
 import numpy as np
 import pytest
 
-import screenshot_demo
-from screenshot_demo import DRAWERS, LIBRARY, PACKED, SCREENSHOTS, SPOON, Main, Write
+import demos.screenshot_demo as screenshot_demo
+from demos.screenshot_demo import DRAWERS, LIBRARY, PACKED, SCREENSHOTS, SPOON, Main, Write
 
 
 def _names() -> list[str]:

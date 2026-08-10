@@ -18,8 +18,8 @@ import pathlib
 import numpy as np
 import pytest
 
-import render_demo
-from render_demo import PREFIX, PREVIEWS, Main, Write
+import demos.render_demo as render_demo
+from demos.render_demo import PREFIX, PREVIEWS, Main, Write
 from pipeline.layout.parameters import LayoutParameters
 
 

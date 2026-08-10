@@ -22,8 +22,8 @@ import numpy as np
 import pytest
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-import capture_demo
-from capture_demo import HANDLE, PHOTO, PHOTO_COLORS, SHADOW, Main, Recording
+import demos.capture_demo as capture_demo
+from demos.capture_demo import HANDLE, PHOTO, PHOTO_COLORS, SHADOW, Main, Recording
 
 
 class _Host(QWidget):

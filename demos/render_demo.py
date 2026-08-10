@@ -1,6 +1,6 @@
 """Reference renderings, committed so a visual change shows up in review.
 
-    render_demo.py --out docs/media
+    python3 -m demos.render_demo --out docs/media
 
 The still-image counterpart to `layout_demo.py`. That one animates the
 *searches*; this one photographs the *renderers*, one picture per drawing
@@ -80,10 +80,13 @@ PREFIX = "preview_"
 # concave enough that its dilation folds into itself, which is the case
 # every synthetic rectangle in the tests fails to cover.
 #
-# Resolved against this file rather than the working directory. The
-# pictures have to come out identical wherever they are generated from, or
-# the diffs they exist to produce would depend on where somebody stood.
-SPOON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_data", "big_spoon.svg")
+# Resolved against the repository root - one level up from `demos/` - rather
+# than the working directory. The pictures have to come out identical wherever
+# they are generated from, or the diffs they exist to produce would depend on
+# where somebody stood.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+SPOON = os.path.join(_ROOT, "test_data", "big_spoon.svg")
 
 
 def _Rectangle(width: float, height: float) -> np.ndarray:

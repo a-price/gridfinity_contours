@@ -1,12 +1,12 @@
 """Animate the layout search, as documentation you can re-run.
 
-    layout_demo.py pack test_data/small_spoon.svg test_data/medium_spoon.svg \\
+    python3 -m demos.layout_demo pack test_data/small_spoon.svg test_data/medium_spoon.svg \\
         test_data/big_spoon.svg --out docs/media/pack.gif
 
-    layout_demo.py group test_data/big_spoon.svg test_data/screwdriver.svg \\
+    python3 -m demos.layout_demo group test_data/big_spoon.svg test_data/screwdriver.svg \\
         --start one-per-bin --out docs/media/group.gif
 
-    layout_demo.py drawer test_data/*_spoon.svg test_data/*_fork.svg \\
+    python3 -m demos.layout_demo drawer test_data/*_spoon.svg test_data/*_fork.svg \\
         --drawer 340x260 --out docs/media/drawer.gif
 
 Each stage runs the real search - the same functions the CLI calls, with

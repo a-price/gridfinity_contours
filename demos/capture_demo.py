@@ -1,6 +1,6 @@
 """Animate the capture window: photo to real-world-scale contour.
 
-    capture_demo.py --out docs/media/capture.gif
+    python3 -m demos.capture_demo --out docs/media/capture.gif
 
 The counterpart to `layout_demo.py`, one stage earlier in the pipeline.
 That one animates a search; this one animates *using the tool* - the
@@ -58,7 +58,13 @@ from silhouette_gui import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
 # properties of that image rather than settings, so they are named here
 # rather than exposed: a different photo needs a different click, and a
 # flag inviting one without the other only produces an empty mask.
-PHOTO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_data", "screwdriver.jpg")
+#
+# Resolved against the repository root - one level up from `demos/` - rather
+# than the working directory, so the picture comes out identical wherever it
+# was generated from.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+PHOTO = os.path.join(_ROOT, "test_data", "screwdriver.jpg")
 
 # Where to click, in the photo's own pixels. Ints, because that is what a
 # real click produces - `ClickRecorder` indexes the mask with them.

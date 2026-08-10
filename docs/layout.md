@@ -551,7 +551,7 @@ pipeline/layout/plan.py        the whole stack: parts to bins to drawers
 pipeline/layout/session.py     saving a floorplan and resuming it
 pipeline/layout/verify.py      independent checks, no code shared with above
 pipeline/layout/*_test.py      one test module per source module
-render_demo.py                 one committed still per drawing path
+demos/render_demo.py           one committed still per drawing path
 pipeline/layout_stage.py       Stage subclass, group box, Qt
 pipeline/field_stage.py        the same, for the field viewer
 pipeline/floorplan_stage.py    the same, for the whole-library floorplan

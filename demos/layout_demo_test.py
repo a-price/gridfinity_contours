@@ -10,8 +10,16 @@ import numpy as np
 import pytest
 from PIL import Image, ImageSequence
 
-import layout_demo
-from layout_demo import BuildParser, DrawerRecorder, GroupRecorder, ParametersFrom, PackRecorder, ParseDrawer, Recording
+import demos.layout_demo as layout_demo
+from demos.layout_demo import (
+    BuildParser,
+    DrawerRecorder,
+    GroupRecorder,
+    ParametersFrom,
+    PackRecorder,
+    ParseDrawer,
+    Recording,
+)
 from pipeline.layout.descent import RELAXING, Snapshot
 from pipeline.layout.drawer import PLACED, AssignmentResult, Drawer, Slot, Trial
 from pipeline.layout.loading import BuildParts, ReadContours

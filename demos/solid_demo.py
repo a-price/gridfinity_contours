@@ -1,6 +1,6 @@
 """Photograph the bin itself, so the README can show what comes out.
 
-    solid_demo.py --out docs/media
+    python3 -m demos.solid_demo --out docs/media
 
 Every other picture in this project is a drawing: a sheet, a field, a
 floorplan, a window. This one is the object. It packs real captured
@@ -46,14 +46,15 @@ PREFIX = "solid_"
 
 OPENSCAD = "openscad"
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _Path(name: str) -> str:
-    """A fixture path resolved against this file, so the render comes out
-    the same wherever it was started from.
+    """A fixture path resolved against the repository root - one level up
+    from `demos/` - so the render comes out the same wherever it was
+    started from.
     """
-    return os.path.join(_HERE, "test_data", name)
+    return os.path.join(_ROOT, "test_data", name)
 
 
 # The three spoons the README's `layout_cli.py` example packs, so the
