@@ -15,7 +15,7 @@ is the better test where it works.
 import pytest
 from PyQt5.QtWidgets import QComboBox
 
-from pipeline.core import CreateChoice
+from qt_utils.widgets import CreateChoice
 
 
 def test_a_choice_starts_on_the_given_default(qapp):

@@ -31,7 +31,8 @@ from typing import Callable, Sequence
 import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
-from pipeline.core import CreateChoice, CreateGroupBox, CreateSpinBox, Stage
+from qt_utils.widgets import CreateChoice, CreateGroupBox, CreateSpinBox
+from pipeline.core import Stage
 from layout.drawer import Assign, AssignmentResult, Drawer, FirstFit
 from layout.floorplan import DEFAULT_DRAWER_PIXELS_PER_MM, RenderFloorplan, WriteFloorplanPdf
 from layout.loading import BuildParts

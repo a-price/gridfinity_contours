@@ -12,7 +12,8 @@ from typing import Callable
 import numpy as np
 from PyQt5.QtWidgets import QLabel, QPushButton, QWidget
 
-from pipeline.core import CreateChoice, CreateGroupBox, CreateSpinBox, Stage
+from qt_utils.widgets import CreateChoice, CreateGroupBox, CreateSpinBox
+from pipeline.core import Stage
 from layout.loading import BuildParts
 from layout.packer import Pack, PackResult, Progress
 from layout.parameters import ROTATIONS, LayoutParameters

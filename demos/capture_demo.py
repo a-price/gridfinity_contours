@@ -51,7 +51,7 @@ from PyQt5.QtWidgets import QApplication, QCheckBox
 
 from export.gif_writer import WriteGif
 from capture.morphology_stage import LATERAL_LABEL
-from pipeline.window_capture import DEFAULT_PASSES, Settled
+from qt_utils.window_capture import DEFAULT_PASSES, Settled
 from silhouette_gui import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
 
 # The one photograph this demo can use, and where to click on it. Both are

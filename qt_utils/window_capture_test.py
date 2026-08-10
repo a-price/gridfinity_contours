@@ -11,7 +11,7 @@ the failure mode that makes recorded documentation worse than none.
 import numpy as np
 from PyQt5.QtWidgets import QLabel, QMainWindow, QVBoxLayout, QWidget
 
-from pipeline.window_capture import Grab, Settled
+from qt_utils.window_capture import Grab, Settled
 
 
 class _Host(QWidget):

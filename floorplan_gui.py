@@ -44,7 +44,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from pipeline.core import CreateGroupBox, FixQtOpenCvPluginPath
+from qt_utils.widgets import CreateGroupBox, FixQtOpenCvPluginPath
 from layout.container import BASE_GAP_MM, GRID_PITCH_MM
 from layout.drawer import ParseDrawer
 from layout.loading import ReadContours

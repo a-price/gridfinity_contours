@@ -19,7 +19,8 @@ from typing import Callable
 import numpy as np
 from PyQt5.QtWidgets import QCheckBox, QLabel, QWidget
 
-from pipeline.core import CreateGroupBox, CreateSpinBox, Stage
+from qt_utils.widgets import CreateGroupBox, CreateSpinBox
+from pipeline.core import Stage
 from layout.field import FieldView, PixelToLocal, RenderField
 from layout.parameters import LayoutParameters
 from layout.part import DISTANT_MM, BuildPart, Part

@@ -3,7 +3,8 @@ from typing import Callable
 from PyQt5.QtWidgets import QWidget
 
 from capture.contour_extraction import ContourSelection
-from pipeline.core import CreateGroupBox, CreateSlider, Stage
+from qt_utils.widgets import CreateGroupBox, CreateSlider
+from pipeline.core import Stage
 
 _EPSILON_SLIDER_SCALE = 1000  # slider is int-only; epsilon_fraction is a small float
 

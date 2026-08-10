@@ -49,7 +49,7 @@ import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QWidget
 
-from pipeline.window_capture import Settled
+from qt_utils.window_capture import Settled
 
 DEFAULT_OUT = "docs/media"
 

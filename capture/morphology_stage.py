@@ -3,7 +3,8 @@ from typing import Callable
 from PyQt5.QtWidgets import QCheckBox, QComboBox, QLabel, QWidget
 
 from capture.morphology import Morphology
-from pipeline.core import CreateGroupBox, CreateSlider, Stage
+from qt_utils.widgets import CreateGroupBox, CreateSlider
+from pipeline.core import Stage
 
 # The checkbox and combo captions, named here rather than written inline,
 # so anything that has to *find* one of these controls - a test, or the

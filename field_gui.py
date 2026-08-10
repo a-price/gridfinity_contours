@@ -37,8 +37,8 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from pipeline.click_recorder import WidgetToImageCoords
-from pipeline.core import CreateGroupBox, FixQtOpenCvPluginPath
+from qt_utils.click_recorder import WidgetToImageCoords
+from qt_utils.widgets import CreateGroupBox, FixQtOpenCvPluginPath
 from pipeline.field_stage import FieldStage
 from layout.loading import ReadContours
 

@@ -27,7 +27,7 @@ from capture.calibration import (
     DefaultArucoMarkerPositions,
     PaperCalibration,
 )
-from pipeline.core import FixQtOpenCvPluginPath
+from qt_utils.widgets import FixQtOpenCvPluginPath
 
 FixQtOpenCvPluginPath()
 

@@ -104,7 +104,7 @@ window had stopped working. It would also be missing the half that cannot
 be reconstructed from the pipeline at all: the sizes, the status lines,
 the units, the buttons somebody has to find.
 
-The shared machinery is `pipeline/window_capture.py`, and it exists
+The shared machinery is `qt_utils/window_capture.py`, and it exists
 because three separate things each produced a plausible-looking wrong
 picture:
 

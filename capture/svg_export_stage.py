@@ -5,7 +5,8 @@ import numpy as np
 from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from export.contour_io import SaveContours
-from pipeline.core import CreateGroupBox, Stage
+from qt_utils.widgets import CreateGroupBox
+from pipeline.core import Stage
 from export.pdf_writer import WritePdf
 from export.svg_writer import WriteSvg
 

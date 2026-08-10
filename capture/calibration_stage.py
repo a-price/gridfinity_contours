@@ -12,7 +12,8 @@ from typing import Callable
 from PyQt5.QtWidgets import QLabel, QWidget
 
 from capture.calibration import ArucoCalibration
-from pipeline.core import CreateGroupBox, Stage
+from qt_utils.widgets import CreateGroupBox
+from pipeline.core import Stage
 
 
 class ArucoCalibrationStage(Stage):

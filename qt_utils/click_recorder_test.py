@@ -14,7 +14,7 @@ from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QLabel
 
-from pipeline.click_recorder import (
+from qt_utils.click_recorder import (
     ClickRecorder,
     ImagePixelsPerScreenPixel,
     WidgetToImageCoords,

@@ -18,7 +18,7 @@ from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QLabel
 
-from pipeline.click_recorder import ClickRecorder, ClickRecorderParameters
+from qt_utils.click_recorder import ClickRecorder, ClickRecorderParameters
 from capture.morphology import Morphology
 from capture.segmenter import Segmenter
 from silhouette_gui import _MODE_SELECT_CONTOUR, _MODE_SELECT_FIDUCIAL, SVGGui

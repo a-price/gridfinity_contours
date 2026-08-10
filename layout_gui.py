@@ -34,7 +34,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from pipeline.core import CreateGroupBox, FixQtOpenCvPluginPath
+from qt_utils.widgets import CreateGroupBox, FixQtOpenCvPluginPath
 from layout.loading import ReadContours
 from pipeline.layout_stage import EXPORT_EXTENSIONS, LayoutStage
 
