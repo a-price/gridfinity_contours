@@ -2,7 +2,7 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
 
-from pipeline.calibration import ArucoParameters
+from capture.calibration import ArucoParameters
 from generate_aruco_sheet import MARKER_SIZE_MM, GenerateSheet, MarkerPositions
 
 

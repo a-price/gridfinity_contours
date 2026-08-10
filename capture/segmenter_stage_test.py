@@ -7,8 +7,8 @@ from PyQt5.QtCore import QEvent, QPointF, Qt
 from PyQt5.QtGui import QMouseEvent, QPixmap
 from PyQt5.QtWidgets import QLabel
 
-from pipeline.segmenter import SegmenterParameters
-from pipeline.segmenter_stage import SegmenterStage, _KeepClickedComponents
+from capture.segmenter import SegmenterParameters
+from capture.segmenter_stage import SegmenterStage, _KeepClickedComponents
 
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), "..", "IMG_SPOON.JPG")
 
@@ -223,7 +223,7 @@ def test_run_keeps_every_blob_touched_by_a_positive_click(qapp, spoon_image):
 
 @pytest.mark.slow
 def test_run_end_to_end_with_real_segmenter(qapp, spoon_image):
-    from pipeline.segmenter import Segmenter
+    from capture.segmenter import Segmenter
 
     widget = _make_widget(spoon_image.shape)
     stage = SegmenterStage(Segmenter())

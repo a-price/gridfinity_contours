@@ -50,7 +50,7 @@ import numpy as np
 from PyQt5.QtWidgets import QApplication, QCheckBox
 
 from export.gif_writer import WriteGif
-from pipeline.morphology_stage import LATERAL_LABEL
+from capture.morphology_stage import LATERAL_LABEL
 from pipeline.window_capture import DEFAULT_PASSES, Settled
 from silhouette_gui import SVGGui, _MODE_SEGMENT, _MODE_SELECT_CONTOUR
 

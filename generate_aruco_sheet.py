@@ -1,5 +1,5 @@
 """Generates a letter-size calibration sheet with ArUco markers at known
-real-world (mm) positions, for use with pipeline.calibration.ArucoCalibration.
+real-world (mm) positions, for use with capture.calibration.ArucoCalibration.
 
 Usage:
     python3 generate_aruco_sheet.py [output.pdf]
@@ -21,7 +21,7 @@ import sys
 import cv2
 import matplotlib.pyplot as plt
 
-from pipeline.calibration import (
+from capture.calibration import (
     ARUCO_MARKER_SIZE_MM,
     ARUCO_SHEET_MARGIN_MM,
     DefaultArucoMarkerPositions,

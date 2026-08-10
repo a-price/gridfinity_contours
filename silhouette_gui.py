@@ -40,15 +40,15 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 
 from pipeline.click_recorder import ImagePixelsPerScreenPixel, WidgetToImageCoords
-from pipeline.segmenter import Segmenter
-from pipeline.segmenter_stage import SegmenterStage
-from pipeline.morphology_stage import MorphologyStage
-from pipeline.calibration_stage import ArucoCalibrationStage
+from capture.segmenter import Segmenter
+from capture.segmenter_stage import SegmenterStage
+from capture.morphology_stage import MorphologyStage
+from capture.calibration_stage import ArucoCalibrationStage
 from geometry.pca_box import PCABox
-from pipeline.contour_extraction import FindContours
-from pipeline.contour_selection_stage import ContourSelectionStage
-from pipeline.rectify import Rectify
-from pipeline.svg_export_stage import SvgExportStage
+from capture.contour_extraction import FindContours
+from capture.contour_selection_stage import ContourSelectionStage
+from capture.rectify import Rectify
+from capture.svg_export_stage import SvgExportStage
 from pipeline.core import FixQtOpenCvPluginPath, Pipeline
 
 FixQtOpenCvPluginPath()

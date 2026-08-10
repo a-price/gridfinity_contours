@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from pipeline.contour_extraction import ExtractContour, FindContours
+from capture.contour_extraction import ExtractContour, FindContours
 
 
 def _rectangle_mask(top_left, bottom_right, shape=(300, 300)) -> np.ndarray:

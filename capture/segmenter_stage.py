@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QLabel, QWidget
 
 from pipeline.click_recorder import ClickRecorder, ClickRecorderParameters
 from pipeline.core import CreateGroupBox, CreateSlider, Stage
-from pipeline.segmenter import Segmenter, SegmenterLike
+from capture.segmenter import Segmenter, SegmenterLike
 
 # SAM2's processor typically ranks 3 mask hypotheses per click set (0 =
 # highest predicted IoU); the slider range is fixed to that rather than

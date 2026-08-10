@@ -1,6 +1,6 @@
 import numpy as np
 
-from pipeline.morphology import Morphology
+from capture.morphology import Morphology
 
 
 def _make_notched_mask() -> np.ndarray:

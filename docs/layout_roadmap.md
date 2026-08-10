@@ -316,7 +316,7 @@ print against a physical bin is Andrew's check.
   from it (D5), and typing them separately invites a divider too thin to
   print. The derived values are shown read-only beside it.
 - [x] Explicit trigger only, like
-  [SvgExportStage](../pipeline/svg_export_stage.py) — packing takes
+  [SvgExportStage](../capture/svg_export_stage.py) — packing takes
   seconds and must not run on slider drags. Pack is also disabled while a
   pack runs, since the status label pumps the event loop.
 - [x] `layout/render.py`: rasterize `preview.LayoutShapes` for

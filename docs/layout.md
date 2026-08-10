@@ -36,7 +36,7 @@ Two phases, in this order:
 
 Input is the pipeline's existing currency: real-world millimeter polygons,
 `dict[int, np.ndarray]` of `(K, 2)` float arrays, as produced by
-`Rectify.Run` ([rectify.py:27](../pipeline/rectify.py#L27)). Contours are
+`Rectify.Run` ([rectify.py:27](../capture/rectify.py#L27)). Contours are
 already Douglas-Peucker-simplified and closed implicitly (last point
 joins first). They are *not* required to be convex — concavity is the
 whole point, since a wrench's fork is free space another part can nest
@@ -750,8 +750,8 @@ Nothing in the package imports Qt, so all of it is unit-testable without
 a display.
 
 The stage stays outside the package, mirroring the existing pattern
-([contour_extraction.py](../pipeline/contour_extraction.py) vs.
-[contour_selection_stage.py](../pipeline/contour_selection_stage.py)): a
+([contour_extraction.py](../capture/contour_extraction.py) vs.
+[contour_selection_stage.py](../capture/contour_selection_stage.py)): a
 thin adapter that owns a `LayoutParameters` and builds its group box via
 `CreateGroupBox`, keeping the geometry free of the GUI.
 

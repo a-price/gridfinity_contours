@@ -102,7 +102,7 @@ def test_the_photo_carries_a_calibration_sheet():
     `silhouette_gui.py` falls back to pixel space by design - the animation
     would look complete while dropping the one thing the window is for.
     """
-    from pipeline.calibration import ArucoCalibration
+    from capture.calibration import ArucoCalibration
 
     calibration = ArucoCalibration()
     calibration.Detect(_Photo())
@@ -142,7 +142,7 @@ def test_the_symmetry_checkbox_is_findable_by_its_caption(qapp):
     """
     from PyQt5.QtWidgets import QCheckBox
 
-    from pipeline.morphology_stage import LATERAL_LABEL, MorphologyStage
+    from capture.morphology_stage import LATERAL_LABEL, MorphologyStage
 
     widget = MorphologyStage().CreateWidget(on_change=lambda: None)
 
@@ -164,7 +164,7 @@ def test_the_symmetry_it_demonstrates_is_the_union(qapp):
     which is what puts back what the shadow cost. "And" would take the
     narrower and eat into the tool instead.
     """
-    from pipeline.morphology import MorphologyParameters
+    from capture.morphology import MorphologyParameters
 
     assert MorphologyParameters().symmetry_combine == "or"
 

@@ -29,7 +29,7 @@ looks like the object's edge at every scale. On the screwdriver fixture,
 one right-click on the shadow takes 31 000 pixels off the mask and half a
 millimetre off the tool's length.
 
-**3. Clean up** (`pipeline/morphology.py`). Morphological closing to
+**3. Clean up** (`capture/morphology.py`). Morphological closing to
 smooth jitter, a minimum-area filter to drop noise blobs, then optional
 symmetry.
 
@@ -50,12 +50,12 @@ shaded side lost and drops the simplified outline from 73 points to 67, as
 one-sided jitter stops being a feature worth tracing. `and` on the same
 mask takes the length from 162.48 mm to 162.36 mm.
 
-**4. Extract and simplify** (`pipeline/contour_extraction.py`). Contours
+**4. Extract and simplify** (`capture/contour_extraction.py`). Contours
 of the cleaned mask, each simplified, each with a PCA-aligned bounding box
 — which is what later lets a contour be exported level rather than at
 whatever angle it happened to be photographed.
 
-**5. Calibrate** (`pipeline/calibration.py`). `ArucoCalibration` detects
+**5. Calibrate** (`capture/calibration.py`). `ArucoCalibration` detects
 the four markers on the printed sheet, matches them to their known mm
 positions, and solves for the homography. **If no markers are found it
 falls back to pixel space rather than failing** — which is deliberate, and

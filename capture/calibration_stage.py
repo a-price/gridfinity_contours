@@ -1,4 +1,4 @@
-"""Qt wiring for `pipeline.calibration`.
+"""Qt wiring for `capture.calibration`.
 
 Only `ArucoCalibrationStage` lives here - the one calibration strategy
 `silhouette_gui.py` actually wires into the app. `IdentityCalibration` and
@@ -11,7 +11,7 @@ from typing import Callable
 
 from PyQt5.QtWidgets import QLabel, QWidget
 
-from pipeline.calibration import ArucoCalibration
+from capture.calibration import ArucoCalibration
 from pipeline.core import CreateGroupBox, Stage
 
 
