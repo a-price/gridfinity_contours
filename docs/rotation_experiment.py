@@ -1,15 +1,24 @@
 """Does letting parts turn off-axis actually pack them tighter?
 
-    rotation_experiment.py                 # every set, every mode
-    rotation_experiment.py --only spoons   # one set
-    rotation_experiment.py --restarts 24   # the tuned budget, slowly
+    python3 -m docs.rotation_experiment                 # every set, every mode
+    python3 -m docs.rotation_experiment --only spoons   # one set
+    python3 -m docs.rotation_experiment --restarts 24   # the tuned budget, slowly
 
-D1 rejected continuous rotation for buying "a few percent density on
+**This is the evidence behind D1, kept runnable.** The original D1
+rejected continuous rotation for buying "a few percent density on
 diagonal-friendly shapes" at the price of a materially more complex
-solver. The complexity half of that turned out to be overstated - the
+solver. Both halves of that were wrong: the complexity was overstated -
 distance fields are queried at arbitrary points already, so no field is
-ever re-rasterized at an angle - which leaves the density half worth
-measuring rather than assuming.
+ever re-rasterized at an angle - and the density was understated, because
+a bin's diagonal is longer than its side and these objects are
+length-bound rather than area-bound.
+
+That is settled now; free rotation shipped and all three modes stayed.
+What this script is *for* is that D1 was decided wrongly once, on
+reasoning that sounded right. The numbers `layout.md` quotes come from
+here, so anyone doubting them - or anyone who changes the solver enough
+that they might have moved - can re-derive them instead of arguing about
+a paragraph. It lives in `docs/` because that is the job it does.
 
 **This reports two different things and the difference matters.** For a
 single part the answer is exact and needs no solver: sweep the contour
@@ -19,11 +28,15 @@ managed, so a mode that comes back worse has not been shown to be worse -
 only to have got unlucky at this budget. Any conclusion about the
 multi-part table has to survive a raised `--restarts`.
 
-Not a test. There is nothing here to assert: the whole point is that
-nobody knows the answer yet, and a number that changed would be a result
-rather than a regression. `rotation_experiment_test.py` covers the
-machinery - that the sweep agrees with the packer, that the modes are
-actually distinct - and deliberately pins none of the findings.
+Not a test, and deliberately still not one now that the answer is known.
+A number that moved here would be a *result* - the solver got better, or
+a fixture changed - and pinning these findings as assertions would turn
+every such result into a red build somebody silences. The same argument
+`render_demo` makes for committed pictures.
+
+`rotation_experiment_test.py` covers the machinery instead - that the
+sweep agrees with the packer, that the modes are actually distinct - and
+deliberately pins none of the findings.
 
 **What it found, on the fixtures, at 6 and again at 24 restarts** (the
 multi-part table was identical at both, so these are not luck):

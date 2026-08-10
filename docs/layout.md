@@ -141,7 +141,9 @@ physics.
 **The benefit was understated, because the mechanism was missed.** A
 bin's *diagonal* is longer than its side, and these objects are
 length-bound rather than area-bound. Measured over the `test_data/`
-fixtures, one part at a time, exactly (`rotation_experiment.py`):
+fixtures, one part at a time, exactly
+([rotation_experiment.py](rotation_experiment.py), re-runnable as
+`python3 -m docs.rotation_experiment`):
 `medium_spoon` and `screwdriver` each drop from a 10-cell bin to an
 8-cell one at about 20°, and the knife drops from 7 cells to 6 at 3.9°.
 

@@ -20,7 +20,7 @@ from layout.loading import LoadParts
 from layout.packer import Pack
 from layout.parameters import EIGHTH_TURNS, FREE_ROTATION, QUARTER_TURNS, ROTATIONS, LayoutParameters
 from layout.verify import CheckLayout
-from rotation_experiment import SETS, Cells, Main, PackUnder, Reach, SinglePartTable
+from docs.rotation_experiment import SETS, Cells, Main, PackUnder, Reach, SinglePartTable
 from conftest import QuickParameters as _quick, Rectangle as _rectangle
 
 # One restart. Every packing test here is about whether the plumbing runs
