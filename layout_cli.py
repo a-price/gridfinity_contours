@@ -17,7 +17,7 @@ import sys
 from contextlib import contextmanager
 from typing import Callable, Iterator, Sequence, TextIO
 
-from pipeline.contour_io import SaveContours
+from export.contour_io import SaveContours
 from pipeline.layout.loading import BuildParts, ReadContours
 from pipeline.layout.packer import Pack, Progress
 from pipeline.layout.parameters import QUARTER_TURNS, ROTATIONS, FromOverrides, LayoutParameters

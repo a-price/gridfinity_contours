@@ -44,7 +44,8 @@ from pipeline.segmenter import Segmenter
 from pipeline.segmenter_stage import SegmenterStage
 from pipeline.morphology_stage import MorphologyStage
 from pipeline.calibration_stage import ArucoCalibrationStage
-from pipeline.contour_extraction import FindContours, PCABox
+from geometry.pca_box import PCABox
+from pipeline.contour_extraction import FindContours
 from pipeline.contour_selection_stage import ContourSelectionStage
 from pipeline.rectify import Rectify
 from pipeline.svg_export_stage import SvgExportStage

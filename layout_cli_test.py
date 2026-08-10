@@ -26,7 +26,7 @@ from layout_cli import (
     ReadContours,
     ShouldShowProgress,
 )
-from pipeline.contour_io import LoadContours, SaveContours
+from export.contour_io import LoadContours, SaveContours
 from pipeline.layout.container import DIVIDER_WIDTH_MM, MIN_WALL_MM
 from pipeline.layout.loading import LoadSvgContours
 from pipeline.layout.packer import Progress

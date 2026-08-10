@@ -36,7 +36,7 @@ from typing import Sequence
 
 import numpy as np
 
-from pipeline.gif_writer import DEFAULT_COLORS, Canvas, WriteGif
+from export.gif_writer import DEFAULT_COLORS, Canvas, WriteGif
 from pipeline.layout.descent import Snapshot
 from pipeline.layout.drawer import (
     PLACED,

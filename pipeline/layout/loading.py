@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ElementTree
 
 import numpy as np
 
-from pipeline.contour_io import LoadContours
+from export.contour_io import LoadContours
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.part import BuildPart, Part
 

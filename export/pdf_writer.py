@@ -12,7 +12,7 @@ import numpy as np
 from matplotlib.backends.backend_pdf import FigureCanvasPdf, PdfPages
 from matplotlib.figure import Figure
 
-from pipeline.svg_writer import AlignContoursToPca, Shape
+from export.svg_writer import AlignContoursToPca, Shape
 
 MM_PER_INCH = 25.4
 POINTS_PER_INCH = 72.0

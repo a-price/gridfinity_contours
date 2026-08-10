@@ -53,7 +53,7 @@ one shape, fatally wrong for a layout, since it would move every part
 back onto its own origin and discard the arrangement. M5 factored both
 into an align-then-write wrapper over a write-these-coordinates core
 (`WriteShapesSvg`/`WriteShapesPdf`, taking a `Shape`
-([svg_writer.py](../pipeline/svg_writer.py))); the preview uses the core.
+([svg_writer.py](../export/svg_writer.py))); the preview uses the core.
 
 The `.scad` is generated from a `Layout` by
 [pipeline/layout/solid.py](../pipeline/layout/solid.py) — a separate
@@ -100,7 +100,7 @@ lipless bin gives back 2 x 1.65 mm, which matters at 1x1.
 
 Each part has 2 continuous DOF (x, y) and a *pose*: an exact quarter turn
 in {0°, 90°, 180°, 270°} relative to its PCA-aligned frame (`PCABox`,
-[contour_extraction.py:7](../pipeline/contour_extraction.py#L7)), plus a
+[pca_box.py:5](../geometry/pca_box.py#L5)), plus a
 free angle on top of it. How much of that freedom is available is
 `LayoutParameters.rotation`:
 
@@ -759,7 +759,7 @@ The CLI reads contours from a file and writes a layout preview, so the
 packer can be iterated on without launching the GUI or re-running SAM2 —
 important, because tuning a stochastic solver through a Qt event loop is
 miserable. Its inputs are either an SVG this project wrote or a JSON
-contour dump ([contour_io.py](../pipeline/contour_io.py)); the SVG export
+contour dump ([contour_io.py](../export/contour_io.py)); the SVG export
 stage writes the dump alongside its other outputs, since the SVG itself
 is a *picture* of the contours — PCA-aligned per shape and rounded for
 drawing — rather than the contours.
@@ -1006,7 +1006,7 @@ objects from day one.
 
 One trap. These files are 1:1 mm (`viewBox` units == mm), while the
 current writer pre-scales by 96/25.4 = 3.7795
-([svg_writer.py:42](../pipeline/svg_writer.py#L42)) — they predate
+([svg_writer.py:42](../export/svg_writer.py#L42)) — they predate
 `d3c08a3`. **The loader must derive the scale as
 `viewBox_width / width_mm`, not hardcode either constant**, or one of the
 two formats silently comes in 3.78x wrong.

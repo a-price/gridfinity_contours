@@ -3,7 +3,7 @@ import re
 import numpy as np
 import pytest
 
-from pipeline.svg_writer import Shape, WriteShapesSvg, WriteSvg
+from export.svg_writer import Shape, WriteShapesSvg, WriteSvg
 
 # A 20x10 rectangle - deliberately non-square, so its PCA axes are
 # unambiguous (a square's principal axes are degenerate/arbitrary).

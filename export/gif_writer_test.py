@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageSequence
 
-from pipeline.gif_writer import Canvas, Neutral, Padded, WriteGif
+from export.gif_writer import Canvas, Neutral, Padded, WriteGif
 
 
 def _frame(height: int, width: int, value: int = 0) -> np.ndarray:

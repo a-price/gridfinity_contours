@@ -17,7 +17,7 @@ from typing import Sequence
 
 import numpy as np
 
-from pipeline.contour_extraction import PCABox
+from geometry.pca_box import PCABox
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ stays interruptible and keeps showing what it has found.
 import pytest
 from PyQt5.QtCore import Qt
 
-from pipeline.contour_io import SaveContours
+from export.contour_io import SaveContours
 from pipeline.layout.drawer import Drawer
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout.plan import GROUPING, Progress, SaveDrawers

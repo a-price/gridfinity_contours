@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from pipeline.contour_extraction import PCABox
+from geometry.pca_box import PCABox
 from pipeline.layout.pocket import (
     DEFAULT_RESOLUTION_MM as POCKET_RESOLUTION_MM,
     DEFAULT_SIMPLIFY_MM as POCKET_SIMPLIFY_MM,

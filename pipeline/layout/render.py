@@ -19,7 +19,7 @@ import numpy as np
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
 from pipeline.layout.preview import LayoutShapes
-from pipeline.svg_writer import Shape
+from export.svg_writer import Shape
 
 # Screen pixels per millimeter. A 5x2 bin is 209.5mm across, so this puts
 # it just under 850px - readable in the image view without the render

@@ -34,8 +34,8 @@ from pipeline.layout.container import (
 )
 from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout
-from pipeline.pdf_writer import WriteShapesPdf
-from pipeline.svg_writer import Shape, WriteShapesSvg
+from export.pdf_writer import WriteShapesPdf
+from export.svg_writer import Shape, WriteShapesSvg
 
 # Parts are the subject and are drawn heaviest; the bin is context. The
 # cell grid is faintest because it is the one thing that is not physically

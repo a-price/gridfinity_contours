@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from pipeline.contour_io import SaveContours
+from export.contour_io import SaveContours
 from pipeline.layout.parameters import LayoutParameters
 from pipeline.layout_stage import EXPORT_EXTENSIONS
 from layout_gui import LayoutGui

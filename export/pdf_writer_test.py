@@ -7,8 +7,8 @@ matplotlib.use("Agg")  # headless: no window should pop up when saving the PDF
 import numpy as np
 import pytest
 
-from pipeline.pdf_writer import WritePdf, WriteShapesPdf
-from pipeline.svg_writer import Shape
+from export.pdf_writer import WritePdf, WriteShapesPdf
+from export.svg_writer import Shape
 
 _RECT = np.array([[0.0, 0.0], [20.0, 0.0], [20.0, 10.0], [0.0, 10.0]], dtype=np.float32)
 

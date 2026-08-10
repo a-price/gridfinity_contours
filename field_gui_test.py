@@ -10,7 +10,7 @@ contour every time the resolution was nudged.
 import numpy as np
 import pytest
 
-from pipeline.contour_io import SaveContours
+from export.contour_io import SaveContours
 from field_gui import FieldGui
 from conftest import Rectangle as _rectangle, SPOONS
 

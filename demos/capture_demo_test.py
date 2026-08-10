@@ -174,7 +174,7 @@ def test_the_palette_is_sized_for_a_photograph():
     is generous. At 16 this one came out uniformly brown with the ArUco
     markers illegible - which would make it evidence for nothing.
     """
-    from pipeline.gif_writer import DEFAULT_COLORS
+    from export.gif_writer import DEFAULT_COLORS
 
     assert PHOTO_COLORS > DEFAULT_COLORS
 

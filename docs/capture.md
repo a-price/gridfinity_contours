@@ -82,7 +82,7 @@ and path coordinates are pre-scaled by 96/25.4. That looks wrong and is
 not: several importers, Fusion 360 among them, ignore the physical-unit
 suffix on `width`/`height` and treat raw SVG coordinates as CSS 96 dpi
 pixels. Without the pre-scaling the imported sketch arrives 3.78× too
-small. See `_SVG_USER_UNITS_PER_MM` in `pipeline/svg_writer.py`.
+small. See `_SVG_USER_UNITS_PER_MM` in `export/svg_writer.py`.
 
 The **PDF** exists because not every SVG viewer or print path honours
 embedded physical units either, and a PDF's page size is unambiguous. If a

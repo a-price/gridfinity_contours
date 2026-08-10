@@ -4,10 +4,10 @@ from typing import Callable
 import numpy as np
 from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
-from pipeline.contour_io import SaveContours
+from export.contour_io import SaveContours
 from pipeline.core import CreateGroupBox, Stage
-from pipeline.pdf_writer import WritePdf
-from pipeline.svg_writer import WriteSvg
+from export.pdf_writer import WritePdf
+from export.svg_writer import WriteSvg
 
 
 @dataclass

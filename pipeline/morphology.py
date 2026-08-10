@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from skimage import morphology
 
-from pipeline.contour_extraction import PCABox
+from geometry.pca_box import PCABox
 
 
 @dataclass

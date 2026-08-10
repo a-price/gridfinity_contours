@@ -31,8 +31,8 @@ from pipeline.layout.part import Part
 from pipeline.layout.placement import Layout, RotatePoints
 from pipeline.layout.preview import BIN_COLOR, CellBoundaries, ClosedRing, LayoutShapes, OuterFootprint
 from pipeline.layout.render import Bordered, RenderLayout, RenderShapes, SideBySide
-from pipeline.pdf_writer import Page, WriteShapesPdfPages
-from pipeline.svg_writer import Shape
+from export.pdf_writer import Page, WriteShapesPdfPages
+from export.svg_writer import Shape
 
 # The drawer edge is the outermost context and the one thing on the page
 # you align against a physical edge, so it is drawn heavier than the bin

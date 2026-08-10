@@ -267,7 +267,7 @@ Two smaller notes:
   where actually passed, so the tuned defaults are not restated where
   they would drift.
 - [x] Contour serialization helpers shared with the GUI
-  ([contour_io.py](../pipeline/contour_io.py)), so a session's contours
+  ([contour_io.py](../export/contour_io.py)), so a session's contours
   can be dumped once and iterated on offline. `SvgExportStage` writes
   `<filename>.json` alongside the SVG and PDF — without a producer the
   format has no source, and the SVG cannot serve as one (it is
