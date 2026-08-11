@@ -13,9 +13,9 @@ DOT_SVGS := $(DOT_FILES:.dot=.svg)
 
 # Test workers. Measured on a 16-core box: serial 111s, 8 workers 55s, 16
 # workers 58s - past 8 the per-worker cost of importing torch and cv2
-# outweighs what another core buys. Override for a smaller machine:
-# `make test JOBS=4`.
-JOBS ?= 8
+# outweighs what another core buys. Risk of OOM at higher counts. Override for a larger machine:
+# `make test JOBS=8`.
+JOBS ?= 4
 
 .PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check \
 	gifs gif-capture gif-pack gif-group gif-drawer previews screenshots solids sheet media
