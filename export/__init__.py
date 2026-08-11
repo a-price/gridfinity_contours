@@ -6,9 +6,9 @@
     gif_writer   frames as an animation, for the documentation
 
 Every module here turns this project's shapes into somebody else's format
-and does nothing else: no Qt, no solver, no capture. They are the bottom
-of the dependency graph, imported by capture and layout alike and
-importing neither.
+and does nothing else: no Qt, no solver, no capture. Capture and layout
+both import these; these import neither, and nothing else of this
+project's but `geometry`.
 
 `contour_io` is the load-bearing one. Rectification puts every contour in
 real millimetres, so a dump written by one capture session composes with
