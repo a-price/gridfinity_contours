@@ -1,15 +1,16 @@
 """Tests for the shared widget helpers.
 
-The first test module `core.py` has had. Its sliders and spin boxes were
-always exercised through the stages that build them - `layout_stage_test`
-drives every `QDoubleSpinBox` in the panel - and that stayed adequate
-because the two helpers have no behaviour a stage cannot reach.
+The first test module these helpers have had. Sliders and spin boxes were
+always exercised through whatever builds them - the capture stages build
+the sliders, the panels build the spin boxes, and `layout_panel_test`
+drives every `QDoubleSpinBox` in its panel - and that stayed adequate
+because neither helper has behaviour a caller cannot reach.
 
 `CreateChoice` does: it refuses a default that is not among its options,
-and no stage can ask for one. Covering it from here rather than leaving it
-untested is the reason this file exists; the untested history of the other
-two is noted rather than backfilled, since a stage driving the real widget
-is the better test where it works.
+and no caller can ask for one. Covering it from here rather than leaving
+it untested is the reason this file exists; the untested history of the
+other two is noted rather than backfilled, since a real panel driving the
+real widget is the better test where it works.
 """
 
 import pytest

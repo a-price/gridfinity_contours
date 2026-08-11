@@ -4,8 +4,8 @@ The mirror image of `LayoutPanel`, and for the opposite reason. Packing
 takes seconds, so that panel runs only on an explicit button; rasterizing
 one part and colorizing it takes milliseconds, and watching the field
 change as the resolution moves is the entire point of this one. So
-`on_change` here means what it means everywhere else in `capture.pipeline`:
-a parameter settled, redraw.
+`on_change` here keeps the meaning it has in `capture.pipeline` - a
+parameter settled, act on it - which with nothing downstream is a redraw.
 
 Only the part being looked at is ever built. Every control on the panel
 either changes the raster - `resolution` and, through the clearances,
@@ -25,7 +25,7 @@ from layout.parameters import LayoutParameters
 from layout.part import DISTANT_MM, BuildPart, Part
 
 # Named rather than inline so a test can find the toggle it means to
-# click, the same way `layout_stage_test` finds a button by its text.
+# click, the same way `layout_panel_test` finds a button by its text.
 GRADIENT_LABEL = "Gradient magnitude (shows the creases)"
 SAMPLES_LABEL = "Boundary samples (zoom in to separate them)"
 
@@ -204,11 +204,11 @@ class FieldPanel:
         )
         layout.addLayout(resolution["layout"])
 
-        # The clearances beside it stay read-only, same as LayoutPanel's
-        # panel: they are what a printable divider and wall measure, not
-        # something to type over. What the offset changes here is the
-        # outline itself - this view rasterizes the pocket, so the whole
-        # picture moves rather than a label.
+        # The clearances beside it stay read-only, same as in LayoutPanel:
+        # they are what a printable divider and wall measure, not something
+        # to type over. What the offset changes here is the outline itself -
+        # this view rasterizes the pocket, so the whole picture moves rather
+        # than a label.
         def apply_offset(value: float) -> None:
             self.parameters.pocket_offset = value
             show_clearances()

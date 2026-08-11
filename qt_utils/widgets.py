@@ -43,11 +43,12 @@ def FixQtOpenCvPluginPath() -> None:
 
 
 def CreateGroupBox(title: str) -> tuple[QGroupBox, QVBoxLayout]:
-    """A titled QGroupBox with an empty QVBoxLayout, ready for a stage's
-    CreateWidget to add its controls into - keeps every stage's widget
-    grouped and labeled the same way, without SVGGui having to know each
-    stage's display title. Returns both, since QWidget.layout() gives back
-    an Optional, insufficiently-specific QLayout.
+    """A titled QGroupBox with an empty QVBoxLayout, ready for a
+    `CreateWidget` to add its controls into - keeps every capture stage's
+    and every panel's controls grouped and labeled the same way, without
+    the window having to know each one's display title. Returns both,
+    since QWidget.layout() gives back an Optional, insufficiently-specific
+    QLayout.
     """
     group = QGroupBox(title)
     layout = QVBoxLayout(group)
