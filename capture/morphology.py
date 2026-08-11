@@ -10,15 +10,19 @@ from geometry.pca_box import PCABox
 
 @dataclass
 class MorphologyParameters:
-    """User-configurable inputs for Morphology: the minimum area (in
-    pixels) a hole or object must have to survive cleanup, and the radius
-    of the closing operation used to bridge small gaps and smooth away
-    fine concave detail (e.g. SAM mask jitter along an edge) before that
-    area filtering runs. Manmade objects are often symmetric, so the mask
-    can optionally be combined with its own reflection across its PCA
-    axes - lateral (left/right, across the major axis) and/or longitudinal
-    (front/back, across the minor axis) - to clean up one-sided
-    segmentation errors.
+    """User-configurable inputs for Morphology.
+
+    `closing_radius` bridges small gaps and smooths away fine concave
+    detail (e.g. SAM mask jitter along an edge); `area` is then the
+    smallest hole or object, in pixels, that survives the filtering which
+    follows it.
+
+    Manmade objects are often symmetric, so the mask can optionally be
+    combined with its own reflection across its PCA axes - lateral
+    (left/right, across the major axis) and/or longitudinal (front/back,
+    across the minor axis) - to clean up one-sided segmentation errors.
+    `symmetry_combine` chooses what "combined" means: "or" fills a gap in
+    from its intact mirror, "and" carves the gap out of both sides.
     """
 
     area: int = 1000

@@ -22,8 +22,9 @@ class SvgExportStage(Stage):
     """Writes the selected, calibrated contours (e.g. Rectify.contours) out
     to an SVG file at `parameters.filename` - the format tools like Fusion
     360 expect for sketch import, which is the whole point of a tool named
-    SVGGui. Like the rest of export, this only runs when explicitly
-    triggered, not on every upstream change.
+    SVGGui. Alone among the stages, this one runs only when the Export
+    button is pressed: `silhouette_gui` registers it downstream of
+    nothing, so no upstream edit can reach it.
 
     Also writes a same-scale PDF alongside it (`<filename>.pdf`): not every
     SVG viewer/print path honors the SVG's embedded physical units, while

@@ -5,7 +5,7 @@ the image-to-mm transform, and optionally support manual selection.
 `ArucoCalibration` is the one `silhouette_gui.py` wires in by default - print
 `generate_aruco_sheet.py`'s sheet and its markers are found automatically.
 `IdentityCalibration`, `HoughCircleCalibration` and `PaperCalibration` are
-alternative strategies with no Qt stage wired into the current app; see
+alternative strategies with no Qt stage of their own; see
 `capture/calibration_stage.py`.
 """
 

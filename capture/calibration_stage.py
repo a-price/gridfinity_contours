@@ -1,10 +1,12 @@
 """Qt wiring for `capture.calibration`.
 
-Only `ArucoCalibrationStage` lives here - the one calibration strategy
-`silhouette_gui.py` actually wires into the app. `IdentityCalibration` and
-`HoughCircleCalibration` (see `capture/calibration.py`) have no Qt
-wiring of their own for the same reason: nothing in this project
-constructs a calibration stage other than this one.
+Only `ArucoCalibrationStage` lives here, because `ArucoCalibration` is the
+only strategy any application constructs. The other three
+(`IdentityCalibration`, `HoughCircleCalibration`, `PaperCalibration`, all
+in `capture/calibration.py`) are reached only from tests - though
+`generate_aruco_sheet.py` does take its page size from
+`PaperCalibration`, which is how the printed sheet and the calibration
+stay agreed on how big a page is.
 """
 
 from typing import Callable

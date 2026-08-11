@@ -37,14 +37,14 @@ def _KeepClickedComponents(mask: np.ndarray, seed_points: list) -> np.ndarray:
 class SegmenterStage(Stage):
     """Qt wiring for a Segmenter.
 
-    Most of the segmenter's user parameters are the positive/negative click
-    points tracked by a ClickRecorder, not a control panel: instead of
-    building a standalone widget for those, this stage attaches a click
-    handler to the shared image view. Each click is already a discrete,
-    complete action (unlike a slider drag), so it triggers `on_change`
-    directly - no settling delay needed. The remaining parameters (erase
-    radius, which mask hypothesis to use) do get a small control panel
-    widget via CreateWidget.
+    What the user configures here is mostly not a control panel but a set
+    of positive/negative click points, so instead of building a widget for
+    those this stage attaches a click handler to the shared image view.
+    Each click is already a discrete, complete action (unlike a slider
+    drag), so it triggers `on_change` directly - no settling delay needed.
+    The two settings that *are* dials get a small panel via CreateWidget,
+    and they belong to two different objects: the erase radius to the
+    ClickRecorder, the mask hypothesis index to the Segmenter.
     """
 
     def __init__(self, segmenter: SegmenterLike | None = None) -> None:

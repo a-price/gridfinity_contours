@@ -1,13 +1,16 @@
-"""Framework for systematizing pipeline stages.
+"""What a capture stage is, and what re-runs it.
 
-Each stage should expose:
-  * a `parameters` dataclass holding its user-configurable inputs (click
-    points, a selected mask, simplification thresholds, etc.)
-  * a `Run` method that (re)computes the stage's output from `parameters`
-    and whatever upstream data it's given
-  * a `CreateWidget` method building a QWidget that edits `parameters`,
-    calling back through `on_change` once an edit has settled (e.g. the
-    slider is released), not on every intermediate tick
+Each stage exposes:
+  * a `Run` method that (re)computes its output from its parameters and
+    whatever upstream data it is given
+  * a `CreateWidget` method building a QWidget that edits those
+    parameters, calling back through `on_change` once an edit has settled
+    (e.g. the slider is released), not on every intermediate tick
+
+Where the parameters live is the stage's own business. Four of the five
+hold an algorithm object and edit *its* `parameters` dataclass, which is
+what keeps `morphology.py` testable without a display; `SvgExportStage`
+has no algorithm behind it and owns one directly.
 
 A Pipeline wires stages into a small named dependency graph and, when a
 stage's parameters change, reruns that stage and everything downstream of

@@ -38,8 +38,9 @@ def _make_widget(shape) -> QLabel:
 
 class FakeSegmenter:
     """Stands in for the real (slow) Segmenter to test the stage's wiring
-    without a model. Returns 3 mask hypotheses, each filled with a distinct
-    value, so tests can tell which one the stage picked."""
+    without a model. Returns 3 mask hypotheses of which only index 0 is
+    filled, so a test that asks for a different index gets an empty mask -
+    which is how it can tell the index was honoured at all."""
 
     def __init__(self) -> None:
         self.parameters = SegmenterParameters()
