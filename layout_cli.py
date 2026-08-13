@@ -4,7 +4,8 @@
 
 Takes contour files - either a JSON dump from the GUI (contour_io) or any
 SVG this project has written - finds the smallest grid size they pack
-into, and writes a true-scale preview to print.
+into, and writes a true-scale preview to print alongside the OpenSCAD bin
+to print it in (`--no-scad` for the preview alone).
 
 Headless on purpose. Extracting contours needs a photo and a person
 clicking; packing them needs neither, and the search is slow enough that
@@ -91,7 +92,9 @@ def Interruptible() -> Iterator[Callable[[], bool]]:
 def BuildParser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("inputs", nargs="+", metavar="FILE", help="contour dumps (.json) or SVGs to pack")
-    parser.add_argument("--out", default="layout", help="output basename; writes .svg and .pdf (default: layout)")
+    parser.add_argument(
+        "--out", default="layout", help="output basename; writes .svg, .pdf and .scad (default: layout)"
+    )
     parser.add_argument("--dump-contours", metavar="FILE", help="also write the loaded contours as a JSON dump")
     parser.add_argument("--max-grid", type=int, default=None, help="largest grid dimension to try")
     parser.add_argument("--seed", type=int, default=None, help="search seed; a different one is a different attempt")

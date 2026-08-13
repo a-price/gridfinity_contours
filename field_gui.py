@@ -128,8 +128,7 @@ class FieldGui(QMainWindow):
         # Which contour is on screen is a property of what is loaded, so
         # it lives here beside the file list rather than in the panel's
         # own controls - the panel decides how a field is built and drawn,
-        # not
-        # which one.
+        # not which one.
         self.contour_box = QComboBox()
         self.contour_box.currentIndexChanged.connect(self.select_contour)
         layout.addWidget(self.contour_box)

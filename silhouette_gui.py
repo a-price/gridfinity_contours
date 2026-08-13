@@ -1,8 +1,8 @@
 """Interactive capture: photo to rectified, real-world-scale contour.
 
-Each pipeline stage carries its own configuration parameters, its
-inputs/outputs, and (where relevant) debug output - see `capture.pipeline`.
-This window wires them into one Qt session:
+Each stage owns its inputs, outputs and (where relevant) debug layer, and
+edits whatever parameters object stands behind it - see `capture.pipeline`
+for where those live. This window wires them into one Qt session:
 
   * Load Image
   * Segment Object Contour (SAM2, restricted to the clicked connected
@@ -10,13 +10,15 @@ This window wires them into one Qt session:
   * Calibrate
   * Select Contour - also auto-rectifies to real-world units and refreshes
     the text preview
-  * Export - writes the already-rectified contour out to an SVG file
+  * Export - writes the rectified contours as SVG, PDF and a JSON dump.
+    The dump is what `layout_cli.py` reads, so this button is the whole
+    bridge from the capture half of the project to the layout half.
 
-Calibration uses ArucoCalibration by default: print
-generate_aruco_sheet.py's PDF, place it in frame, and its markers get
-detected automatically - no manual fiducial selection needed. If no
-markers are detected (e.g. no sheet in frame), update_rectified_contours()
-falls back to pixel-space output rather than failing.
+Calibration is ArucoCalibration, the only strategy this window builds:
+print generate_aruco_sheet.py's PDF, place it in frame, and its markers
+get detected automatically. If no markers are detected (e.g. no sheet in
+frame), update_rectified_contours() falls back to pixel-space output
+rather than failing.
 """
 
 import argparse
@@ -73,6 +75,12 @@ CENTER_RADIUS_PX = 4
 # What a click on the image view does - one mode is active at a time, since
 # a click alone can't otherwise disambiguate "add a segmentation point" from
 # "select something that's already there".
+#
+# Only the first two do anything here. Manual fiducial selection is
+# `HoughCircleCalibration`'s feature: `Calibration.ToggleSelection` returns
+# False by default and `ArucoCalibration` - the one this window builds -
+# does not override it, so the third mode is inert until some application
+# constructs a calibration that selects.
 _MODE_SEGMENT = "Add Segmentation Points (left = interior, right = exterior)"
 _MODE_SELECT_CONTOUR = "Select a Contour"
 _MODE_SELECT_FIDUCIAL = "Select a Fiducial"
@@ -411,10 +419,10 @@ class SVGGui(QMainWindow):
         self.contour_text_edit.setPlainText(contour_text)
 
     def export_contours(self):
-        """Writes the current selection's real-world contours out to an
-        SVG file. Rectification and the text preview already happened
-        automatically when the selection last changed (see
-        update_rectified_contours).
+        """Writes the current selection's real-world contours out - SVG,
+        PDF, and the JSON dump `layout_cli` reads. Rectification and the
+        text preview already happened automatically when the selection
+        last changed (see update_rectified_contours).
         """
         self.svg_export_stage.Run(self.rectify.contours)
 
