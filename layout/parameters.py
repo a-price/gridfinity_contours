@@ -47,7 +47,8 @@ ROTATIONS = (QUARTER_TURNS, EIGHTH_TURNS, FREE_ROTATION)
 
 @dataclass
 class LayoutParameters:
-    """Everything tunable about a layout, read by eleven modules.
+    """Everything tunable about a layout, read almost everywhere in this
+    package and by every front end.
 
     **The clearances no longer carry the pocket offset, because the parts
     do.** What gets packed is a `Part`, and a Part is its *pocket* - the
@@ -192,11 +193,12 @@ class LayoutParameters:
     max_step: float = 0.6
 
     def __post_init__(self) -> None:
-        # Checked here rather than where it is read, because it is read in
-        # five modules and a typo would otherwise surface as the quietest
-        # possible failure: an unrecognized mode falling through to the
-        # quarter-turn branch everywhere, producing a perfectly good layout
-        # that simply ignored what was asked for.
+        # Checked here rather than where it is read, because every reader
+        # tests for one mode and takes the other branch otherwise. A typo
+        # would land in the eighth-turn branch of `solver.CandidatePoses`
+        # and be reported as "at any eighth turn" by `packer` - the
+        # quietest possible failure, a perfectly good layout that simply
+        # ignored what was asked for.
         if self.rotation not in ROTATIONS:
             raise ValueError(f"rotation must be one of {', '.join(ROTATIONS)}, got {self.rotation!r}")
 

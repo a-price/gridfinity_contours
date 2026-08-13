@@ -1,8 +1,12 @@
-"""A contour turned into something the solver can measure overlap with.
+"""An object's pocket, turned into something the solver can measure
+overlap with.
 
-A Part is a contour in a canonical local frame plus the signed distance
-field used to detect and resolve collisions. See docs/layout.md for why
-distance fields rather than no-fit polygons or convex decomposition.
+A Part is a pocket in a canonical local frame plus the signed distance
+field used to detect and resolve collisions, carrying the object that
+pocket was cut for alongside it. Which of the two shapes each field
+describes is what the class docstring below pins down; `pocket` is where
+they are separated. See docs/layout.md for why distance fields rather
+than no-fit polygons or convex decomposition.
 """
 
 from dataclasses import dataclass
