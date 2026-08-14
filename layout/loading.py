@@ -1,7 +1,14 @@
-"""Reading millimeter contours out of the SVGs this project writes.
+"""Getting parts in: contour files on one side, rasterized Parts on the
+other.
 
-The scale is derived from the file rather than assumed, because the
-project has written two conventions - see LoadSvgContours.
+Reads either format this project writes - a JSON dump from `contour_io`,
+or an exported SVG - renumbers their ids into one set, and grows the
+contours into the pockets the solver packs. `BuildParts` is the one place
+a session's objects become pockets, so a caller reaching past it to
+`BuildPart` is choosing to pack something other than what gets printed.
+
+The SVG scale is derived from the file rather than assumed, because the
+project has written two conventions - see `LoadSvgContours`.
 """
 
 from typing import Sequence

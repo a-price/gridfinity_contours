@@ -1,7 +1,7 @@
 """The whole stack in one call: parts to bins to drawers.
 
 The top of the layout package, and the seam
-[architecture.md](../../docs/architecture.md) describes as built but
+[architecture.md](../docs/architecture.md) describes as built but
 unplumbed. `Group` returns a list of layouts and `Assign` places their
 footprints, but nothing joined the two outside `layout_demo`, so every
 front end still spoke in terms of a single bin. This is the join, and it

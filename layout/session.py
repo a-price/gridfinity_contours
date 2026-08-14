@@ -193,8 +193,9 @@ def Verify(session: Session, parts: dict[int, Part]) -> list[str]:
     Checked rather than trusted, because a session outlives the settings
     it was made under: reloading a floorplan solved at a 1mm pocket offset
     under a 3mm one leaves placements that look settled and are not. This
-    runs the same independent polygon checks `verify.py` gives the CLI,
-    which share no code with the solver that produced the arrangement.
+    runs the independent polygon checks from `verify.py` - the same ones
+    the solver applies to a layout it has just found, and which share no
+    code with the search that produced this one.
     """
     problems = []
     for index, layout in enumerate(session.grouping.bins):

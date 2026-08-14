@@ -8,7 +8,10 @@ these run on the polygons directly, via matplotlib's exact path
 intersection - a library already in the dependency set for plotting, and
 one that shares nothing with OpenCV's distance transforms.
 
-Used by the tests, and by the CLI to self-check before writing a preview.
+Used by the tests, and by `solver` itself: every layout is checked before
+it is returned, and the spacing pass is only ever offered an arrangement
+that has already passed. `session` re-checks a loaded floorplan against
+the parameters it was saved with, since a session outlives its settings.
 """
 
 import numpy as np
