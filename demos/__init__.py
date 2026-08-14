@@ -17,8 +17,9 @@ For the same reason the fixture paths in these scripts resolve against the
 repository root - one level up - rather than the working directory, so a
 picture comes out identical wherever it was generated from.
 
-Nothing imports these; they sit at the top of the dependency graph and
-reach down into `pipeline` and the GUIs. `make media` runs the lot.
+Only their own tests import these; they sit at the top of the dependency
+graph and reach down into `layout`, `capture`, `export`, `qt_utils` and
+the GUIs. `make media` runs the lot.
 
 What each one costs, what it needs installed, and why these are committed
 artifacts rather than test assertions: docs/media.md.

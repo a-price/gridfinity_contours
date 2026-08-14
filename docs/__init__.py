@@ -5,7 +5,9 @@ resolves with the repository root on `sys.path` - which is what
 `python3 -m docs.rotation_experiment` gives it and what
 `python3 docs/rotation_experiment.py` does not.
 
-Nothing else here is Python, and nothing imports this package. It exists
-so that the one piece of documentation you can *run* is invoked the same
-way as everything else in this repository.
+`solid.py` sits here too and needs none of this: it imports nothing from
+this project and runs as a plain script. Nothing else in `docs/` is
+Python at all. This package exists so that the one piece of documentation
+you can run *against the packer* is invoked the same way as everything
+else in this repository.
 """
