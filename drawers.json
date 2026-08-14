@@ -1,0 +1,30 @@
+{
+ "version": 1,
+ "units": "cells",
+ "drawers": [
+  {
+   "width": 6,
+   "height": 10
+  },
+  {
+   "width": 6,
+   "height": 5
+  },
+  {
+   "width": 3,
+   "height": 10
+  },
+  {
+   "width": 3,
+   "height": 10
+  },
+  {
+   "width": 6,
+   "height": 5
+  },
+  {
+   "width": 7,
+   "height": 10
+  }
+ ]
+}

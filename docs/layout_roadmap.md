@@ -1,0 +1,715 @@
+# Layout Optimization Roadmap
+
+Implementation plan for [layout.md](layout.md). Ordered so that each
+milestone is independently testable and leaves the tree green
+(`make check`).
+
+The ordering principle: build the *verifier* before the solver, and the
+headless path before the GUI. A stochastic optimizer whose correctness
+check shares code with the optimizer itself is untrustworthy, and one
+that can only be run through a Qt event loop is untunable.
+
+## Working agreement
+
+Work stops at the end of each milestone, once it is functional and its
+tests pass — not partway through, and not rolling on into the next one.
+Each milestone should leave `make check` green and stand as one
+reviewable commit, made by hand after inspection. The "Done when" clause
+on each milestone is the completion criterion; meeting it is the signal
+to stop.
+
+No new dependencies were needed through M8: SDFs use `opencv-python` and
+`numpy`, the test oracle uses `matplotlib`, and the SVG loader uses the
+standard library — all already in `requirements.in`. Only M10's embedding
+provider might add one, and only if CLIP beats the alternatives. If a
+milestone seems to need a new package, that is a signal to re-read the
+design rather than to add it.
+
+## M1 — Geometry primitives
+
+`layout/`, no solver yet.
+
+- [x] Gridfinity constants: pitch, interior inset, corner radius, wall
+  and divider minimums, sourced from
+  [standard.scad](../gridfinity-rebuilt-openscad/src/core/standard.scad)
+  and cited in comments.
+- [x] `BuildContainer(n, m, inset).Polygon()` → rounded-rect polygon for
+  an `N x M` bin's usable interior. (Originally a free `InteriorEnvelope`
+  function; removed in M5's cleanup once nothing but its own tests called
+  it, since `Container` is what production actually goes through.)
+- [x] `Part`: a contour plus its precomputed raster fields — occupancy
+  mask, SDF (negative inside), SDF gradient, boundary sample points
+  (vertices plus edge resampling at ~1 raster cell), area, local frame
+  origin.
+- [x] `Placement`: part id, translation, orientation index (0-3), and
+  `ToWorld()` returning the placed polygon in bin coordinates.
+- [x] Exact, independent overlap predicate for tests, via
+  `matplotlib.path.Path.intersects_path(..., filled=True)` plus a
+  containment check (matplotlib is already a dependency; verified to
+  handle non-convex nesting and full containment). This is the oracle M4
+  is validated against, so it must not share code with the solver.
+- [x] SVG contour loader for `test_data/`, deriving scale as
+  `viewBox_width / width_mm`. **Do not hardcode 96/25.4** — the existing
+  fixtures are 1:1 mm and predate that change, so a hardcoded factor
+  breaks one format or the other by 3.78x.
+
+**Done when:** SDF sign/magnitude match hand-computed values for a
+rectangle and an L-shape; rotating a part 90° gives a field equal to the
+field of the rotated polygon; the independent overlap predicate agrees
+with hand-checked cases; the three `test_data/` spoons load at their
+measured sizes (200.26, 162.76, 73.93 mm long). **Met** — across
+`layout/{container,part,loading,verify}_test.py`.
+
+Two things M1 turned up that later milestones inherit:
+
+- **`cv2.fillPoly` cannot rasterize these masks.** It rounds polygon
+  coordinates to whole pixels and fills inclusively, so an edge landing on
+  a half-pixel — which a bounding-box corner always does — gains a row or
+  column on the high side but not the low side. That asymmetric half pixel
+  is invisible in the mask and surfaced as a distance field disagreeing
+  with exact geometry by 0.42 mm at one corner and 0.05 mm at the
+  opposite one. `_RasterizePolygon` does a crossing-number test at pixel
+  centers instead; error is now 0.05 mm everywhere, uniformly.
+- **PCA alignment is canonical only up to a 180° rotation.** Handedness
+  correction fixes reflection (D1 forbids mirroring) but cannot see a
+  double sign flip, so the same object photographed at two angles produced
+  two Parts differing by half a turn. Resolved with a third-moment skew
+  tiebreak, which is stable for asymmetric objects and irrelevant for
+  symmetric ones. Worth knowing at M8, where caching keyed on a part's
+  identity assumes a part is a function of the object and not the photo.
+
+## M2 — Energy and forces
+
+- [x] `LayoutParameters` dataclass: `pocket_offset`, `c_pair`, `c_wall`
+  (both derived from `pocket_offset` by default — no longer, see D5:
+  parts became pockets, so the clearances are a printable divider and a
+  printable wall and nothing more), `resolution`, iteration/restart
+  budgets, `seed`, `max_grid`.
+- [x] Pair term: sample `∂i` against `sdf_j` and `∂j` against `sdf_i`,
+  quadratic in penetration depth, forces applied equal and opposite.
+- [x] Wall term: sample every part against the container field.
+- [x] `ComputeEnergy(placements)` returning total energy and per-part
+  force, vectorized over sample points.
+
+**Done when:** two identical squares at increasing separation give
+energy that is positive-and-decreasing, then exactly zero past `c_pair`;
+force directions point along the separating axis; a part straddling the
+wall is pushed inward. Finite-difference check: numerical gradient of
+`ComputeEnergy` matches the returned forces. **Met** —
+`layout/energy_test.py`.
+
+Notes for later milestones:
+
+- **The container is analytic, not rasterized.** A rounded rectangle has
+  a closed-form distance function, so it costs no memory, has no
+  resolution to tune, and stays meaningful arbitrarily far outside the
+  bin — which matters because a part that escapes during relaxation has
+  to be pulled back from wherever it went, and a raster would simply end.
+- **Forces come from the derivative of the interpolant**, not from a
+  separately smoothed gradient raster. M1 stored a normalized `gradient`
+  field; M2 dropped it, because a force that is not exactly the gradient
+  of the energy it claims to minimize can push uphill near a crease and
+  stall the solver. Both now come from the same bilinear interpolant, the
+  finite-difference tests hold them together, and each part is ~1.3MB
+  lighter.
+- **Deep overlap reverses the push — this constrains M3.** See below.
+
+## M3 — Solver
+
+**Read this first: the forces are only trustworthy for shallow overlap.**
+A distance field points toward the nearest way out, so once a sample
+penetrates past the other part's medial axis, the nearest exit is out the
+*far* side and the force flips from separating to attracting. Measured on
+two 10mm squares: correct to ~50% overlap, reversed beyond it, and total
+energy *falls* toward full overlap — so coincident parts are a spurious
+minimum that a descent solver can settle into and report as converged.
+This is inherent to penalty methods on distance fields, not a bug to fix
+in M2. Clamping the trusted depth band was measured and rejected: it
+repairs the mid-range but not near-coincidence, where the failure is
+symmetry rather than depth, and it costs a parameter plus an energy that
+no longer matches D3. The mitigation is the solver's, hence the first two
+boxes below.
+
+- [x] **Constructive initialization, not a jittered lattice.** Place parts
+  largest-first, each at a position where it does not overlap anything
+  already placed. A lattice can drop two parts on top of each other, which
+  starts the descent inside the reversed regime — it has to climb *out* of
+  a trap before it can begin working. Starting non-overlapping leaves
+  relaxation with only the job it is actually good at: resolving shallow
+  clearance violations.
+- [x] Abort on `EnergyResult.engulfed` (`containment >= 1.0`), restarting
+  rather than descending. Containment is chosen over penetration depth
+  deliberately: it is a *fraction*, so 1.0 means swallowed at any scale,
+  with no size-dependent threshold to tune. Crossing gets no such
+  treatment — overlapping parts are the ordinary midway state of a
+  relaxation and resolve themselves.
+- [x] Damped descent loop with decaying jitter; early exit on `E = 0`.
+- [x] Restart loop, re-seeding positions *and* the orientation
+  assignment (orientation is discrete — only restarts explore it).
+- [x] `SolveFixedGrid(parts, n, m, params)` → `Layout | None`.
+
+**Done when:** three rectangles with a known-tight packing into a 1x3 are
+placed without overlap, repeatably; the same seed reproduces a
+byte-identical layout; a deliberately over-full bin fails cleanly rather
+than returning an overlapping layout; and a run started from deliberately
+stacked parts either separates them or reports failure — it must never
+return a layout with parts on top of each other. **Met** —
+`layout/solver_test.py`.
+
+Three things M3 turned up, all of which M4 inherits:
+
+- **Random placement cannot initialize a dense bin — it must be
+  bottom-left fill.** "Bounded retries at random positions" was the
+  original plan and it does not work: on four 50x30 parts in a 3x2, which
+  packs by hand as an obvious 2x2, random init succeeded **0 times in 30
+  attempts**, and raising the candidate budget sixteen-fold changed
+  nothing. Once parts fill most of the interior the feasible region is a
+  vanishing fraction of it. Sweeping *contact positions* — flush against a
+  wall or against an already-placed part, `O(n^2)` of them — took that
+  case from 3/6 seeds in 4.96s to **6/6 in 0.02s**. A random tail is kept
+  after the contact sweep, because contacts come from bounding boxes and
+  cannot express tucking one spoon's bowl into another's handle.
+- **Contacts must clear the raster's own error.** A part placed at
+  *exactly* `c_pair` measures as violating it: the field is rasterized, so
+  separation reads short by the ~0.05mm discretization error, and a
+  hand-built perfect packing prices at positive energy rather than zero.
+  Contacts are offset by two raster cells. Without that, every contact
+  looked infeasible and the sweep silently degraded into the random search
+  it was meant to replace — the bug hid as "BLF didn't help".
+- **An easy bin is now seed-independent.** Bottom-left fill is
+  deterministic and the first attempt uses it unchanged, so the seed only
+  matters once that attempt fails. Reproducibility for everyday layouts
+  comes for free; the stochastic restarts only engage on hard ones.
+
+Tuned against measurement rather than guessed: `patience` 25 (matches 50's
+solve rate everywhere, ~25% faster — restarting beats grinding), and
+orientations that cannot fit the bin are filtered before an attempt starts
+(the spoons in a 5x1 now fail in 0.00s instead of 13s, correctly, since
+the big spoon is 41.67mm across a 36.3mm interior).
+
+## M4 — Grid size search
+
+**Correction carried in from M3: the extent bound needs no slack term.**
+This roadmap previously demanded a raster cell of it, on the reasoning
+that a part clearing its run by less than the discretization error could
+never actually be placed. M3 disproves that — `big_spoon` has a 0.135 mm
+window in a 5-cell run and the solver seats it there reliably, measured
+wall margins 2.064 mm and 1.972 mm against a required 1.95 mm. Part-to-
+*wall* distance is analytic (the container has a closed-form distance
+function), so it carries no raster error; only part-to-*part* distance
+does, which is why contact positions are offset and the extent bound is
+not. Requiring slack here would reject bins that genuinely fit.
+
+- [x] Area lower bound: each part's area dilated by `c_pair / 2`, summed,
+  against the interior's area. Measure the dilated area off the part's own
+  distance field (`sdf <= r`) — a perimeter formula overcounts a concave
+  shape whose dilation folds into itself, which would make the bound
+  unsound and reject sizes that fit.
+- [x] Extent bound: largest part's oriented bbox must fit in at least one
+  orientation. `FittingOrientations` already computes exactly this and
+  already short-circuits `SolveFixedGrid`; M4 reuses it.
+- [x] Candidate enumeration by increasing `N * M`, square-ish tiebreak,
+  capped at `max_grid`. Only `n >= m` is generated: a 2x5 is a 5x2 turned
+  a quarter turn and every part can turn too, so enumerating both would
+  double the search to rediscover each answer sideways.
+- [x] `Pack(parts, params)` → layout plus a report distinguishing
+  "provably too small" from "no arrangement found". Resolved by testing
+  the bounds in `Pack` *before* dispatching to the solver, so
+  `SolveFixedGrid` keeps its `Layout | None` signature and the two
+  outcomes are separated by which code path produced them.
+- [x] **On failure at a feasible-looking size, step up and return the
+  larger bin that did work**, naming the abandoned sizes in
+  `PackResult.skipped`.
+- [x] Randomized validation sweep, marked `slow`: every successful layout
+  re-verified against exact polygon geometry.
+
+**Done when:** synthetic sets with known optimal cell counts pack to that
+count; the three `test_data/` spoons pack into a 5x2 (39% fill) and the
+report cleanly explains any smaller size it rejected; the sweep finds
+zero overlaps across a few hundred random cases.
+**This is the gate for everything downstream** — if the sweep is not
+clean, the raster resolution or clearance defaults are wrong, and no
+amount of GUI work will fix that. **Met** — `layout/packer_test.py`,
+sweep clean over 120 randomized sets.
+
+**The gate earned its place on its first run.** It failed, on exactly the
+class of defect it was written to catch: two parts came out 3.157mm apart
+under a 3.200mm clearance. Zero energy was true and the clearance was
+still violated, because the solver reads separation off a rasterized field
+that comes back short by the discretization error — so "E = 0 means every
+clearance is met", relied on since M2, was quietly false by 0.04mm.
+
+The fix is `c_pair_enforced = c_pair + one raster cell`: the energy drives
+to the larger value so that what *exact* geometry reports clears the real
+one. Costs under a tenth of the clearance it protects. Note the asymmetry
+with the wall term, which needs nothing of the sort — the container is
+analytic, so only part-to-part distance carries raster error. That is the
+same split that governs the extent bound above, and it is now pinned by a
+test over 400 randomized arrangements rather than left as reasoning.
+
+Two smaller notes:
+
+- **The bounds must be one-sided, and that is the property worth testing.**
+  A bound that wrongly rejects inflates every result it touches and nothing
+  downstream notices — the packer just returns a bigger bin and looks
+  correct. Hence measuring dilated area off the distance field rather than
+  from `area + perimeter*r + pi*r^2`, which overcounts a concave shape
+  whose dilation folds into itself.
+- **Hand-computed "known optimal" cell counts are easy to get wrong, and
+  they fail flatteringly.** The four-part synthetic case was written
+  expecting 4 cells; the packer found 3, which is genuinely better. The
+  arithmetic is now spelled out per case in the test.
+
+## M5 — Headless CLI
+
+- [x] `layout_cli.py`: read contours (JSON dumps or any SVG this project
+  wrote), pack, write a preview. Flags override `LayoutParameters` only
+  where actually passed, so the tuned defaults are not restated where
+  they would drift.
+- [x] Contour serialization helpers shared with the GUI
+  ([contour_io.py](../export/contour_io.py)), so a session's contours
+  can be dumped once and iterated on offline. `SvgExportStage` writes
+  `<filename>.json` alongside the SVG and PDF — without a producer the
+  format has no source, and the SVG cannot serve as one (it is
+  per-shape PCA-aligned and rounded to four decimals for drawing).
+- [x] **Refactor the writers first.** Split each into an align-then-write
+  wrapper over a write-these-coordinates core (`WriteShapesSvg`,
+  `WriteShapesPdf`, taking a `Shape` carrying geometry plus stroke).
+  Existing tests unchanged and passing.
+- [x] Preview ([preview.py](../layout/preview.py)) on top of that
+  core, as both SVG and PDF: one polygon per placed part, plus the rim,
+  interior outline, and cell grid as polylines. Drawn on the bin's outer
+  footprint rather than its interior, so the sheet can be laid under a
+  real bin and checked rim-to-rim.
+  **Two outlines per part since D5** — the solid polygon is the pocket
+  that gets cut, and a dashed polyline inside it is the object it was cut
+  for. The sheet is asked two different questions, and one line could
+  only answer one of them: *will this print* wants the pocket, *did the
+  capture come out right* wants the object under a real tool. The object
+  is drawn open like every other annotation, so `LoadSvgContours` still
+  reads a written preview back as exactly the shapes that will be cut.
+
+**Added in M6:** the same progress and cancellation hooks the window uses
+also drive the CLI. A live one-line display when stdout is a terminal
+(suppressed in a pipe, where a self-rewriting line is just noise, and by
+`--quiet`), and the first Ctrl-C stops the search and prints what it had
+already ruled out instead of a traceback — exiting 130, so a wrapping
+script can tell "you stopped it" from "it did not fit".
+
+**Corrected here:** the PDF writer went through `pyplot`, which selects a
+global *interactive* backend on import — every test module had been
+compensating with its own `matplotlib.use("Agg")`, which is exactly why
+the suite passed while a real headless CLI run aborted trying to open a
+Qt display. Now built on `Figure` + an explicit PDF canvas, which needs
+no backend and no global state.
+
+**Done when:** a real captured contour set packs from the command line
+and the printed preview measures correctly against a physical bin.
+The three spoons pack to 5x2 in ~4s from the command line; measuring the
+print against a physical bin is Andrew's check.
+
+## M6 — GUI stage
+
+- [x] `panels/layout_panel.py`: `LayoutPanel` with a "Layout"
+  group box — pocket offset, max grid size, seed, and a "Pack" button.
+  Offset rather than two independent clearance boxes: they are derived
+  from it (D5), and typing them separately invites a divider too thin to
+  print. The derived values are shown read-only beside it.
+- [x] Explicit trigger only, like
+  [SvgExportStage](../capture/svg_export_stage.py) — packing takes
+  seconds and must not run on slider drags. Pack is also disabled while a
+  pack runs, since the status label pumps the event loop.
+- [x] `layout/render.py`: rasterize `preview.LayoutShapes` for
+  the image view, so the screen and the printed sheet cannot drift apart.
+- [x] Report grid size, any failure reason, and whether a smaller size was
+  skipped, in the panel.
+- [x] Run the pack on a worker thread, reporting progress per restart and
+  offering Cancel. See below.
+
+**Changed here — the stage does not go in `SVGGui`.** The plan was to
+register it downstream of rectification; building it showed that
+`SVGGui` captures *one* photo (one segmentation, one calibration, one set
+of clicks) while packing needs many objects, which arrive from many
+sessions — the three spoon fixtures are three separate captures. A Pack
+button there could only pack the current frame. It lives in its own
+window, [layout_gui.py](../layout_gui.py), which loads dumps and SVGs and
+accumulates them across files. A common entry point over both may come
+later, once that workflow is understood.
+
+**Threading, not event-loop pumping.** The first version ran the pack
+inline and called `QApplication.processEvents()` between restarts to keep
+the progress label painting. It worked, but it needed two re-entrancy
+guards (disable Pack, then disable the whole panel) precisely because
+pumping makes every widget live again mid-computation, and the window
+still could not repaint or resize. The packer touches no Qt, so it moved
+to a `QThread` (`PackWorker`) that reports progress by signal; `pack()`
+now returns in well under a millisecond. That in turn made Cancel
+possible, which matters when the spoons take ~8 seconds. A cancelled
+search is recorded as `CANCELLED`, never `NOT_FOUND` — "you stopped me"
+is not evidence about the bin, and must not land in `skipped` claiming a
+tighter packing might exist at a size never actually searched.
+
+`LayoutPanel.Run` touches no widgets as a result: progress arrives through
+a callback the window marshals onto the UI thread, because a label written
+from a worker thread is undefined behavior in Qt rather than merely poor
+style.
+
+**Done when:** a full contours-to-layout run works in the GUI and the
+stage never blocks on an upstream parameter change. The three spoon
+captures load and pack to 5x2 in the window.
+
+## M7 — Solid generation
+
+- [x] [layout/solid.py](../layout/solid.py) takes a
+  `Layout` — one pocket per part, bin sized from the layout's grid.
+  A new module rather than an extension of the older `docs/solid.py`, which
+  keeps layout in one package and leaves the old single-contour path
+  alone; the root script's import-time side effect (it wrote `test.scad`
+  on import) is now behind a `__main__` guard.
+- [x] `pocket_offset` is applied here, not in layout, so changing print
+  tolerance re-cuts the solid instead of invalidating the arrangement.
+  `layout_cli.py --solid-offset` exercises that; `ThinnestWalls` keeps it
+  honest by refusing a tolerance the layout never budgeted for.
+  **Superseded by D5.** The offset moved into the layout geometry: a
+  `Part` is now its pocket, so `solid` cuts the shape that was packed
+  rather than re-deriving it. `--solid-offset` survives as the escape
+  hatch, re-cutting from each part's `object_contour`, and
+  `ThinnestWalls` still refuses a tolerance the layout never budgeted
+  for. Two things forced the change — OpenSCAD's `offset()` was not
+  computing the dilation the layout assumed (five fragments per circle at
+  `r = 1`, measured 0.293 mm inside nominal at a 90° corner), and a
+  scalar clearance cannot describe a dilation that changes topology.
+- [x] Wired into both front-ends: the CLI writes `<out>.scad` alongside
+  the preview, and the GUI's Export writes all three.
+- [ ] Verify a printed multi-pocket bin against the real objects.
+
+**On the cutout mechanism.** Pockets are passed as *children* of
+`bin_render`, which places them at the top of the infill extending
+downward — that is where the pocket depth and its limit come from. The
+older top-level `difference()` against `bin_render(...)` is *not* broken,
+contrary to a claim made here in an earlier draft: it cuts the base and
+then unions `bin_render_base` back on top, and the base survives.
+(Checked by intersecting the result with a slab in the base under the
+cutout: solid with the outer union, empty without it.) What the older
+form does leave implicit is the depth — a bare `linear_extrude()` cuts
+100mm upward from z=0, so the floor lands wherever the base happens to
+start rather than somewhere chosen.
+
+**One thing that would have survived review and failed on the bed:**
+
+- **OpenSCAD is y-up; the layout frame is the printed page's, y-down.**
+  Emitting the coordinates unchanged mirrors every pocket — it measures
+  correctly on every axis and still will not hold the tool (D1). Pinned
+  by a test that checks the emitted outline's winding is reversed, since
+  a 180° rotation would pass a bounding-box check just as well.
+
+**Done when:** a generated `.scad` renders and a test print holds every
+object with the divider walls intact. The three spoons render to a
+manifold solid (9639 facets, `Simple: yes`) with a 3.23mm thinnest
+divider against the 1.2mm minimum; the physical print is Andrew's check.
+
+## M8 — Grouping
+
+See [Grouping](layout.md#grouping).
+
+- [x] First-fit-decreasing over open bins, with the packer as the
+  feasibility oracle.
+- [x] Cache keyed by (frozenset of part ids, grid size); prune candidate
+  moves with the area bound before ever calling the solver.
+- [x] Local search: move/swap parts between bins, keep improvements.
+- [x] Wire into a front end — deferred on purpose until the drawer level
+  existed, so it could be plumbed once against the final shape rather
+  than twice. Landed as
+  [plan.py](../layout/plan.py) and
+  [floorplan_gui.py](../floorplan_gui.py).
+
+**Done when:** the three `test_data/` spoons group from 22 cells
+(one-per-bin: 10 + 10 + 2) down to 10 or fewer, with every resulting bin
+passing the independent overlap check. **Met** —
+`layout/grouping_test.py`; the spoons group to a single 5x2 at
+**10 cells**, every bin clean under `CheckLayout`.
+
+**The gate was only half met when this was built.** M4's sweep is clean,
+but M7's physical print is still outstanding, so the clearances this
+optimizes against remain derived rather than measured. The algorithm does
+not depend on their values — revising `c_pair` changes the cell counts
+grouping reports, not the search that produces them — but the 22-to-10
+figure above is stated at the current defaults and will need re-measuring
+if the print says they are wrong.
+
+**Two things settled here that the design left open:**
+
+- **First-fit does not grow a bin.** The design said a bin "may grow up to
+  a user-set maximum footprint" during first-fit. Building it showed that
+  growth is not a fit but a *trade* — this bin costs more in exchange for
+  one fewer bin elsewhere — and stage 3 exists precisely to price trades.
+  Taken greedily in part-arrival order, it would be committed to without
+  ever being compared. Bins still grow; they grow where the alternative is
+  visible.
+- **The cache key in the design is the right one, and it is why the oracle
+  answers two questions rather than one.** "Does this set fit this size"
+  is what first-fit asks; "what is this set's smallest size" is what the
+  local search asks. Building the second on the first makes them share one
+  cache, so answering either partly answers the other. Going through
+  `packer.Pack` instead would have kept the two apart.
+
+**The bound is load-bearing in a way the packer's is not.** M4's bounds
+save the solver from hopeless bin *sizes*; here the same bound decides
+which candidate *moves* are worth pricing at all, and it runs on every one
+of them. The one-sidedness requirement carries over unchanged and is
+tested directly — measured on two 30x30 squares, which cannot gain by
+sharing, the entire local search completes with **zero** solver calls.
+
+**The local search does not scale past a handful of objects.** Found when
+the real fixture set arrived, and the sharpest reason to have one.
+`Improve` prices every move and swap between bins — quadratic in bins,
+with a pack per candidate the bound does not reject. Measured at a reduced
+solver budget (3 restarts against the default 24):
+
+| Objects | `FirstFit` | `Group` (with local search) |
+| --- | --- | --- |
+| 3 (the spoons) | under 1s | ~5s |
+| 6 | — | 49s |
+| 18 | 52s | did not finish in 10 minutes |
+
+The cost is not in the search's own bookkeeping but in the packs it asks
+for: every surviving candidate is a full stochastic solve of a set nobody
+has solved before, so the cache cannot help on first sight of it. Options,
+none taken yet: cap the search to moves between *nearby* bins, price
+candidates in parallel with best-improvement rather than first, or accept
+first-fit alone above some object count. Which of those is right depends
+on how big a real library gets, which is not yet known.
+
+For now `integration_test.py` runs first-fit on all eighteen and reserves
+the full `Group` for a four-object subset.
+
+**Not wired into a front end, and deliberately not next.** The CLI and GUI
+still pack one explicit set into one bin, which is M5 and M6's contract;
+grouping changes the shape of the output from a layout to a list of them,
+and the preview, export, and solid paths all assume the former.
+
+Doing that plumbing now would mean doing it twice, because M9 changes the
+output type again — from a list of layouts to a list of layouts each with
+a drawer and a cell position, which is what a printed drawer floorplan actually
+needs. M9 is headless and needs nothing from the GUI, so it goes first and
+M10 plumbs once against the final shape. See
+[architecture.md](architecture.md#the-consequence-for-build-order).
+
+## M9 — Drawer assignment
+
+Which bins share a drawer. See
+[architecture.md](architecture.md#the-drawer-level) for the design; this
+is the first milestone above the layout subsystem, and the first whose
+answers are exact.
+
+**Renumbering note:** semantic coherence was M9 and is now M10. Drawer
+assignment depends only on M8, does not depend on semantic coherence, and
+is the nearer-term of the two — the numbering follows the dependency order
+the rest of this document uses.
+
+- [x] `Drawer` as an integer `W x H` of grid cells, and a bitmask
+  occupancy over it. Python integers are arbitrary precision, so one
+  integer holds a drawer of any size; "does this bin fit here" is a shift
+  and an AND. `DrawerCells` converts from millimeters, and takes the
+  inter-bin gap off the *run* rather than off each bin — a 41.5mm drawer
+  holds one cell, which naive floor division would deny it.
+- [x] Exact assignment search: bins into drawers, quarter turns allowed,
+  restricted to **bottom-left stable** positions — see below, the plan's
+  "lowest-index free cell" rule does not apply here.
+- [x] One-sided area bound in front of it — total bin cells against total
+  drawer cells — with the same soundness requirement M4 and M8 record. An
+  over-eager bound here silently reports "buy another drawer".
+- [x] On failure, name the footprints that could not be placed, so
+  grouping can be re-run with them excluded. The search maximizes bins
+  placed, so the leftovers are what genuinely would not go anywhere.
+- [x] Admissible-footprint predicate on `packer.CandidateGrids`, via
+  `LayoutParameters.admissible_grids` and `packer.GridsFor`.
+- [x] The **drawer floorplan**
+  ([floorplan.py](../layout/floorplan.py)): one true-scale PDF
+  page per drawer, showing the bins where the assignment put them and the
+  objects inside those bins. It draws `preview.LayoutShapes` rather than
+  walking the layouts itself, so the bin on the floorplan and the bin
+  whose own sheet you print cannot drift apart — the same discipline
+  `render.py` follows for the screen.
+- [x] Wire into a front end, together with grouping's output — one window
+  for the whole stack rather than one per level, since a bin's footprint
+  has to exist before it can be placed and nothing between the two is a
+  useful thing to stop at. [floorplan_gui.py](../floorplan_gui.py), on
+  [plan.py](../layout/plan.py).
+
+**Done when:** a set of bins with a known-tight drawer packing is placed
+exactly, and a set that passes the area bound but cannot tile is reported
+infeasible *as a fact* rather than as a failed search. **Met** —
+`layout/drawer_test.py`. Three 2x2 bins into a 3x4 drawer is
+exactly 12 cells into 12 and provably does not tile; the search says so in
+under a millisecond, having placed two.
+
+**The canonical-placement rule in the plan was wrong for this problem.**
+"Some bin must cover the lowest-index free cell" is the standard trick for
+*exact cover*, and it is unsound here, because a drawer may legitimately
+have empty cells — a rule demanding they be filled would reject every
+assignment that leaves room. The correct restriction is bottom-left
+stability: a bin goes only where it cannot slide one cell further left or
+down. That is complete for rectangle packing, because pushing every
+rectangle left and down terminates and never creates an overlap, so any
+packing normalizes into one made of stable positions.
+
+**The floorplan's page is the cells, not the drawer.** A `Drawer` holds
+whole grid cells and not the millimeters it was measured from, so a page
+is `42*W - 0.5` by `42*H - 0.5` — the footprint of a `W x H` block of
+bins. A real drawer is usually a little larger, and that slack does not
+appear on the sheet; lay it into a corner rather than expecting it to
+reach the far wall. Carrying the measured millimeters through `Drawer`
+would fix this and has not been done, because nothing else needs them.
+
+**Contiguity is reported, not optimized, and the design's claim about it
+was too strong.** Bottom-left stability was said to leave free space in
+one piece. It very nearly does — measured on a realistic drawer, 143 of
+144 free cells came out connected — but one cell was stranded behind a
+1x1 bin. Making contiguity an objective would mean enumerating every
+complete assignment rather than stopping at the first, which is the early
+exit the search's speed depends on. So `FreeCells` counts and
+`LargestFreeRegion` says how much is usable, and the test asserts the
+thing that actually matters: another whole 5x2 bin still fits afterwards.
+
+**Why this level is exact, and no other one is.** Every quantity is an
+integer count of cells. There are no clearances: `OuterFootprint` is
+`42*n - 0.5`, and that half millimeter is already inside each bin's
+footprint, so bins abut exactly on the lattice with nothing between them.
+Nothing to tune, nothing to measure against a print, no raster error to
+leave margin for. This is the only level where "does not fit" is
+decidable, which is also what lets its failures instruct the level below.
+
+## M10 — Semantic coherence
+
+Much later, and only on top of a working M8 — see
+[Semantic coherence](layout.md#semantic-coherence-much-later). The
+partition value function gains an entropy term so that a bin of assorted
+spoons beats a bin holding a spoon, a hammer, and a camera lens.
+
+- [ ] `BinEntropy(embeddings)` — von Neumann entropy of the normalized
+  cosine Gram matrix. Pure function, no packing dependency, testable on
+  synthetic vectors before any real embedding provider exists.
+- [ ] Validate on `test_data/`: three different-size spoons is exactly
+  the motivating case, so their embeddings must score well below a
+  spoon-plus-unlike-object bin on real data, not just synthetic vectors.
+- [ ] Embedding provider behind a narrow interface; layout takes
+  `dict[int, np.ndarray]` and stays agnostic. Bake-off between CLIP on
+  the masked crop, pooled SAM2 encoder features, and contour shape
+  descriptors — an experiment, not a design decision.
+- [ ] Entropy as a **tiebreak only** among equal-cell-count partitions
+  (`λ → 0+`). Ship this before any weighted form.
+- [ ] Only if tiebreaking proves too weak: the weighted objective
+  `Σ_b (cells_b + λ · S_b)`, with `λ` surfaced in cells-per-nat.
+- [ ] User-pinned groups that override the term outright.
+
+**Done when:** on a mixed set, the tiebreak visibly reorders bins toward
+coherent groupings *without* increasing total cell count — that last
+clause is the whole test.
+
+**Watch for:** the local search in M8 prunes candidate moves with the area
+bound. Entropy cannot be pruned that way (it is not monotone under
+insertion — see the design doc), so the entropy half of every surviving
+candidate must be evaluated. If M8's search is already near its time
+budget, this is where it tips over; cache per-bin entropy keyed by the
+bin's frozenset of part ids, exactly as M8 caches packing results.
+
+## On `LayoutParameters`
+
+It reached twenty fields by M9 and looked like accretion, so it was
+measured rather than guessed at. Two things came out.
+
+**It should not be split, and the reason is a derivation chain.** The
+fields do fall into three groups by who touches them — what the answer
+must satisfy, how hard to look for it, and how the searcher moves — and no
+module reads more than half of them. But `pocket_offset` → `c_pair` →
+(+`resolution`) `c_pair_enforced` → (+`spacing_margin`) `spacing_pair` →
+`pad` crosses all three groups, and `pad` is what the *rasterizer* sizes
+distance fields from. Splitting scatters one derivation across three types
+that then have to reach into each other.
+
+D5 cut the first link — `c_pair` is a constant now, since the offset
+lives in the geometry — and the argument survives it, because the rest of
+the chain still crosses all three groups and `pocket_offset` still
+reaches the rasterizer, just by the shorter road of being *in* the shape
+being rasterized.
+
+**Two fields were inert and are gone.** `pair_weight` and `wall_weight`
+existed from M2 to M9 and were never set to anything but 1.0 — they
+appeared only at their definition and two call sites. Weighting the terms
+differently is not something D3 describes either: both are "how far inside
+its clearance is this sample", in the same millimeters, so there is no
+exchange rate between them to tune. `_PenaltyAndScale` is simpler without
+them.
+
+**A note on the test helpers.** Seven test modules build a reduced-budget
+`LayoutParameters` the same way. They used to do it by unpacking a dict,
+which type-checks nothing useful: a `**dict` unpack cannot be checked
+against parameter *names* at all, and it only passed before M9 because
+every field happened to be numeric. Adding a non-numeric field surfaced
+that, and annotating the dict `dict[str, Any]` — which is what was done
+three times before anyone looked — suppresses the check rather than
+satisfying it. They now read
+`replace(LayoutParameters(restarts=..., ...), **overrides)`, which is one
+line instead of three and type-checks the defaults; a typo'd field name is
+caught where the dict form silently accepted it.
+
+## End-to-end coverage
+
+`integration_test.py` is the one test module that deliberately breaks the
+one-module-per-test-file rule: it runs the whole stack on the real
+`test_data/` captures — load, rasterize, group, assign to drawers, write
+the preview and the `.scad` — and asserts that the result is *sound*
+rather than good.
+
+Soundness is the achievable claim. Cell counts depend on clearances that
+are still derived rather than measured (M7's print) and on a stochastic
+solver; pinning one would fail on any unrelated retune. "Every object in
+exactly one bin", "exact polygon geometry clears `c_pair` and `c_wall`",
+and "no two bins share a drawer cell" are exact, and they are what a
+regression anywhere in the stack would break.
+
+**Three things the real fixture set turned up immediately**, none of which
+the three spoons could have shown:
+
+- **`max_grid = 6` is too small for a real household.** Four of the
+  eighteen objects need a seven-cell bin — huge_server at 260mm,
+  serving_spoon at 274mm, server at 251mm, and the knife at 243mm. The
+  knife is the instructive one: a six-cell interior is 246.3mm and the
+  knife needs 247.0mm with its wall clearance, so it misses by **0.7mm**.
+  **Resolved: the default is now 7.** The argument for leaving it at 6 was
+  that a seven-cell bin is 294mm long and wants a drawer to match, so the
+  right cap depends on the drawers a person owns — but that is
+  `admissible_grids`' job, and M9 does it: once drawers are known,
+  `AdmissibleFootprints` filters the cap down to what fits one. The
+  default only binds when nobody has said what they own, and there the two
+  errors are not symmetric. Too high costs a few extra candidate grids
+  that the bounds reject instantly; too low costs an object that cannot be
+  packed at all.
+- **Grouping's local search does not scale** — see the table under M8.
+- **`test_data/contours.svg` was not a nineteenth object.** It was
+  `SvgExportStage`'s default filename holding a second capture of the same
+  spoon as `big_spoon.svg` — matching within 0.5mm on both axes — and has
+  since been removed. The integration test still filters that name, since
+  the export default has not changed and a stray dump would silently
+  double an object and inflate every measurement.
+
+## Risks
+
+- **Local minima.** The construction heuristic that was this risk's
+  fallback is now M3's primary initialization, for the deep-overlap reason
+  above. If annealed restarts still fail routinely on feasible-looking
+  sets, the next lever is the jitter schedule, not another initializer.
+- **Raster resolution vs. speed.** 0.25 mm/px is a guess. If pair
+  evaluation dominates runtime, drop to 0.5 mm/px and widen clearances to
+  compensate — but only with M4's sweep confirming zero overlaps at the
+  new setting.
+- **Clearance defaults.** `c_pair = 3.2 mm` is derived, not measured. The
+  first physical print at M7 is the real test; expect to revise it.
+- **Scope creep into grouping.** M8 is genuinely valuable and genuinely
+  tempting to start early. It is worthless on an unreliable oracle.
+- **Entropy as a standalone objective.** M10's term is a regularizer on a
+  cell-count objective that opposes it. Optimized on its own it prefers
+  one object per bin, since a singleton bin has entropy 0. If a future
+  change ever makes entropy the primary term, that degeneracy is what
+  will be observed.

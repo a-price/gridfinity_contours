@@ -7,12 +7,14 @@ opencv-python==5.0.0.93
 numpy==2.5.1
 PyQt5==5.15.11
 matplotlib==3.11.0
+pillow==12.3.0
 scikit-image==0.25.2
 torch==2.12.1
 transformers==5.13.0
 
 # Dev tooling (see Makefile)
 pytest==9.1.1
+pytest-xdist==3.8.0
 black==26.5.1
 pyflakes==3.4.0
 pyright==1.1.411

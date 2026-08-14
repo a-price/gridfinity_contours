@@ -1,0 +1,241 @@
+import os
+
+import cv2
+import numpy as np
+import pytest
+from PyQt5.QtCore import QEvent, QPointF, Qt
+from PyQt5.QtGui import QMouseEvent, QPixmap
+from PyQt5.QtWidgets import QLabel
+
+from capture.segmenter import SegmenterParameters
+from capture.segmenter_stage import SegmenterStage, _KeepClickedComponents
+
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), "..", "IMG_SPOON.JPG")
+
+SPOON_POINT_A = (3550, 1550)  # bowl
+BACKGROUND_POINT = (900, 2700)  # dark cloth
+
+
+@pytest.fixture(scope="session")
+def spoon_image():
+    image = cv2.imread(IMAGE_PATH, cv2.IMREAD_COLOR)
+    assert image is not None, f"could not load test image at {IMAGE_PATH}"
+    return image
+
+
+def _click(x: int, y: int, button):
+    return QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(x, y), button, button, Qt.KeyboardModifier.NoModifier)
+
+
+def _make_widget(shape) -> QLabel:
+    height, width = shape[:2]
+    widget = QLabel()
+    pixmap = QPixmap(width, height)  # 1:1 scale keeps click math trivial
+    widget.setPixmap(pixmap)
+    widget.resize(pixmap.size())
+    return widget
+
+
+class FakeSegmenter:
+    """Stands in for the real (slow) Segmenter to test the stage's wiring
+    without a model. Returns 3 mask hypotheses of which only index 0 is
+    filled, so a test that asks for a different index gets an empty mask -
+    which is how it can tell the index was honoured at all."""
+
+    def __init__(self) -> None:
+        self.parameters = SegmenterParameters()
+        self.calls: list[tuple] = []
+
+    def Segment(self, image, input_points, input_labels):
+        self.calls.append((input_points, input_labels))
+        height, width = image.shape[:2]
+        masks = np.zeros((1, 3, height, width), dtype=bool)
+        masks[0, 0] = True
+        return masks
+
+
+class DisjointBlobSegmenter:
+    """Returns a single mask hypothesis with two disjoint square blobs, to
+    test that SegmenterStage discards components not touched by a
+    positive click."""
+
+    BLOB_A = (slice(0, 20), slice(0, 20))
+    BLOB_B = (slice(100, 120), slice(100, 120))
+
+    def __init__(self) -> None:
+        self.parameters = SegmenterParameters()
+
+    def Segment(self, image, input_points, input_labels):
+        height, width = image.shape[:2]
+        mask = np.zeros((height, width), dtype=bool)
+        mask[self.BLOB_A] = True
+        mask[self.BLOB_B] = True
+        masks = np.zeros((1, 3, height, width), dtype=bool)
+        masks[0, 0] = mask
+        return masks
+
+
+def test_attach_and_click_records_points_on_the_underlying_recorder(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(FakeSegmenter())
+    changes = []
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: changes.append(1))
+
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+    stage.OnClick(_click(*BACKGROUND_POINT, Qt.MouseButton.RightButton))
+
+    assert stage.click_recorder is not None
+    assert stage.click_recorder.image_points == [
+        list(SPOON_POINT_A),
+        list(BACKGROUND_POINT),
+    ]
+    assert stage.click_recorder.image_labels == [1, 0]
+
+
+def test_each_click_triggers_on_change_immediately(qapp, spoon_image):
+    # Unlike a slider drag, each click is already a discrete, complete
+    # action, so it should trigger on_change right away - no settling delay.
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(FakeSegmenter())
+    changes = []
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: changes.append(1))
+
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+    assert changes == [1]
+
+    stage.OnClick(_click(*BACKGROUND_POINT, Qt.MouseButton.RightButton))
+    stage.OnClick(_click(1500, 1150, Qt.MouseButton.LeftButton))
+    assert changes == [1, 1, 1]
+
+
+def test_run_with_no_points_leaves_mask_none(spoon_image):
+    stage = SegmenterStage(FakeSegmenter())
+    stage.Run(spoon_image)
+    assert stage.mask is None
+
+
+def test_run_calls_segmenter_with_points_and_labels_from_click_recorder(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    fake = FakeSegmenter()
+    stage = SegmenterStage(fake)
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+    stage.OnClick(_click(*BACKGROUND_POINT, Qt.MouseButton.RightButton))
+
+    stage.Run(spoon_image)
+
+    assert stage.mask is not None
+    assert stage.mask.shape == spoon_image.shape[:2]
+    ((points, labels),) = fake.calls
+    assert points == [[[list(SPOON_POINT_A), list(BACKGROUND_POINT)]]]
+    assert labels == [[[1, 0]]]
+
+
+def test_run_uses_configured_mask_hypothesis_index(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    fake = FakeSegmenter()
+    stage = SegmenterStage(fake)
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+
+    fake.parameters.mask_hypothesis_index = 1
+    stage.Run(spoon_image)
+
+    # FakeSegmenter only fills hypothesis 0 with True - picking hypothesis 1
+    # should come back empty, proving the index was actually used.
+    assert stage.mask is not None
+    assert not stage.mask.any()
+
+
+def test_run_clamps_mask_hypothesis_index_to_available_range(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    fake = FakeSegmenter()
+    stage = SegmenterStage(fake)
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+
+    fake.parameters.mask_hypothesis_index = 99  # beyond FakeSegmenter's 3 hypotheses
+    stage.Run(spoon_image)  # should not raise an IndexError
+
+    assert stage.mask is not None
+
+
+def test_keep_clicked_components_discards_blobs_with_no_seed():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:5, 2:5] = True  # seeded blob
+    mask[15:18, 15:18] = True  # disjoint, unseeded blob
+
+    result = _KeepClickedComponents(mask, [(3, 3)])
+
+    assert result[3, 3]
+    assert not result[16, 16]
+
+
+def test_keep_clicked_components_unions_all_seeded_blobs():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:5, 2:5] = True
+    mask[15:18, 15:18] = True
+
+    result = _KeepClickedComponents(mask, [(3, 3), (16, 16)])
+
+    assert result[3, 3]
+    assert result[16, 16]
+
+
+def test_keep_clicked_components_falls_back_to_the_full_mask_with_no_foreground_seed():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:5, 2:5] = True
+    mask[15:18, 15:18] = True
+
+    result = _KeepClickedComponents(mask, [(10, 10)])  # background, on neither blob
+
+    np.testing.assert_array_equal(result, mask)
+
+
+def test_run_discards_disjoint_blobs_not_touched_by_a_positive_click(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(DisjointBlobSegmenter())
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+
+    stage.OnClick(_click(10, 10, Qt.MouseButton.LeftButton))  # inside blob A only
+
+    stage.Run(spoon_image)
+
+    assert stage.mask is not None
+    assert stage.mask[10, 10]
+    assert not stage.mask[110, 110], "the disjoint blob not touched by a click should be discarded"
+
+
+def test_run_keeps_every_blob_touched_by_a_positive_click(qapp, spoon_image):
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(DisjointBlobSegmenter())
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+
+    stage.OnClick(_click(10, 10, Qt.MouseButton.LeftButton))
+    stage.OnClick(_click(110, 110, Qt.MouseButton.LeftButton))
+
+    stage.Run(spoon_image)
+
+    assert stage.mask is not None
+    assert stage.mask[10, 10]
+    assert stage.mask[110, 110]
+
+
+@pytest.mark.slow
+def test_run_end_to_end_with_real_segmenter(qapp, spoon_image):
+    from capture.segmenter import Segmenter
+
+    widget = _make_widget(spoon_image.shape)
+    stage = SegmenterStage(Segmenter())
+    stage.AttachToImageWidget(widget, spoon_image.shape, on_change=lambda: None)
+
+    stage.OnClick(_click(*SPOON_POINT_A, Qt.MouseButton.LeftButton))
+    stage.OnClick(_click(1500, 1150, Qt.MouseButton.LeftButton))
+    stage.OnClick(_click(*BACKGROUND_POINT, Qt.MouseButton.RightButton))
+
+    stage.Run(spoon_image)
+
+    assert stage.mask is not None
+    assert stage.mask.any()
+    assert stage.mask[SPOON_POINT_A[1], SPOON_POINT_A[0]]

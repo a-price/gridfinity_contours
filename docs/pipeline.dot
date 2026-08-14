@@ -1,0 +1,97 @@
+// Where the data goes, and how many of it there are at each step.
+// Render with `make docs`. The companion diagram is loops.dot, which
+// shows what calls what; this one is data flow only.
+//
+// Edge labels are cardinalities. The thing worth reading off this graph
+// is where the fan-out and fan-in happen: one photo yields many contours,
+// many contours collapse to one bin, and many bins fan back out into
+// drawers. Fill colour is the kind of problem - green is a pure per-item
+// function, blue a discrete search, red continuous optimization.
+
+digraph pipeline {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=11, compound=true,
+         nodesep=0.28, ranksep=0.55, bgcolor="transparent"];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled",
+         fillcolor="#ffffff", color="#888888", margin="0.14,0.08"];
+  edge  [fontname="Helvetica", fontsize=8.5, color="#555555", arrowsize=0.7,
+         fontcolor="#444444"];
+
+  // ---------------------------------------------------------------- capture
+
+  subgraph cluster_capture {
+    label = "per photo  —  silhouette_gui.py";
+    fontsize = 12;
+    style = "rounded";
+    color = "#aaaaaa";
+    fontcolor = "#333333";
+
+    photo      [label="photo", shape=folder, fillcolor="#f2f2f2"];
+    segment    [label="SAM2\nsegmentation", fillcolor="#e6f2e8"];
+    morphology [label="morphology", fillcolor="#e6f2e8"];
+    trace      [label="contour\nfinding", fillcolor="#e6f2e8"];
+    select     [label="selection\nclick to toggle", fillcolor="#f2f2f2"];
+    calibrate  [label="ArUco\ncalibration", fillcolor="#e6f2e8"];
+    rectify    [label="rectify\nto mm", fillcolor="#e6f2e8"];
+
+    photo -> segment -> morphology -> trace;
+    trace -> select   [label=" K found"];
+    select -> rectify [label=" N picked"];
+    photo -> calibrate;
+    calibrate -> rectify [label=" 1 homography"];
+  }
+
+  dump [label="contour dump\n.json / .svg", shape=folder, fillcolor="#f2f2f2"];
+  rectify -> dump [label=" N contours, mm"];
+
+  // ------------------------------------------------------------------ parts
+
+  build [label="BuildPart\nPCA frame + distance field\npure, per contour", fillcolor="#e6f2e8"];
+  dump -> build [label=" N contours,\l any number of sessions\l"];
+
+  // -------------------------------------------------------- the three levels
+
+  group  [label="grouping\nwhich parts share a bin\nFFD + local search", fillcolor="#dee7f6"];
+  pack   [label="arrangement\nwhich grid, where in it\ngrid search + relaxation", fillcolor="#dee7f6"];
+  assign [label="drawer assignment\nwhich bins share a drawer\nexact", fillcolor="#dee7f6"];
+
+  build -> group  [label=" N parts"];
+  group -> assign [label=" M bins\l footprints only\l"];
+
+  group -> pack [label=" is this set\l feasible?\l", style=dashed];
+  pack -> group [label=" cells", style=dashed, constraint=false];
+
+  drawers [label="drawer sizes\ngiven, in cells", shape=folder, fillcolor="#f2f2f2"];
+  drawers -> assign;
+
+  assign -> group [label=" infeasible: restrict\l admissible footprints\l",
+                   style=dashed, color="#33475e", fontcolor="#33475e", constraint=false];
+
+  // ---------------------------------------------------------------- outputs
+
+  preview [label="preview\nsvg + pdf, true scale", shape=folder, fillcolor="#f2f2f2"];
+  solid   [label="solid\nOpenSCAD bin", shape=folder, fillcolor="#f2f2f2"];
+  map     [label="drawer floorplan\none page per drawer", shape=folder, fillcolor="#f2f2f2"];
+
+  pack -> preview [label=" 1 layout"];
+  pack -> solid   [label=" 1 layout"];
+  assign -> map   [label=" placed bins"];
+
+  // ----------------------------------------------------------------- legend
+
+  subgraph cluster_legend {
+    label = "kind of problem";
+    fontsize = 10;
+    style = "rounded";
+    color = "#cccccc";
+    fontcolor = "#666666";
+
+    l_pure     [label="pure per-item", fillcolor="#e6f2e8", fontsize=9];
+    l_discrete [label="discrete search", fillcolor="#dee7f6", fontsize=9];
+    l_io       [label="input / output", fillcolor="#f2f2f2", fontsize=9];
+
+    l_pure -> l_discrete -> l_io [style=invis];
+  }
+
+  // Keeps the key out of the flow's way rather than above it.
+  map -> l_pure [style=invis];
+}

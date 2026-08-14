@@ -1,7 +1,7 @@
 # Annotates gcode file to add a color change pause on
 # Prusa i3 printers at a print height (default 7mm).
 # Usage:
-# python postprocess_gcode.py /path/to/file.gcode [layer_height_in_mm]
+# python postprocess_gcode_for_prusa_i3.py /path/to/file.gcode [switch_height_in_mm]
 
 import sys
 

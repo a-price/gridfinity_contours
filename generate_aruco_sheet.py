@@ -1,5 +1,5 @@
-"""Generates a letter-size PDF calibration sheet with ArUco markers at
-known real-world (mm) positions, for use with pipeline.calibration.ArucoCalibration.
+"""Generates a letter-size calibration sheet with ArUco markers at known
+real-world (mm) positions, for use with capture.calibration.ArucoCalibration.
 
 Usage:
     python3 generate_aruco_sheet.py [output.pdf]
@@ -9,25 +9,27 @@ invalidates the mm positions this script reports. After printing, copy the
 reported positions into ArucoCalibration.parameters.marker_positions_mm
 (they already match ArucoParameters' defaults, so no size/dictionary
 changes are needed if you don't touch the constants below).
+
+The format follows the extension, so `sheet.png` writes a picture of the
+sheet rather than a PDF named `.png`. PDF is what you print: its page size
+is unambiguous, which is exactly the property a sheet whose whole purpose
+is real-world scale needs.
 """
 
-import os
 import sys
 
 import cv2
 import matplotlib.pyplot as plt
-from PyQt5.QtCore import QLibraryInfo
 
-
-from pipeline.calibration import (
+from capture.calibration import (
     ARUCO_MARKER_SIZE_MM,
     ARUCO_SHEET_MARGIN_MM,
     DefaultArucoMarkerPositions,
     PaperCalibration,
 )
+from qt_utils.widgets import FixQtOpenCvPluginPath
 
-# Fix PyQt5 / OpenCV collision
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(QLibraryInfo.PluginsPath)
+FixQtOpenCvPluginPath()
 
 
 PAGE_WIDTH_MM = PaperCalibration.WIDTH_MM
@@ -41,6 +43,10 @@ MARKER_SIZE_MM = ARUCO_MARKER_SIZE_MM
 MARGIN_MM = ARUCO_SHEET_MARGIN_MM
 MARKER_PIXELS = 800  # raster resolution per marker, for a crisp print
 
+# Only reached by a raster format. A PDF carries the markers as images at
+# their own resolution, so this changes nothing about the sheet you print.
+DEFAULT_DPI = 150
+
 
 def MarkerPositions() -> dict[int, tuple[float, float]]:
     """Marker IDs 0-3, one near each corner (top-left origin, y down - the
@@ -50,7 +56,7 @@ def MarkerPositions() -> dict[int, tuple[float, float]]:
     return DefaultArucoMarkerPositions(MARKER_SIZE_MM, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, MARGIN_MM)
 
 
-def GenerateSheet(output_path: str) -> None:
+def GenerateSheet(output_path: str, dpi: int = DEFAULT_DPI) -> None:
     dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
     positions = MarkerPositions()
     half = MARKER_SIZE_MM / 2
@@ -89,7 +95,9 @@ def GenerateSheet(output_path: str) -> None:
         fontsize=7,
     )
 
-    fig.savefig(output_path, format="pdf", dpi=300)
+    # Format from the extension rather than forced, so this one function
+    # writes both the sheet you print and the picture of it in the README.
+    fig.savefig(output_path, dpi=dpi)
     plt.close(fig)
 
     print(f"Wrote {output_path}")
