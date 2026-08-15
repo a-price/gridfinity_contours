@@ -13,7 +13,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from layout.drawer import Drawer
+from layout.drawer import INFEASIBLE, AssignmentResult, Drawer
 from layout.loading import BuildParts
 from layout.placement import Layout, Placement
 from layout.plan import BuildPlan, StoragePlan
@@ -124,6 +124,23 @@ def test_the_assignment_travels_with_it(tmp_path):
     for bin_id, slot in plan.assignment.slots.items():
         assert session.assignment.slots[bin_id].cell == slot.cell
         assert session.assignment.slots[bin_id].drawer == slot.drawer
+
+
+def test_an_infeasible_assignments_unplaced_bins_and_detail_travel_with_it(tmp_path):
+    """`AssignmentResult` carries more than `outcome` and `slots` - which
+    bins an INFEASIBLE or EXHAUSTED search could not place, and why, is
+    the part that outcome most needs to explain. Losing them on the way
+    through a session file used to leave a reloaded floorplan's `Report()`
+    saying "could not place bins" with nothing after it.
+    """
+    path, plan, contours, params = _planned(tmp_path)
+    bin_id = next(iter(plan.layouts))
+    broken = AssignmentResult(INFEASIBLE, slots={}, unplaced=[bin_id], detail="no drawer is large enough")
+    SaveSession(path, replace(plan, assignment=broken), contours, params)
+
+    session = LoadSession(path)
+
+    assert session.assignment == broken
 
 
 # ----------------------------------------------------------------- pinning

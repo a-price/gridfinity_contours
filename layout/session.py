@@ -34,6 +34,7 @@ from typing import Any
 
 import numpy as np
 
+from export.json_writer import WriteJson
 from layout.drawer import PLACED, AssignmentResult, Drawer, Slot
 from layout.grouping import Grouping
 from layout.parameters import LayoutParameters
@@ -143,11 +144,16 @@ def SaveSession(path: str, plan: StoragePlan, contours: dict[int, np.ndarray], p
         payload["assignment"] = {
             "outcome": plan.assignment.outcome,
             "slots": [_SlotPayload(slot) for _, slot in sorted(plan.assignment.slots.items())],
+            # Which bins an INFEASIBLE or EXHAUSTED assignment could not
+            # place, and why - dropping these used to leave a reloaded
+            # session's `Report()` claiming "could not place bins" with
+            # nothing after it, the one thing that outcome most needs to
+            # explain.
+            "unplaced": sorted(plan.assignment.unplaced),
+            "detail": plan.assignment.detail,
         }
 
-    with open(path, "w") as handle:
-        json.dump(payload, handle, indent=1)
-        handle.write("\n")
+    WriteJson(path, payload)
 
 
 def LoadSession(path: str) -> Session:
@@ -362,4 +368,15 @@ def _Assignment(raw: Any, bins: int) -> AssignmentResult | None:
         cell = tuple(int(value) for value in entry["cell"])
         slots[bin_id] = Slot(bin_id, int(entry["drawer"]), (cell[0], cell[1]), bool(entry.get("turned", False)))
 
-    return AssignmentResult(str(raw.get("outcome", PLACED)), slots)
+    # Missing rather than required, so a session written before this field
+    # existed still loads - every assignment it could have saved was either
+    # PLACED (nothing unplaced) or unsaved entirely, exactly what these
+    # defaults say.
+    unplaced = []
+    for value in raw.get("unplaced", []):
+        bin_id = int(value)
+        if not 0 <= bin_id < bins:
+            raise ValueError(f"the assignment could not place bin {bin_id}, which this session does not have")
+        unplaced.append(bin_id)
+
+    return AssignmentResult(str(raw.get("outcome", PLACED)), slots, unplaced, str(raw.get("detail", "")))

@@ -21,7 +21,7 @@ from layout.parameters import LayoutParameters
 from layout.placement import Layout, Placement, RotatePoints
 from layout.plan import StoragePlan
 from layout.preview import OuterFootprint
-from layout.scene import DrawerParts, WriteScene, _WorldPlacement
+from layout.scene import DrawerParts, SceneParts, WriteScene, _DrawerOffsets, _WorldPlacement
 
 _DRAWER = Drawer(8, 8)
 
@@ -162,6 +162,60 @@ def test_an_uncuttable_bin_is_skipped_and_reported_not_raised():
     assert "wall" in problems[0]
 
 
+# ------------------------------------------------------- combining drawers
+
+
+def test_drawer_offsets_lay_out_left_to_right_with_a_gap():
+    drawers = [Drawer(2, 2), Drawer(3, 3)]
+    width0, _ = OuterFootprint(2, 2)
+    width1, _ = OuterFootprint(3, 3)
+
+    offsets = _DrawerOffsets(drawers, gap=10.0)
+
+    assert offsets[0] == pytest.approx(width0 / 2.0)
+    assert offsets[1] == pytest.approx(width0 + 10.0 + width1 / 2.0)
+
+
+def _two_drawer_plan() -> tuple[StoragePlan, dict, AssignmentResult]:
+    """One bin per drawer, so combining actually has two drawers' worth of
+    bins to shift apart.
+    """
+    layout, parts = _layout()
+    drawers = (_DRAWER, Drawer(4, 4))
+    layouts = {0: layout, 1: layout}
+    assignment = AssignmentResult(
+        "placed",
+        {
+            0: Slot(bin_id=0, drawer=0, cell=(0, 0), turned=False),
+            1: Slot(bin_id=1, drawer=1, cell=(0, 0), turned=False),
+        },
+    )
+    plan = StoragePlan(drawers=drawers, parts=parts, layouts=layouts, assignment=assignment)
+    return plan, parts, assignment
+
+
+def test_scene_parts_shifts_each_drawers_bins_by_its_own_offset():
+    """Composition, checked against the pieces it composes rather than
+    re-deriving the placement math: each drawer's bins, computed alone by
+    `DrawerParts`, should reappear in `SceneParts`' output shifted by
+    exactly that drawer's `_DrawerOffsets` entry on X and untouched on Y.
+    """
+    plan, parts, assignment = _two_drawer_plan()
+
+    combined, problems = SceneParts(plan, assignment, gap=10.0)
+
+    offsets = _DrawerOffsets(plan.drawers, gap=10.0)
+    alone0 = DrawerParts(0, plan.drawers[0], plan.layouts, assignment, parts)[0][0]
+    alone1 = DrawerParts(1, plan.drawers[1], plan.layouts, assignment, parts)[0][0]
+    by_name = {part.name: part for part in combined}
+
+    assert by_name["bin_0"].x == pytest.approx(alone0.x + offsets[0])
+    assert by_name["bin_0"].y == alone0.y
+    assert by_name["bin_1"].x == pytest.approx(alone1.x + offsets[1])
+    assert by_name["bin_1"].y == alone1.y
+    assert problems == {}
+
+
 # ----------------------------------------------------------------- WriteScene
 
 
@@ -178,21 +232,25 @@ def _plan(assignment: AssignmentResult | None) -> tuple[StoragePlan, dict]:
     )
 
 
-def test_write_scene_writes_only_non_empty_drawers(tmp_path):
-    assignment = AssignmentResult("placed", {0: Slot(bin_id=0, drawer=0, cell=(0, 0), turned=False)})
-    plan, _ = _plan(assignment)
+def test_write_scene_combines_every_drawer_into_one_file(tmp_path):
+    plan, parts, assignment = _two_drawer_plan()
+    path = str(tmp_path / "scene.scad")
 
-    report = WriteScene(str(tmp_path / "scene"), plan)
+    report = WriteScene(path, plan, assignment=assignment)
 
-    assert report.written == [str(tmp_path / "scene_drawer0.scad")]
+    assert report.written == [path]
     assert report.problems == {}
+    scad = (tmp_path / "scene.scad").read_text()
+    assert "module bin_0() {" in scad
+    assert "module bin_1() {" in scad
+    assert scad.count("include <") == 1
 
 
 def test_write_scene_needs_an_assignment():
     plan, _ = _plan(None)
 
     with pytest.raises(ValueError, match="assignment"):
-        WriteScene("scene", plan)
+        WriteScene("scene.scad", plan)
 
 
 def test_write_scene_takes_an_explicit_assignment_over_a_missing_one(tmp_path):
@@ -202,7 +260,9 @@ def test_write_scene_takes_an_explicit_assignment_over_a_missing_one(tmp_path):
     """
     plan, _ = _plan(None)
     assignment = AssignmentResult("placed", {0: Slot(bin_id=0, drawer=1, cell=(0, 0), turned=False)})
+    path = str(tmp_path / "scene.scad")
 
-    report = WriteScene(str(tmp_path / "scene"), plan, assignment=assignment)
+    report = WriteScene(path, plan, assignment=assignment)
 
-    assert report.written == [str(tmp_path / "scene_drawer1.scad")]
+    assert report.written == [path]
+    assert "module bin_0() {" in (tmp_path / "scene.scad").read_text()

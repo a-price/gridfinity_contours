@@ -5,6 +5,8 @@
     contour_io   the JSON dump that carries contours between sessions
     gif_writer   frames as an animation, for the documentation
     scad_writer  placed OpenSCAD modules as one program, and a mesh render
+    json_writer  the compact JSON every writer above (and layout/session.py,
+                 layout/plan.py) hands its payload to
 
 Every module here turns this project's shapes into somebody else's format
 and does nothing else: no Qt, no solver, no capture. Capture and layout

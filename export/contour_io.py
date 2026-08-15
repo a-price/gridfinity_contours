@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from export.json_writer import WriteJson
+
 # Bumped only when a reader could otherwise misinterpret an older file.
 # Recorded so that a future format change fails loudly on sight instead of
 # quietly reading millimeters as something else.
@@ -43,9 +45,7 @@ def SaveContours(path: str, contours: dict[int, np.ndarray]) -> None:
             for contour_id, points in sorted(contours.items())
         },
     }
-    with open(path, "w") as f:
-        json.dump(payload, f, indent=1)
-        f.write("\n")
+    WriteJson(path, payload)
 
 
 def _ParseContour(contour_id: str, points: Any) -> tuple[int, np.ndarray]:

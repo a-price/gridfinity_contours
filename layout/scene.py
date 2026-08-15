@@ -161,7 +161,9 @@ def SceneParts(
     combined: list[ScadPart] = []
     problems: dict[int, str] = {}
     for index, drawer in enumerate(plan.drawers):
-        here, here_problems = DrawerParts(index, drawer, plan.layouts, assignment, plan.parts, pocket_offset, height_units)
+        here, here_problems = DrawerParts(
+            index, drawer, plan.layouts, assignment, plan.parts, pocket_offset, height_units
+        )
         problems.update(here_problems)
         combined.extend(replace(part, x=part.x + offsets[index]) for part in here)
     return combined, problems

@@ -44,6 +44,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Callable, Sequence
 
+from export.json_writer import WriteJson
 from layout.drawer import (
     EXHAUSTED,
     PLACED,
@@ -100,9 +101,7 @@ def SaveDrawers(path: str, drawers: Sequence[Drawer]) -> None:
         "units": DRAWER_UNITS,
         "drawers": [{"width": drawer.width, "height": drawer.height} for drawer in drawers],
     }
-    with open(path, "w") as handle:
-        json.dump(payload, handle, indent=1)
-        handle.write("\n")
+    WriteJson(path, payload)
 
 
 def ReadDrawers(path: str) -> list[Drawer]:
