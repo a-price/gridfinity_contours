@@ -21,6 +21,7 @@ from layout.placement import Layout, Placement
 from layout.solid import (
     BASE_HEIGHT_MM,
     HEIGHT_UNIT_MM,
+    GenerateBinModule,
     GenerateScad,
     ThinnestWalls,
     WriteScad,
@@ -348,6 +349,70 @@ def test_writing_puts_the_program_on_disk(tmp_path):
     WriteScad(str(path), layout, parts, pocket_offset=1.0)
 
     assert "bin_render(bin)" in path.read_text()
+
+
+# ------------------------------------------------------- module for a scene
+
+
+def test_a_module_wraps_the_same_bin_geometry():
+    """`GenerateBinModule` and `GenerateScad` share `_BinBody`, so a module
+    should hold exactly the cutouts `GenerateScad` would have cut - the
+    whole point of factoring it out rather than writing a second generator.
+    """
+    layout, parts = _layout(
+        {0: _rectangle(20, 20), 1: _rectangle(18, 18)},
+        {0: [4.0, 8.0], 1: [32.0, 8.0]},
+    )
+
+    top_level = GenerateScad(layout, parts, pocket_offset=1.0)
+    module = GenerateBinModule("bin_7", layout, parts, pocket_offset=1.0)
+
+    assert "module bin_7() {" in module
+    assert "bin_render(bin) {" in module
+    module_polygons, top_level_polygons = _polygons(module), _polygons(top_level)
+    assert len(module_polygons) == len(top_level_polygons)
+    assert all(np.array_equal(a, b) for a, b in zip(module_polygons, top_level_polygons))
+
+
+def test_a_module_has_no_header_of_its_own():
+    """A scene shares one `include`/`use` across every bin in it, so a
+    module must not bring its own - unlike `GenerateScad`, which always
+    does (`test_the_library_include_is_absolute`).
+    """
+    layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
+
+    module = GenerateBinModule("bin_0", layout, parts, pocket_offset=1.0)
+
+    assert "include <" not in module
+    assert "use <" not in module
+
+
+def test_a_modules_validation_matches_generatescads():
+    """Same underlying `_BinBody`, so a bin that cannot be cut on its own -
+    here, re-cutting at an offset that grows the pocket through the wall -
+    cannot be cut inside a module either. Same fixture as
+    `test_an_offset_that_eats_the_bin_wall_is_refused`.
+    """
+    layout, parts = _layout({0: _rectangle(20, 20)}, {0: [1.0, 8.0]})
+
+    with pytest.raises(ValueError, match="wall"):
+        GenerateBinModule("bin_0", layout, parts, pocket_offset=2.5)
+
+
+def test_two_modules_do_not_collide_on_the_bin_variable():
+    """Each module defines its own local `bin`, and OpenSCAD scopes a
+    variable assigned inside a module to that module - so concatenating two
+    of these in one file must not produce two top-level `bin`s fighting over
+    the name.
+    """
+    layout, parts = _layout({0: _rectangle(20, 20)}, {0: [5.0, 8.0]})
+
+    scene = GenerateBinModule("bin_0", layout, parts, pocket_offset=1.0) + GenerateBinModule(
+        "bin_1", layout, parts, pocket_offset=1.0
+    )
+
+    assert scene.count("bin = new_bin(") == 2
+    assert "module bin_0() {" in scene and "module bin_1() {" in scene
 
 
 # ------------------------------------------------------------ does it build
