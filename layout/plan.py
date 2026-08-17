@@ -46,12 +46,14 @@ from typing import Callable, Sequence
 
 from export.json_writer import WriteJson
 from layout.drawer import (
+    DRAWER_SCHEMA,
     EXHAUSTED,
     PLACED,
     AdmissibleFootprints,
     Assign,
     AssignmentResult,
     Drawer,
+    DrawerPayload,
     FreeCells,
     LargestFreeRegion,
     Trial,
@@ -82,6 +84,20 @@ DEFAULT_REPORT_INTERVAL = 0.25
 DRAWER_FORMAT_VERSION = 1
 DRAWER_UNITS = "cells"
 
+# The whole file `SaveDrawers`/`ReadDrawers` read and write.
+DRAWERS_FILE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Gridfinity Contours drawer list",
+    "type": "object",
+    "properties": {
+        "version": {"const": DRAWER_FORMAT_VERSION},
+        "units": {"const": DRAWER_UNITS},
+        "drawers": {"type": "array", "items": DRAWER_SCHEMA, "minItems": 1},
+    },
+    "required": ["version", "units", "drawers"],
+    "additionalProperties": False,
+}
+
 
 def SaveDrawers(path: str, drawers: Sequence[Drawer]) -> None:
     """Write a drawer list to `path` as JSON, in whole grid cells.
@@ -99,7 +115,7 @@ def SaveDrawers(path: str, drawers: Sequence[Drawer]) -> None:
     payload = {
         "version": DRAWER_FORMAT_VERSION,
         "units": DRAWER_UNITS,
-        "drawers": [{"width": drawer.width, "height": drawer.height} for drawer in drawers],
+        "drawers": [DrawerPayload(drawer) for drawer in drawers],
     }
     WriteJson(path, payload)
 

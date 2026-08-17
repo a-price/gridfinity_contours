@@ -333,6 +333,29 @@ class Placement:
         return self.position + low, self.position + high
 
 
+# `Placement`'s wire shape, kept beside the dataclass rather than beside
+# `layout.session`, its only writer today - `part_id` is spelled `"part"`
+# on the wire. `angle` is not required: `layout.session._Bins` defaults a
+# missing one to `0.0`, which is what every placement saved before free
+# rotation existed means.
+PLACEMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "part": {"type": "integer", "minimum": 0},
+        "position": {
+            "type": "array",
+            "items": {"type": "number"},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "orientation": {"type": "integer"},
+        "angle": {"type": "number"},
+    },
+    "required": ["part", "position", "orientation"],
+    "additionalProperties": False,
+}
+
+
 @dataclass(frozen=True)
 class Layout:
     """A solved arrangement: the grid size chosen and where every part
@@ -354,3 +377,23 @@ class Layout:
     def Envelope(self) -> np.ndarray:
         """That interior's boundary as a polygon."""
         return self.Interior().Polygon()
+
+
+# `Layout`'s wire shape. `placements` reuses `PLACEMENT_SCHEMA` directly
+# rather than restating it, the same way `layout.session._BinPayload`
+# reuses `Placement` itself.
+LAYOUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "grid": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 1},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "inset": {"type": "number"},
+        "placements": {"type": "array", "items": PLACEMENT_SCHEMA, "minItems": 1},
+    },
+    "required": ["grid", "inset", "placements"],
+    "additionalProperties": False,
+}

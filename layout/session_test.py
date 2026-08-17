@@ -10,18 +10,22 @@ that resuming tells you which bins you have to print again.
 import json
 from dataclasses import replace
 
+import jsonschema
 import numpy as np
 import pytest
 
-from layout.drawer import INFEASIBLE, AssignmentResult, Drawer
+from layout.drawer import ASSIGNMENT_SCHEMA, INFEASIBLE, SLOT_SCHEMA, AssignmentResult, Drawer
 from layout.loading import BuildParts
-from layout.placement import Layout, Placement
+from layout.placement import LAYOUT_SCHEMA, PLACEMENT_SCHEMA, Layout, Placement
 from layout.plan import BuildPlan, StoragePlan
 from layout.session import (
+    SESSION_SCHEMA,
     Changes,
     LoadSession,
     SaveSession,
     Verify,
+    _BinPayload,
+    _SlotPayload,
 )
 from layout.parameters import FREE_ROTATION, QUARTER_TURNS
 from conftest import QuickParameters as _quick, Rectangle as _rectangle
@@ -141,6 +145,75 @@ def test_an_infeasible_assignments_unplaced_bins_and_detail_travel_with_it(tmp_p
     session = LoadSession(path)
 
     assert session.assignment == broken
+
+
+# ------------------------------------------------------------- wire schema
+
+
+def test_a_placements_payload_matches_its_own_schema(tmp_path):
+    """The real dict `_BinPayload` writes for one placement, validated
+    against the schema kept beside `Placement` - not a hand-copied
+    example, so a field added to one and not the other fails here rather
+    than shipping quietly.
+    """
+    _, plan, _, _ = _planned(tmp_path)
+    layout = next(iter(plan.layouts.values()))
+
+    jsonschema.validate(_BinPayload(layout)["placements"][0], PLACEMENT_SCHEMA)
+
+
+def test_a_bins_payload_matches_its_own_schema(tmp_path):
+    _, plan, _, _ = _planned(tmp_path)
+    layout = next(iter(plan.layouts.values()))
+
+    jsonschema.validate(_BinPayload(layout), LAYOUT_SCHEMA)
+
+
+def test_a_slots_payload_matches_its_own_schema(tmp_path):
+    _, plan, _, _ = _planned(tmp_path)
+    assert plan.assignment is not None
+    slot = next(iter(plan.assignment.slots.values()))
+
+    jsonschema.validate(_SlotPayload(slot), SLOT_SCHEMA)
+
+
+def test_an_assignments_real_payload_matches_its_own_schema(tmp_path):
+    """Same fixture the `unplaced`/`detail` bug was found with - the
+    payload `SaveSession` actually writes to disk for an INFEASIBLE
+    assignment, read back and validated end to end.
+    """
+    path, plan, contours, params = _planned(tmp_path)
+    broken = AssignmentResult(
+        INFEASIBLE, slots={}, unplaced=[next(iter(plan.layouts))], detail="no drawer is large enough"
+    )
+    SaveSession(path, replace(plan, assignment=broken), contours, params)
+
+    payload = json.loads(open(path).read())
+
+    jsonschema.validate(payload["assignment"], ASSIGNMENT_SCHEMA)
+
+
+def test_a_saved_session_matches_its_own_schema(tmp_path):
+    path, _, _, _ = _planned(tmp_path)
+
+    payload = json.loads(open(path).read())
+
+    jsonschema.validate(payload, SESSION_SCHEMA)
+
+
+def test_a_saved_session_with_an_infeasible_assignment_matches_its_own_schema(tmp_path):
+    """The exact fixture the `unplaced`/`detail` bug was found and fixed
+    with, validated end to end this time rather than piece by piece.
+    """
+    path, plan, contours, params = _planned(tmp_path)
+    broken = AssignmentResult(
+        INFEASIBLE, slots={}, unplaced=[next(iter(plan.layouts))], detail="no drawer is large enough"
+    )
+    SaveSession(path, replace(plan, assignment=broken), contours, params)
+
+    payload = json.loads(open(path).read())
+
+    jsonschema.validate(payload, SESSION_SCHEMA)
 
 
 # ----------------------------------------------------------------- pinning

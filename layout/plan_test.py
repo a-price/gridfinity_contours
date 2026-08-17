@@ -9,6 +9,7 @@ than something only the end produces.
 
 import json
 
+import jsonschema
 import pytest
 
 from layout.drawer import Drawer
@@ -16,6 +17,7 @@ from layout.loading import BuildParts
 from layout.plan import (
     ASSIGNING,
     DRAWER_FORMAT_VERSION,
+    DRAWERS_FILE_SCHEMA,
     FILLING,
     GROUPING,
     BuildPlan,
@@ -41,6 +43,15 @@ def test_a_drawer_list_round_trips(tmp_path):
     SaveDrawers(path, drawers)
 
     assert ReadDrawers(path) == drawers
+
+
+def test_a_saved_drawer_list_matches_its_own_schema(tmp_path):
+    path = str(tmp_path / "drawers.json")
+
+    SaveDrawers(path, [Drawer(11, 9), Drawer(4, 3)])
+    payload = json.loads(open(path).read())
+
+    jsonschema.validate(payload, DRAWERS_FILE_SCHEMA)
 
 
 def test_a_drawer_file_records_cells_not_millimetres(tmp_path):

@@ -8,6 +8,10 @@ annotated-doc==0.0.4
     # via typer
 anyio==4.14.1
     # via httpx
+attrs==26.1.0
+    # via
+    #   jsonschema
+    #   referencing
 black==26.5.1
     # via -r requirements.in
 build==1.5.0
@@ -65,6 +69,10 @@ iniconfig==2.3.0
     # via pytest
 jinja2==3.1.6
     # via torch
+jsonschema==4.26.0
+    # via -r requirements.in
+jsonschema-specifications==2025.9.1
+    # via jsonschema
 kiwisolver==1.5.0
     # via matplotlib
 lazy-loader==0.5
@@ -206,10 +214,18 @@ pyyaml==6.0.3
     # via
     #   huggingface-hub
     #   transformers
+referencing==0.37.0
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
 regex==2026.6.28
     # via transformers
 rich==15.0.0
     # via typer
+rpds-py==2026.6.3
+    # via
+    #   jsonschema
+    #   referencing
 safetensors==0.8.0
     # via transformers
 scikit-image==0.25.2
@@ -247,6 +263,7 @@ typing-extensions==4.16.0
     #   anyio
     #   huggingface-hub
     #   pyright
+    #   referencing
     #   torch
 wheel==0.48.0
     # via pip-tools

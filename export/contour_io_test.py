@@ -1,9 +1,10 @@
 import json
 
+import jsonschema
 import numpy as np
 import pytest
 
-from export.contour_io import CONTOUR_FORMAT_VERSION, LoadContours, SaveContours
+from export.contour_io import CONTOUR_DUMP_SCHEMA, CONTOUR_FORMAT_VERSION, CONTOUR_SCHEMA, LoadContours, SaveContours
 
 _RECT = np.array([[0.0, 0.0], [20.0, 0.0], [20.0, 10.0], [0.0, 10.0]])
 _TRIANGLE = np.array([[1.0, 1.0], [5.0, 1.0], [3.0, 4.0]])
@@ -13,6 +14,29 @@ def _write(tmp_path, payload) -> str:
     path = tmp_path / "contours.json"
     path.write_text(json.dumps(payload))
     return str(path)
+
+
+def test_a_saved_contour_matches_its_own_schema(tmp_path):
+    """The real per-contour array `SaveContours` writes, read back and
+    validated against the schema kept beside it - not a hand-copied
+    example, so a change to how a contour is shaped fails here rather
+    than shipping quietly.
+    """
+    path = str(tmp_path / "contours.json")
+
+    SaveContours(path, {0: _RECT})
+    payload = json.loads(open(path).read())
+
+    jsonschema.validate(payload["contours"]["0"], CONTOUR_SCHEMA)
+
+
+def test_a_saved_contour_dump_matches_its_own_schema(tmp_path):
+    path = str(tmp_path / "contours.json")
+
+    SaveContours(path, {0: _RECT, 7: _TRIANGLE})
+    payload = json.loads(open(path).read())
+
+    jsonschema.validate(payload, CONTOUR_DUMP_SCHEMA)
 
 
 def test_contours_survive_a_round_trip(tmp_path):

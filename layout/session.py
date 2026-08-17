@@ -34,12 +34,13 @@ from typing import Any
 
 import numpy as np
 
+from export.contour_io import CONTOUR_SCHEMA
 from export.json_writer import WriteJson
-from layout.drawer import PLACED, AssignmentResult, Drawer, Slot
+from layout.drawer import ASSIGNMENT_SCHEMA, DRAWER_SCHEMA, PLACED, AssignmentResult, Drawer, DrawerPayload, Slot
 from layout.grouping import Grouping
 from layout.parameters import LayoutParameters
 from layout.part import Part
-from layout.placement import Layout, Placement
+from layout.placement import LAYOUT_SCHEMA, Layout, Placement
 from layout.plan import StoragePlan
 from layout.verify import CheckLayout
 
@@ -70,6 +71,34 @@ GEOMETRY_FIELDS = (
     "max_grid",
     "rotation",
 )
+
+# The whole file `SaveSession`/`LoadSession` read and write.
+SESSION_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Gridfinity Contours floorplan session",
+    "type": "object",
+    "properties": {
+        "version": {"const": SESSION_FORMAT_VERSION},
+        "units": {"const": SESSION_UNITS},
+        # Loosely typed on purpose: `_Parameters` already reads an
+        # unrecognized key by ignoring it rather than refusing the file -
+        # "a session written by a build that tracked one more setting
+        # still loads" - and a schema enumerating exactly `GEOMETRY_FIELDS`
+        # would fight that forward-compatibility on purpose.
+        "parameters": {"type": "object"},
+        "contours": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[0-9]+$"},
+            "additionalProperties": CONTOUR_SCHEMA,
+        },
+        "drawers": {"type": "array", "items": DRAWER_SCHEMA, "minItems": 1},
+        "bins": {"type": "array", "items": LAYOUT_SCHEMA, "minItems": 1},
+        "pinned": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "assignment": ASSIGNMENT_SCHEMA,
+    },
+    "required": ["version", "units", "contours", "drawers", "bins", "pinned"],
+    "additionalProperties": False,
+}
 
 
 @dataclass(frozen=True)
@@ -133,7 +162,7 @@ def SaveSession(path: str, plan: StoragePlan, contours: dict[int, np.ndarray], p
             str(part_id): np.asarray(points, dtype=np.float64).reshape(-1, 2).tolist()
             for part_id, points in sorted(contours.items())
         },
-        "drawers": [{"width": drawer.width, "height": drawer.height} for drawer in plan.drawers],
+        "drawers": [DrawerPayload(drawer) for drawer in plan.drawers],
         "bins": [_BinPayload(plan.layouts[bin_id]) for bin_id in sorted(plan.layouts)],
         # Positions in the `bins` list above, which is written in bin id
         # order - so these stay meaningful without a second identity

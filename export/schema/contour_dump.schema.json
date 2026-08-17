@@ -1,0 +1,33 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Gridfinity Contours contour dump",
+ "type": "object",
+ "properties": {
+  "version": {
+   "const": 1
+  },
+  "units": {
+   "const": "mm"
+  },
+  "contours": {
+   "type": "object",
+   "propertyNames": {
+    "pattern": "^[0-9]+$"
+   },
+   "additionalProperties": {
+    "type": "array",
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     },
+     "minItems": 2,
+     "maxItems": 2
+    },
+    "minItems": 3
+   }
+  }
+ },
+ "required": ["version", "units", "contours"],
+ "additionalProperties": false
+}

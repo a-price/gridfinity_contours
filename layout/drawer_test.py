@@ -12,10 +12,12 @@ instead. And that the bounds in front of the search are one-sided, since
 an over-eager bound here silently reports "buy another drawer".
 """
 
+import jsonschema
 import pytest
 
 from layout.drawer import (
     DEFAULT_NODE_BUDGET,
+    DRAWER_SCHEMA,
     EXHAUSTED,
     INFEASIBLE,
     PLACED,
@@ -24,6 +26,7 @@ from layout.drawer import (
     AssignmentResult,
     Drawer,
     DrawerCells,
+    DrawerPayload,
     FirstFit,
     FreeCells,
     LargestFreeRegion,
@@ -60,6 +63,18 @@ def _assert_sound(footprints: dict[int, tuple[int, int]], result, drawers: list[
 
     covered = _occupied(footprints, result, drawers)
     assert sum(len(cells) for cells in covered) == total, "two bins share a cell"
+
+
+# --------------------------------------------------------------- wire shape
+
+
+def test_a_drawer_payload_matches_its_own_schema():
+    """The real payload `layout.plan.SaveDrawers` and `layout.session.
+    SaveSession` both write, validated against the schema kept beside
+    `Drawer` - not a hand-copied example, so a field added to one and not
+    the other fails here rather than shipping quietly.
+    """
+    jsonschema.validate(DrawerPayload(Drawer(6, 10)), DRAWER_SCHEMA)
 
 
 # ------------------------------------------------------------------ drawers

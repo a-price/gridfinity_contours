@@ -92,6 +92,29 @@ class Drawer:
         return (n <= self.width and m <= self.height) or (m <= self.width and n <= self.height)
 
 
+# `Drawer`'s wire shape, kept beside the dataclass rather than beside
+# whichever file happens to serialize it today - `layout.plan.SaveDrawers`
+# and `layout.session.SaveSession` both write this, and a schema living
+# with only one of them would have no reason to notice the other drifting.
+DRAWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+    },
+    "required": ["width", "height"],
+    "additionalProperties": False,
+}
+
+
+def DrawerPayload(drawer: Drawer) -> dict:
+    """`drawer` as the dict `DRAWER_SCHEMA` describes - the one place this
+    gets built, so `SaveDrawers` and `SaveSession` cannot spell it two
+    different ways.
+    """
+    return {"width": drawer.width, "height": drawer.height}
+
+
 def DrawerCells(width_mm: float, height_mm: float) -> Drawer:
     """The whole grid cells a drawer of this interior size holds.
 
@@ -182,6 +205,27 @@ class Slot:
         return (m, n) if self.turned else (n, m)
 
 
+# `Slot`'s wire shape - `bin_id` is spelled `"bin"` on the wire, matching
+# `layout.session._SlotPayload`. `turned` is not required: an absent one
+# means False, the same default `Slot.turned` itself has.
+SLOT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "bin": {"type": "integer", "minimum": 0},
+        "drawer": {"type": "integer", "minimum": 0},
+        "cell": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 0},
+            "minItems": 2,
+            "maxItems": 2,
+        },
+        "turned": {"type": "boolean"},
+    },
+    "required": ["bin", "drawer", "cell"],
+    "additionalProperties": False,
+}
+
+
 @dataclass(frozen=True)
 class AssignmentResult:
     """Where every bin went, or why they could not all go anywhere.
@@ -221,6 +265,24 @@ class AssignmentResult:
             if self.detail:
                 lines.append(self.detail)
         return "\n".join(lines)
+
+
+# `AssignmentResult`'s wire shape. `unplaced`/`detail` are not required,
+# for two reasons at once: an older session written before they existed
+# still validates, and `layout.session._Assignment` already defaults them
+# to `[]`/`""` on load exactly as this permits - the schema describing
+# every file this project can *read*, not only what today's writer emits.
+ASSIGNMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "outcome": {"type": "string", "enum": [PLACED, INFEASIBLE, EXHAUSTED]},
+        "slots": {"type": "array", "items": SLOT_SCHEMA},
+        "unplaced": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "detail": {"type": "string"},
+    },
+    "required": ["outcome", "slots"],
+    "additionalProperties": False,
+}
 
 
 def AdmissibleFootprints(drawers: Sequence[Drawer], max_grid: int) -> frozenset[tuple[int, int]]:

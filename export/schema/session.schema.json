@@ -1,0 +1,165 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Gridfinity Contours floorplan session",
+ "type": "object",
+ "properties": {
+  "version": {
+   "const": 1
+  },
+  "units": {
+   "const": "mm"
+  },
+  "parameters": {
+   "type": "object"
+  },
+  "contours": {
+   "type": "object",
+   "propertyNames": {
+    "pattern": "^[0-9]+$"
+   },
+   "additionalProperties": {
+    "type": "array",
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     },
+     "minItems": 2,
+     "maxItems": 2
+    },
+    "minItems": 3
+   }
+  },
+  "drawers": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "width": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "height": {
+      "type": "integer",
+      "minimum": 1
+     }
+    },
+    "required": ["width", "height"],
+    "additionalProperties": false
+   },
+   "minItems": 1
+  },
+  "bins": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "grid": {
+      "type": "array",
+      "items": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "minItems": 2,
+      "maxItems": 2
+     },
+     "inset": {
+      "type": "number"
+     },
+     "placements": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "part": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "position": {
+         "type": "array",
+         "items": {
+          "type": "number"
+         },
+         "minItems": 2,
+         "maxItems": 2
+        },
+        "orientation": {
+         "type": "integer"
+        },
+        "angle": {
+         "type": "number"
+        }
+       },
+       "required": ["part", "position", "orientation"],
+       "additionalProperties": false
+      },
+      "minItems": 1
+     }
+    },
+    "required": ["grid", "inset", "placements"],
+    "additionalProperties": false
+   },
+   "minItems": 1
+  },
+  "pinned": {
+   "type": "array",
+   "items": {
+    "type": "integer",
+    "minimum": 0
+   }
+  },
+  "assignment": {
+   "type": "object",
+   "properties": {
+    "outcome": {
+     "type": "string",
+     "enum": ["placed", "infeasible", "exhausted"]
+    },
+    "slots": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "bin": {
+        "type": "integer",
+        "minimum": 0
+       },
+       "drawer": {
+        "type": "integer",
+        "minimum": 0
+       },
+       "cell": {
+        "type": "array",
+        "items": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "minItems": 2,
+        "maxItems": 2
+       },
+       "turned": {
+        "type": "boolean"
+       }
+      },
+      "required": ["bin", "drawer", "cell"],
+      "additionalProperties": false
+     }
+    },
+    "unplaced": {
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    "detail": {
+     "type": "string"
+    }
+   },
+   "required": ["outcome", "slots"],
+   "additionalProperties": false
+  }
+ },
+ "required": ["version", "units", "contours", "drawers", "bins", "pinned"],
+ "additionalProperties": false
+}

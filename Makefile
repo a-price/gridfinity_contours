@@ -19,6 +19,7 @@ DOT_SVGS := $(DOT_FILES:.dot=.svg)
 JOBS ?= 4
 
 .PHONY: format format-check lint typecheck test check check-serial requirements docs docs-check \
+	schema schema-check \
 	gifs gif-capture gif-pack gif-group gif-drawer previews screenshots solids sheet media
 
 format:
@@ -41,15 +42,15 @@ typecheck:
 test:
 	$(PYTHON) -m pytest -n $(JOBS)
 
-# The four checks are independent, so run them at once and let typecheck's
+# The five checks are independent, so run them at once and let typecheck's
 # 13 seconds hide inside the test run. -O groups each target's output
 # instead of interleaving pyright's errors into pytest's progress dots.
 check:
-	@$(MAKE) --no-print-directory -j4 -O format-check lint typecheck test
+	@$(MAKE) --no-print-directory -j4 -O format-check lint typecheck test schema-check
 
 # The same checks one at a time, for when interleaved output is the
 # problem or a machine cannot spare the cores.
-check-serial: format-check lint typecheck
+check-serial: format-check lint typecheck schema-check
 	$(PYTHON) -m pytest
 
 # Which lockfile this writes depends on where it runs, because
@@ -62,6 +63,18 @@ REQUIREMENTS_OUT := $(if $(wildcard .venv/Scripts/python.exe),requirements-windo
 
 requirements:
 	$(PYTHON) -m piptools compile requirements.in --output-file $(REQUIREMENTS_OUT)
+
+# export/schema/*.schema.json, dumped from the Python dict schemas kept
+# beside each format's dataclasses - see export/dump_schemas.py.
+schema:
+	$(PYTHON) -m export.dump_schemas
+
+# In `check`/`check-serial` rather than excluded like docs-check: this
+# generation is pure deterministic Python with no external tool whose
+# version could shift the output, so staleness here is a real mistake,
+# not a machine difference.
+schema-check:
+	$(PYTHON) -m export.dump_schemas --check
 
 # The rendered SVGs are committed so the docs read on GitHub without a
 # graphviz install, which is also why they can go stale - hence docs-check.
