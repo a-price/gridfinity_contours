@@ -10,12 +10,16 @@ def test_a_scalar_array_is_one_line():
     assert Dumps([1.0, 2.0]) == "[1.0, 2.0]"
 
 
-def test_a_list_of_scalar_arrays_stays_one_per_line():
-    """The case that matters most: a contour is a list of points, and each
-    point should be compact while the contour itself stays one point per
-    line - so a changed point is a one-line diff, not a four-line one.
+def test_a_list_of_scalar_arrays_is_one_line():
+    """The case that matters most: a contour is a list of points, and the
+    whole thing renders on one line - so a forty-point contour costs one
+    line, not forty.
     """
-    assert Dumps([[1.0, 2.0], [3.0, 4.0]]) == "[\n [1.0, 2.0],\n [3.0, 4.0]\n]"
+    assert Dumps([[1.0, 2.0], [3.0, 4.0]]) == "[[1.0, 2.0], [3.0, 4.0]]"
+
+
+def test_scalar_arrays_nest_one_line_regardless_of_depth():
+    assert Dumps([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]]) == "[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]]"
 
 
 def test_a_list_of_dicts_stays_one_per_line():

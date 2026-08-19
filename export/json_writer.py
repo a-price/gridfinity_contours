@@ -9,14 +9,15 @@ lines instead of one, and a captured contour with forty points costs a
 page. A real six-object floorplan ran to over a thousand lines this way.
 
 `Dumps` keeps that indentation for dicts and for any list holding
-something other than plain numbers, strings, booleans or nulls, but writes
-a list of only those - a point, a grid size, a placement's position - on
-one line. That is the one rule: an array of scalars is one line,
-everything else nests normally. It changes no value's own text - a float
-renders exactly as `json.dumps` would render it, just without the
-whitespace between it and its neighbours - so it costs nothing in
-round-trip fidelity, and it keeps a single coordinate that changes to a
-diff of one line instead of four. `contour_io`'s own docstring is the
+something other than plain numbers, strings, booleans or nulls - or other
+such lists, nested arbitrarily deep - but writes a list of only those on
+one line: a grid size, a placement's position, or a whole contour's worth
+of points at once. That is the one rule: an array of nothing but scalars,
+however deeply nested, is one line; everything else nests normally. It
+changes no value's own text - a float renders exactly as `json.dumps`
+would render it, just without the whitespace between it and its neighbours
+- so it costs nothing in round-trip fidelity, and it turns a forty-point
+contour from forty lines into one. `contour_io`'s own docstring is the
 reason that matters here: these files are meant to be diffable, and are
 the one place a human might reasonably hand-edit a coordinate.
 """
@@ -29,7 +30,11 @@ _SCALAR_TYPES = (type(None), bool, int, float, str)
 
 
 def _IsScalarArray(value: Any) -> bool:
-    return isinstance(value, list) and all(isinstance(item, _SCALAR_TYPES) for item in value)
+    """Whether `value` is a list holding nothing but scalars and/or other
+    such lists - so `[[1.0, 2.0], [3.0, 4.0]]` qualifies exactly as
+    `[1.0, 2.0]` does, however many levels deep the nesting goes.
+    """
+    return isinstance(value, list) and all(isinstance(item, _SCALAR_TYPES) or _IsScalarArray(item) for item in value)
 
 
 def _Format(value: Any, indent: int, depth: int) -> str:
@@ -57,9 +62,10 @@ def _Format(value: Any, indent: int, depth: int) -> str:
 
 def Dumps(payload: Any, indent: int = 1) -> str:
     """`payload` as JSON text, indented like `json.dumps(payload,
-    indent=indent)` except that an array holding only scalars is written
-    on one line rather than one element per line. No trailing newline -
-    see `WriteJson` for the file convention every writer here follows.
+    indent=indent)` except that an array holding only scalars - or nested
+    arrays of them, a contour's `[[x, y], ...]` included - is written on
+    one line rather than one element per line. No trailing newline - see
+    `WriteJson` for the file convention every writer here follows.
     """
     return _Format(payload, indent, 0)
 
