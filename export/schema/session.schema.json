@@ -3,6 +3,9 @@
  "title": "Gridfinity Contours floorplan session",
  "type": "object",
  "properties": {
+  "$schema": {
+   "type": "string"
+  },
   "version": {
    "const": 1
   },

@@ -1,4 +1,5 @@
 {
+ "$schema": "export/schema/session.schema.json",
  "version": 1,
  "units": "mm",
  "parameters": {

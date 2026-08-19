@@ -44,7 +44,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Callable, Sequence
 
-from export.json_writer import WriteJson
+from export.json_writer import SchemaPointer, WriteJson
 from layout.drawer import (
     DRAWER_SCHEMA,
     EXHAUSTED,
@@ -90,6 +90,9 @@ DRAWERS_FILE_SCHEMA = {
     "title": "Gridfinity Contours drawer list",
     "type": "object",
     "properties": {
+        # Not required: only files this build wrote have it, and an older
+        # drawer list without one is still a valid drawer list.
+        "$schema": {"type": "string"},
         "version": {"const": DRAWER_FORMAT_VERSION},
         "units": {"const": DRAWER_UNITS},
         "drawers": {"type": "array", "items": DRAWER_SCHEMA, "minItems": 1},
@@ -113,6 +116,7 @@ def SaveDrawers(path: str, drawers: Sequence[Drawer]) -> None:
         raise ValueError("no drawers to save")
 
     payload = {
+        "$schema": SchemaPointer(path, "drawers"),
         "version": DRAWER_FORMAT_VERSION,
         "units": DRAWER_UNITS,
         "drawers": [DrawerPayload(drawer) for drawer in drawers],

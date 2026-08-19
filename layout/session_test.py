@@ -8,6 +8,7 @@ that resuming tells you which bins you have to print again.
 """
 
 import json
+import os
 from dataclasses import replace
 
 import jsonschema
@@ -199,6 +200,17 @@ def test_a_saved_session_matches_its_own_schema(tmp_path):
     payload = json.loads(open(path).read())
 
     jsonschema.validate(payload, SESSION_SCHEMA)
+
+
+def test_a_saved_session_points_at_its_own_generated_schema_file(tmp_path):
+    path, _, _, _ = _planned(tmp_path)
+
+    payload = json.loads(open(path).read())
+
+    resolved = os.path.normpath(os.path.join(os.path.dirname(path), payload["$schema"]))
+    expected = os.path.join(os.path.dirname(os.path.dirname(__file__)), "export", "schema", "session.schema.json")
+    assert resolved == os.path.normpath(expected)
+    assert os.path.exists(resolved)
 
 
 def test_a_saved_session_with_an_infeasible_assignment_matches_its_own_schema(tmp_path):

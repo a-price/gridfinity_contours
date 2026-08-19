@@ -22,6 +22,7 @@ the one place a human might reasonably hand-edit a coordinate.
 """
 
 import json
+import os
 from typing import Any
 
 _SCALAR_TYPES = (type(None), bool, int, float, str)
@@ -70,3 +71,21 @@ def WriteJson(path: str, payload: Any, indent: int = 1) -> None:
     with open(path, "w") as handle:
         handle.write(Dumps(payload, indent))
         handle.write("\n")
+
+
+def SchemaPointer(output_path: str, schema_name: str) -> str:
+    """The `$schema` value for a file about to be written to
+    `output_path`, pointing at `export/schema/<schema_name>.schema.json`.
+
+    Relative rather than absolute, and computed fresh for every call rather
+    than fixed once: these files get committed - this repo's own
+    floorplan.json among them - and an absolute path would bake one
+    machine's home directory into that history. A relative URI is what a
+    validating editor resolves the way a browser resolves a relative href -
+    against the document's own location - so this keeps working no matter
+    where `output_path` ends up.
+    """
+    schema_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema")
+    schema_path = os.path.join(schema_dir, f"{schema_name}.schema.json")
+    pointer = os.path.relpath(schema_path, os.path.dirname(os.path.abspath(output_path)))
+    return pointer.replace(os.sep, "/")

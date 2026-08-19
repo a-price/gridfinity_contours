@@ -1,4 +1,5 @@
 import json
+import os
 
 import jsonschema
 import numpy as np
@@ -37,6 +38,17 @@ def test_a_saved_contour_dump_matches_its_own_schema(tmp_path):
     payload = json.loads(open(path).read())
 
     jsonschema.validate(payload, CONTOUR_DUMP_SCHEMA)
+
+
+def test_a_saved_contour_dump_points_at_its_own_generated_schema_file(tmp_path):
+    path = str(tmp_path / "contours.json")
+
+    SaveContours(path, {0: _RECT})
+    payload = json.loads(open(path).read())
+
+    resolved = os.path.normpath(os.path.join(tmp_path, payload["$schema"]))
+    assert resolved == os.path.join(os.path.dirname(__file__), "schema", "contour_dump.schema.json")
+    assert os.path.exists(resolved)
 
 
 def test_contours_survive_a_round_trip(tmp_path):

@@ -1,8 +1,9 @@
 import json
+import os
 
 import pytest
 
-from export.json_writer import Dumps, WriteJson
+from export.json_writer import Dumps, SchemaPointer, WriteJson
 
 
 def test_a_scalar_array_is_one_line():
@@ -66,3 +67,21 @@ def test_write_json_ends_with_a_trailing_newline(tmp_path):
     text = path.read_text()
     assert text.endswith("\n") and not text.endswith("\n\n")
     assert json.loads(text) == {"a": [1, 2]}
+
+
+def test_schema_pointer_resolves_relative_to_the_output_file(tmp_path):
+    """A `$schema` value has to be a relative URI - resolved against the
+    document's own location, the way a browser resolves a relative href -
+    so this checks the math the same way an editor would: joined back onto
+    the output file's own directory, it must land on the real generated
+    schema, wherever the output file happens to be.
+    """
+    nested = tmp_path / "a" / "b"
+    nested.mkdir(parents=True)
+    output_path = nested / "session.json"
+
+    pointer = SchemaPointer(str(output_path), "session")
+
+    assert not pointer.startswith("/")
+    resolved = os.path.normpath(os.path.join(nested, pointer))
+    assert resolved == os.path.join(os.path.dirname(__file__), "schema", "session.schema.json")

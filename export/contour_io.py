@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from export.json_writer import WriteJson
+from export.json_writer import SchemaPointer, WriteJson
 
 # Bumped only when a reader could otherwise misinterpret an older file.
 # Recorded so that a future format change fails loudly on sight instead of
@@ -48,6 +48,9 @@ CONTOUR_DUMP_SCHEMA = {
     "title": "Gridfinity Contours contour dump",
     "type": "object",
     "properties": {
+        # Not required: only files this build wrote have it, and an older
+        # dump without one is still a valid dump.
+        "$schema": {"type": "string"},
         "version": {"const": CONTOUR_FORMAT_VERSION},
         "units": {"const": UNITS},
         "contours": {
@@ -73,6 +76,7 @@ def SaveContours(path: str, contours: dict[int, np.ndarray]) -> None:
         raise ValueError("no contours to save")
 
     payload = {
+        "$schema": SchemaPointer(path, "contour_dump"),
         "version": CONTOUR_FORMAT_VERSION,
         "units": UNITS,
         "contours": {

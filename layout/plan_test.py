@@ -8,6 +8,7 @@ than something only the end produces.
 """
 
 import json
+import os
 
 import jsonschema
 import pytest
@@ -52,6 +53,18 @@ def test_a_saved_drawer_list_matches_its_own_schema(tmp_path):
     payload = json.loads(open(path).read())
 
     jsonschema.validate(payload, DRAWERS_FILE_SCHEMA)
+
+
+def test_a_saved_drawer_list_points_at_its_own_generated_schema_file(tmp_path):
+    path = str(tmp_path / "drawers.json")
+
+    SaveDrawers(path, [Drawer(11, 9)])
+    payload = json.loads(open(path).read())
+
+    resolved = os.path.normpath(os.path.join(tmp_path, payload["$schema"]))
+    expected = os.path.join(os.path.dirname(os.path.dirname(__file__)), "export", "schema", "drawers.schema.json")
+    assert resolved == os.path.normpath(expected)
+    assert os.path.exists(resolved)
 
 
 def test_a_drawer_file_records_cells_not_millimetres(tmp_path):

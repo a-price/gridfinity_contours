@@ -35,7 +35,7 @@ from typing import Any
 import numpy as np
 
 from export.contour_io import CONTOUR_SCHEMA
-from export.json_writer import WriteJson
+from export.json_writer import SchemaPointer, WriteJson
 from layout.drawer import ASSIGNMENT_SCHEMA, DRAWER_SCHEMA, PLACED, AssignmentResult, Drawer, DrawerPayload, Slot
 from layout.grouping import Grouping
 from layout.parameters import LayoutParameters
@@ -78,6 +78,9 @@ SESSION_SCHEMA = {
     "title": "Gridfinity Contours floorplan session",
     "type": "object",
     "properties": {
+        # Not required: only files this build wrote have it, and an older
+        # session without one is still a valid session.
+        "$schema": {"type": "string"},
         "version": {"const": SESSION_FORMAT_VERSION},
         "units": {"const": SESSION_UNITS},
         # Loosely typed on purpose: `_Parameters` already reads an
@@ -155,6 +158,7 @@ def SaveSession(path: str, plan: StoragePlan, contours: dict[int, np.ndarray], p
         raise ValueError(f"the floorplan places parts {missing}, whose contours were not given")
 
     payload: dict[str, Any] = {
+        "$schema": SchemaPointer(path, "session"),
         "version": SESSION_FORMAT_VERSION,
         "units": SESSION_UNITS,
         "parameters": {name: getattr(params, name) for name in GEOMETRY_FIELDS},
