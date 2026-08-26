@@ -64,7 +64,7 @@ class Morphology:
         area = self.parameters.area
         radius = self.parameters.closing_radius
         if radius > 0:
-            mask_image = morphology.binary_closing(mask_image, morphology.disk(radius))
+            mask_image = morphology.closing(mask_image, morphology.disk(radius))
         mask_image = morphology.remove_small_holes(mask_image, area_threshold=area)
         mask_image = morphology.remove_small_objects(mask_image, min_size=area)
 

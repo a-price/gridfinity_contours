@@ -5,6 +5,7 @@ pocket mirrored, a divider too thin to exist, a bin whose height was
 never going to work. Those are what this pins.
 """
 
+import os
 import re
 import shutil
 import subprocess
@@ -337,7 +338,7 @@ def test_the_library_include_is_absolute():
     scad = GenerateScad(layout, parts, pocket_offset=1.0)
 
     include = re.search(r"include <(.*?)/standard.scad>", scad)
-    assert include is not None and include.group(1).startswith("/")
+    assert include is not None and os.path.isabs(include.group(1))
 
 
 def test_writing_puts_the_program_on_disk(tmp_path):

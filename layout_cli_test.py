@@ -6,7 +6,6 @@ line and produces something printable.
 """
 
 import io
-import os
 import re
 import signal
 from unittest import mock
@@ -298,7 +297,7 @@ def test_an_interrupted_search_reports_what_it_learned(tmp_path, capsys):
 
     with Interruptible() as interrupted:
         assert not interrupted()
-        os.kill(os.getpid(), signal.SIGINT)
+        signal.raise_signal(signal.SIGINT)
         assert interrupted(), "the first Ctrl-C should ask the search to stop, not raise"
 
     assert "stopping" in capsys.readouterr().out
@@ -318,9 +317,9 @@ def test_a_second_interrupt_is_not_swallowed():
     would otherwise ignore them.
     """
     with Interruptible():
-        os.kill(os.getpid(), signal.SIGINT)
+        signal.raise_signal(signal.SIGINT)
         with pytest.raises(KeyboardInterrupt):
-            os.kill(os.getpid(), signal.SIGINT)
+            signal.raise_signal(signal.SIGINT)
 
 
 def test_a_cancelled_run_exits_with_the_signal_convention(tmp_path):

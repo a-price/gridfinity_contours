@@ -39,12 +39,14 @@ import argparse
 import os
 import sys
 
+from qt_utils.headless import UseOffscreenQt
+
 # Before any Qt import, and before `silhouette_gui` pulls one in transitively.
 # Without a platform the window would need a display; with one that is not
 # `offscreen` it would pop open on the desktop of whoever ran `make gifs`.
 # `--windowed` clears it again for anyone who wants to watch it happen.
 if "--windowed" not in sys.argv:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    UseOffscreenQt()
 
 import numpy as np
 from PyQt5.QtWidgets import QApplication, QCheckBox

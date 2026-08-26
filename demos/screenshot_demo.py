@@ -36,11 +36,13 @@ import os
 import sys
 from dataclasses import replace
 
+from qt_utils.headless import UseOffscreenQt
+
 # Before any Qt import, and before the windows pull one in transitively.
 # Without a platform these would need a display; with one that is not
 # `offscreen` they would pop open on the desktop of whoever ran this.
 if "--windowed" not in sys.argv:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    UseOffscreenQt()
 
 from typing import Callable
 

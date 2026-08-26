@@ -37,9 +37,14 @@ from layout.verify import DistanceToBoundary, MinimumSeparation
 # repository root. It was two while the package lived at `pipeline/layout/`,
 # and the extra level pointed the include at the repository's *parent* -
 # which OpenSCAD reports only as a warning before rendering an empty file.
+#
+# Forward slashes rather than the platform separator: OpenSCAD reads a
+# backslash inside `include <>` as an escape, so a native Windows path
+# silently includes nothing. `/` is accepted on every platform, and this
+# is a no-op where the separator is already `/`.
 LIBRARY_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "gridfinity-rebuilt-openscad", "src", "core")
-)
+).replace(os.sep, "/")
 
 # Gridfinity heights come in multiples of the base height, which is the
 # unit the spec and every printable profile are quoted in.

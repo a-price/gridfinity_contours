@@ -308,6 +308,34 @@ what each one costs and what it needs.
    pass `--download-model` to `silhouette_gui.py` to let it fetch the
    model on first run.
 
+### On Windows
+
+The steps above are written for a POSIX shell. Four things differ, and
+three of them fail in ways that do not name the real cause.
+
+1. The interpreter is at `.venv\Scripts\python.exe`, not
+   `.venv/bin/python3`, and the activate script is
+   `.venv\Scripts\Activate.ps1`. Every `.venv/bin/python3` in this
+   README needs that substitution.
+
+2. Install `requirements-windows.txt`, not `requirements.txt`.
+
+3. Run `python windows_setup.py` afterwards. PyQt5's Windows wheel bundles
+   a 2020-vintage MSVC runtime, and torch's `c10.dll` will not initialize
+   in a process that has already loaded it — so `import torch` after
+   `import PyQt5` dies with `WinError 1114`, which is what
+   `silhouette_gui.py` does. The script retires the bundled copies so both
+   use the system runtime, and verifies the result. It is safe to re-run,
+   and it needs re-running after anything that reinstalls PyQt5. Its
+   docstring has the full account, including why this is not something a
+   version pin or a clean install can fix.
+
+4. `make` is not present on Windows by default. The `Makefile` finds the
+   right interpreter on either platform, but you need `make` itself from
+   Git Bash, scoop or choco to use the targets — otherwise run the
+   underlying commands directly, for instance
+   `.venv\Scripts\python.exe -m pytest -n 4`.
+
 ## Development
 
 Config for `black`/`pytest`/`pyright` lives in `pyproject.toml`; `mdformat`

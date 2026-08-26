@@ -3,6 +3,7 @@
     widgets          labeled slider, spin box, combo box, group box
     click_recorder   clicks on a displayed image, in the image's own pixels
     window_capture   a window as an array, once it has stopped changing
+    headless         the environment Qt needs to run with no display
 
 Nothing here mentions a contour, a bin or a drawer. That is the whole
 membership test, and it is what separates this from `capture.pipeline`: a

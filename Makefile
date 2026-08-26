@@ -1,4 +1,5 @@
-PYTHON := .venv/bin/python3
+# A virtualenv puts its interpreter in Scripts/ on Windows and bin/ on everything else.
+PYTHON := $(if $(wildcard .venv/Scripts/python.exe),.venv/Scripts/python.exe,.venv/bin/python3)
 # Found rather than listed. A wildcard list stops covering a directory the
 # moment code moves into a new one, and does it silently: `make check` goes
 # on passing while black and pyflakes quietly skip everything that moved.
@@ -51,8 +52,16 @@ check:
 check-serial: format-check lint typecheck
 	$(PYTHON) -m pytest
 
+# Which lockfile this writes depends on where it runs, because
+# pip-compile only ever resolves for the machine it is on: a Windows
+# run drops the 21 nvidia-* packages and triton, and pins the one
+# pyqt5-qt5 that Windows publishes. Writing that over requirements.txt
+# would hand Linux a lockfile with no CUDA and the wrong Qt, so the two
+# platforms keep their own and neither silently overwrites the other.
+REQUIREMENTS_OUT := $(if $(wildcard .venv/Scripts/python.exe),requirements-windows.txt,requirements.txt)
+
 requirements:
-	$(PYTHON) -m piptools compile requirements.in --output-file requirements.txt
+	$(PYTHON) -m piptools compile requirements.in --output-file $(REQUIREMENTS_OUT)
 
 # The rendered SVGs are committed so the docs read on GitHub without a
 # graphviz install, which is also why they can go stale - hence docs-check.

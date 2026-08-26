@@ -13,18 +13,20 @@ the call sites are untouched:
     from conftest import QuickParameters as _quick, Rectangle as _rectangle
 """
 
-import os
 from dataclasses import replace
 
 import numpy as np
 import pytest
 
 from layout.parameters import LayoutParameters
+from qt_utils.headless import UseOffscreenQt
 
 # Set before any test module imports PyQt5, so a Qt test needs no display.
 # Lives here rather than in each Qt test file because conftest is imported
-# first, which is the only ordering that reliably works.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# first, which is the only ordering that reliably works. Shared with the
+# two demos that photograph windows - see qt_utils/headless.py for what
+# the font half is for, which is not obvious and is Windows-only.
+UseOffscreenQt()
 
 # The three capture fixtures that make up the standard packing example -
 # three separate photo sessions of three real spoons.
