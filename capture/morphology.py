@@ -64,7 +64,16 @@ class Morphology:
         area = self.parameters.area
         radius = self.parameters.closing_radius
         if radius > 0:
-            mask_image = morphology.closing(mask_image, morphology.disk(radius))
+            # OpenCV, given scikit-image's own disk so the two agree bit for
+            # bit - checked at radii 2, 5 and 9 on a real SAM2 mask. Only the
+            # speed differs: scikit-image is quadratic in the radius, OpenCV
+            # nearly flat, so the default radius of 5 costs 3.7ms rather than
+            # 263ms. This was three quarters of `Apply`, which runs on every
+            # click. The GPU loses here - OpenCL is slower than CPU at this
+            # size, and CUDA wins 3.7ms to 2.7ms for a stage that would then
+            # need CUDA.
+            footprint = np.asarray(morphology.disk(radius), dtype=np.uint8)
+            mask_image = cv2.morphologyEx(mask_image.astype(np.uint8), cv2.MORPH_CLOSE, footprint).astype(bool)
         mask_image = morphology.remove_small_holes(mask_image, area_threshold=area)
         mask_image = morphology.remove_small_objects(mask_image, min_size=area)
 

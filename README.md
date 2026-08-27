@@ -310,7 +310,7 @@ what each one costs and what it needs.
 
 ### On Windows
 
-The steps above are written for a POSIX shell. Four things differ, and
+The steps above are written for a POSIX shell. Five things differ, and
 three of them fail in ways that do not name the real cause.
 
 1. The interpreter is at `.venv\Scripts\python.exe`, not
@@ -335,6 +335,25 @@ three of them fail in ways that do not name the real cause.
    Git Bash, scoop or choco to use the targets — otherwise run the
    underlying commands directly, for instance
    `.venv\Scripts\python.exe -m pytest -n 4`.
+
+5. PyPI's Windows torch is CPU-only, where its Linux one is already a CUDA
+   build — so the segmenter runs on the CPU here unless you ask otherwise.
+   Measured on an RTX 3080, `Segment()` takes 1.45s on the CPU against
+   0.09s on the GPU, and `silhouette_gui.py` re-segments on every click.
+   Nothing breaks without it; `capture/segmenter.py` picks whichever it
+   finds. To ask:
+
+   ```
+   pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.13.0+cu130 torchvision==0.28.0+cu130
+   ```
+
+   Spell out the `+cu130` versions — a bare `pip install torch` finds the
+   installed CPU build good enough and does nothing, successfully. Match
+   the CUDA series to your driver (`nvidia-smi`); `cu126` is the
+   conservative alternative at the same torch version. Re-run
+   `windows_setup.py` afterwards: the CUDA build hits the same Qt runtime
+   conflict. This is out of `requirements.in` on purpose — the GPU is an
+   enhancement the code detects, not a dependency.
 
 ## Development
 
