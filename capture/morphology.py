@@ -74,8 +74,8 @@ class Morphology:
             # need CUDA.
             footprint = np.asarray(morphology.disk(radius), dtype=np.uint8)
             mask_image = cv2.morphologyEx(mask_image.astype(np.uint8), cv2.MORPH_CLOSE, footprint).astype(bool)
-        mask_image = morphology.remove_small_holes(mask_image, area_threshold=area)
-        mask_image = morphology.remove_small_objects(mask_image, min_size=area)
+        mask_image = morphology.remove_small_holes(mask_image, max_size=area)
+        mask_image = morphology.remove_small_objects(mask_image, max_size=area)
 
         if self.parameters.symmetrize_lateral or self.parameters.symmetrize_longitudinal:
             mask_image = self._ApplySymmetry(mask_image)
