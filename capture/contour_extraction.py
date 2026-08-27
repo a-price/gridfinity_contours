@@ -65,6 +65,25 @@ class ContourSelection:
                 return True
         return False
 
+    def SelectSoleContour(self, contours: list) -> bool:
+        """Pick the only contour there is, when there is exactly one and
+        nothing is selected yet. Returns whether it selected anything.
+
+        A lone contour needs no picking, and leaving it unpicked strands
+        the user: everything downstream keys off the selection, so Export
+        writes nothing and says nothing about why.
+
+        Called when the contour list is rebuilt, not on every run - so a
+        user who deliberately deselects the lone contour keeps it
+        deselected while they work the simplification slider. Changing the
+        mask does bring it back, on the grounds that those are new
+        contours rather than the ones they rejected.
+        """
+        if len(contours) != 1 or self.selected:
+            return False
+        self.selected = {0}
+        return True
+
     def Run(self, contours: list) -> None:
         """Recompute the simplified contour + PCA box for each selected
         index against the current `contours` list.

@@ -220,15 +220,26 @@ def test_full_app_click_flow(gui, tmp_path):
     # of adding more segmentation points.
     gui.interaction_mode_combo.setCurrentText(_MODE_SELECT_CONTOUR)
 
-    # Click a point known to be on the segmented spoon (one of the
-    # segmentation clicks above) to select its contour - a bounding-box
-    # center isn't reliable for a concave shape like a spoon.
+    # A point known to be on the segmented spoon (one of the segmentation
+    # clicks above) - a bounding-box center isn't reliable for a concave
+    # shape like a spoon.
     target_index = next(
         i for i, contour in enumerate(gui.object_contours) if cv2.pointPolygonTest(contour, SPOON_POINT_A, False) >= 0
     )
-    _click_gui(gui, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
 
+    # The cleaned-up mask above leaves exactly one contour, so it selected
+    # itself when the contour list was built and no click is needed to
+    # export. Clicking is still how you change your mind, and toggling is
+    # what it does - off, then on again.
     contour_selection = gui.contour_selection_stage.contour_selection
+    assert contour_selection.selected == {target_index}, "a lone contour selects itself"
+    assert gui.export_btn.isEnabled(), "and that is enough to make Export usable"
+
+    _click_gui(gui, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
+    assert contour_selection.selected == set(), "clicking the selected contour deselects it"
+    assert not gui.export_btn.isEnabled(), "with nothing selected there is nothing to write"
+
+    _click_gui(gui, *SPOON_POINT_A, Qt.MouseButton.LeftButton)
     assert contour_selection.selected == {target_index}
     assert target_index in contour_selection.simplified
     assert target_index in contour_selection.boxes

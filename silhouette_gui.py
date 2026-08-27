@@ -229,7 +229,10 @@ class SVGGui(QMainWindow):
             if self.original_image is not None:
                 self.processed_image = self.original_image.copy()
                 self.show_original_btn.setEnabled(True)
-                self.export_btn.setEnabled(True)
+                # Not exportable until something is selected - a new image
+                # invalidates whatever the last one had. update_rectified_contours
+                # turns this back on when there is something to write.
+                self.export_btn.setEnabled(False)
 
                 self.segmenter_stage.AttachToImageWidget(
                     self.image_label,
@@ -251,6 +254,12 @@ class SVGGui(QMainWindow):
         """
         mask_image = self.morphology_stage.mask
         self.object_contours = [] if mask_image is None else FindContours(mask_image)
+
+        # Here rather than in the selection stage, because this is the one
+        # place the contour list is rebuilt - moving the simplification
+        # slider re-runs "selection" against the same list, and must not
+        # undo a deliberate deselection.
+        self.contour_selection_stage.contour_selection.SelectSoleContour(self.object_contours)
 
     def show_original_image(self):
         """Show the original image."""
@@ -379,6 +388,7 @@ class SVGGui(QMainWindow):
         if not contour_selection.selected or not contour_selection.simplified:
             self.rectify.contours = {}
             self.contour_text_edit.clear()
+            self.export_btn.setEnabled(False)
             return
 
         try:
@@ -390,6 +400,11 @@ class SVGGui(QMainWindow):
 
         self.rectify.Run(transform, contour_selection.simplified)
         self._update_contour_text(contour_selection.selected, self.rectify.contours)
+
+        # Export writes `self.rectify.contours` and returns silently when
+        # they are empty, which looked exactly like a broken button. Gate
+        # it on the thing it actually needs instead.
+        self.export_btn.setEnabled(bool(self.rectify.contours))
 
     def _update_contour_text(self, selected_objects, contours):
         """Formats each selected object's transformed contour points into
